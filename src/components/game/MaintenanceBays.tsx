@@ -1,9 +1,11 @@
 import { Base, Aircraft } from "@/types/game";
 import { motion } from "framer-motion";
 import { Wrench, Clock, CheckCircle } from "lucide-react";
+import { useState } from "react";
 
 interface MaintenanceBaysProps {
   base: Base;
+  onDropAircraft?: (aircraftId: string) => void;
 }
 
 interface BayInfo {
@@ -13,7 +15,9 @@ interface BayInfo {
   aircraft: Aircraft | null;
 }
 
-export function MaintenanceBays({ base }: MaintenanceBaysProps) {
+export function MaintenanceBays({ base, onDropAircraft }: MaintenanceBaysProps) {
+  const [dragOverId, setDragOverId] = useState<number | null>(null);
+
   const maintAircraft = base.aircraft.filter((a) => a.status === "maintenance");
   const bayLabels = [
     { label: "UHplats 1", type: "Bakre underhåll — Stol, motor" },
@@ -28,6 +32,26 @@ export function MaintenanceBays({ base }: MaintenanceBaysProps) {
     type: bayLabels[i]?.type || "Underhåll",
     aircraft: maintAircraft[i] || null,
   }));
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, bayId: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverId(bayId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, bayId: number) => {
+    e.preventDefault();
+    setDragOverId(null);
+    
+    const aircraftId = e.dataTransfer.getData("aircraftId");
+    if (aircraftId && onDropAircraft) {
+      onDropAircraft(aircraftId);
+    }
+  };
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -46,21 +70,25 @@ export function MaintenanceBays({ base }: MaintenanceBaysProps) {
 
       <div className="p-4 grid grid-cols-2 gap-3">
         {bays.map((bay) => (
-          <motion.div
+          <div
             key={bay.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: bay.id * 0.05 }}
-            className={`relative rounded-lg border p-3 ${
-              bay.aircraft
+            onDragOver={(e) => handleDragOver(e, bay.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, bay.id)}
+            className={`relative rounded-lg border-2 p-4 transition-all min-h-[150px] flex flex-col ${
+              dragOverId === bay.id
+                ? "border-status-green/80 bg-status-green/20 ring-2 ring-status-green/50"
+                : bay.aircraft
                 ? "border-status-amber/40 bg-status-amber/5"
-                : "border-border bg-muted/20"
+                : "border-border bg-muted/20 border-dashed"
             }`}
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-[10px] font-mono font-bold text-foreground uppercase">{bay.label}</span>
               {bay.aircraft ? (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-status-amber/20 text-status-amber">AKTIV</span>
+              ) : dragOverId === bay.id ? (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-status-green/20 text-status-green">DROP HERE</span>
               ) : (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">LEDIG</span>
               )}
@@ -68,7 +96,7 @@ export function MaintenanceBays({ base }: MaintenanceBaysProps) {
             <div className="text-[9px] text-muted-foreground mb-2">{bay.type}</div>
 
             {bay.aircraft ? (
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-foreground font-mono">{bay.aircraft.tailNumber}</span>
                   <span className="text-[10px] text-muted-foreground">{bay.aircraft.type.replace("_", "/")}</span>
@@ -90,12 +118,19 @@ export function MaintenanceBays({ base }: MaintenanceBaysProps) {
                   </div>
                 )}
               </div>
+            ) : dragOverId === bay.id ? (
+              <div className="flex items-center justify-center flex-1">
+                <div className="text-center">
+                  <CheckCircle className="h-8 w-8 text-status-green/70 mx-auto mb-1" />
+                  <span className="text-[10px] font-mono text-status-green">Release to assign</span>
+                </div>
+              </div>
             ) : (
-              <div className="flex items-center justify-center py-2">
+              <div className="flex items-center justify-center py-2 flex-1">
                 <CheckCircle className="h-5 w-5 text-muted-foreground/30" />
               </div>
             )}
-          </motion.div>
+          </div>
         ))}
       </div>
     </div>

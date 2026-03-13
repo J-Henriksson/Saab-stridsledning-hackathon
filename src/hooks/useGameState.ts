@@ -197,6 +197,50 @@ export function useGameState() {
     });
   }, []);
 
+  const moveAircraftToMaintenance = useCallback((baseId: string, aircraftId: string) => {
+    setState((prev) => {
+      const updatedBases = prev.bases.map((base) => {
+        if (base.id !== baseId) return base;
+        
+        const aircraft = base.aircraft.map((ac) => {
+          if (ac.id !== aircraftId) return ac;
+          // Aircraft can only go to maintenance if it's NMC
+          if (ac.status === "not_mission_capable") {
+            return { ...ac, status: "maintenance" as const };
+          }
+          return ac;
+        });
+
+        // Check if we exceeded maintenance bays
+        const maintenanceCount = aircraft.filter((a) => a.status === "maintenance").length;
+        const nextOccupied = Math.min(maintenanceCount, base.maintenanceBays.total);
+
+        return { 
+          ...base, 
+          aircraft,
+          maintenanceBays: { ...base.maintenanceBays, occupied: nextOccupied }
+        };
+      });
+
+      return { ...prev, bases: updatedBases };
+    });
+  }, []);
+
+  const sendMissionDrop = useCallback((baseId: string, aircraftId: string, missionType: string = "DCA") => {
+    setState((prev) => {
+      const updatedBases = prev.bases.map((base) => {
+        if (base.id !== baseId) return base;
+        const aircraft = base.aircraft.map((ac) => {
+          if (ac.id !== aircraftId || ac.status !== "mission_capable") return ac;
+          return { ...ac, status: "on_mission" as const, currentMission: missionType as any };
+        });
+        return { ...base, aircraft };
+      });
+      return { ...prev, bases: updatedBases };
+    });
+    addEvent({ type: "success", message: `${aircraftId} skickad på ${missionType}-uppdrag via drag-drop`, base: baseId as any });
+  }, [addEvent]);
+
   const getResourceSummary = useCallback((): string => {
     const lines: string[] = [];
     lines.push(`=== RESURSLÄGE DAG ${state.day} ${String(state.hour).padStart(2, "0")}:00 - FAS: ${state.phase} ===\n`);
@@ -233,9 +277,48 @@ export function useGameState() {
     return lines.join("\n");
   }, [state]);
 
+  const applyUtfallOutcome = useCallback((
+    baseId: string,
+    aircraftId: string,
+    repairTime: number,
+    maintenanceTypeKey: string,
+    weaponLoss: number,
+    actionLabel: string,
+  ) => {
+    setState((prev) => {
+      const bases = prev.bases.map((base) => {
+        if (base.id !== baseId) return base;
+        const aircraft = base.aircraft.map((ac) => {
+          if (ac.id !== aircraftId) return ac;
+          if (repairTime === 0) {
+            return { ...ac, status: "not_mission_capable" as const };
+          }
+          return {
+            ...ac,
+            status: "maintenance" as const,
+            maintenanceType: maintenanceTypeKey as any,
+            maintenanceTimeRemaining: repairTime,
+          };
+        });
+        const maintCount = aircraft.filter((a) => a.status === "maintenance").length;
+        return {
+          ...base,
+          aircraft,
+          maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
+        };
+      });
+      return { ...prev, bases };
+    });
+    addEvent({
+      type: "warning",
+      message: `UTFALL: ${aircraftId} — ${actionLabel} — ${repairTime}h underhåll (Vapensystemsförlust ${weaponLoss}%)`,
+      base: baseId as any,
+    });
+  }, [addEvent]);
+
   const resetGame = useCallback(() => {
     setState(initialGameState);
   }, []);
 
-  return { state, advanceTurn, startMaintenance, sendOnMission, addEvent, getResourceSummary, resetGame, assignAircraftToOrder, dispatchOrder };
+  return { state, advanceTurn, startMaintenance, sendOnMission, addEvent, getResourceSummary, resetGame, assignAircraftToOrder, dispatchOrder, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome };
 }

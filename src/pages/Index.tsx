@@ -12,13 +12,13 @@ import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje"
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
 import { SpelprocessFlode } from "@/components/dashboard/SpelprocessFlode";
 import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
-import { BaseMap } from "@/components/game/BaseMap";
+import { BaseMap, DropZone } from "@/components/game/BaseMap";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, Activity, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
-  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame } = useGameState();
+  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome } = useGameState();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
 
   const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
@@ -28,6 +28,57 @@ const Index = () => {
   const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "maintenance" || a.status === "not_mission_capable").length, 0);
   const personnelAvail = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
   const personnelTotal = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
+
+  const handleDropAircraft = (aircraftId: string, zone: DropZone) => {
+    const aircraft = selectedBase.aircraft.find((a) => a.id === aircraftId);
+    if (!aircraft) return;
+    const tail = aircraft.tailNumber || aircraftId;
+
+    if (zone === "runway") {
+      if (aircraft.status !== "mission_capable") {
+        toast.error(`${tail} är inte MC — kan ej sändas på uppdrag`);
+        return;
+      }
+      sendMissionDrop(selectedBaseId, aircraftId, "DCA");
+      toast.success(`✈️ ${tail} skickad på DCA-uppdrag`);
+
+    } else if (zone === "hangar") {
+      if (aircraft.status === "on_mission") {
+        toast.error(`${tail} är på uppdrag — kan inte gå till hangar`);
+        return;
+      }
+      if (selectedBase.maintenanceBays.occupied >= selectedBase.maintenanceBays.total) {
+        toast.error("Alla underhållsplatser är upptagna!");
+        return;
+      }
+      moveAircraftToMaintenance(selectedBaseId, aircraftId);
+      toast.success(`🔧 ${tail} skickad till underhållshangar`);
+
+    } else if (zone === "spareparts") {
+      if (aircraft.status === "on_mission") {
+        toast.error(`${tail} är på uppdrag`);
+        return;
+      }
+      // Quick LRU via spare parts — 2h fix
+      applyUtfallOutcome(selectedBaseId, aircraftId, 2, "quick_lru", 10, "Quick LRU replacement (reservdelslager)");
+      toast.success(`📦 ${tail} → Snabb LRU-reparation 2h via reservdelslager`);
+
+    } else if (zone === "fuel") {
+      if (aircraft.status === "on_mission") {
+        toast.info(`${tail} är på uppdrag — tankning vid retur`);
+        return;
+      }
+      // Fuel is base-level — just inform
+      toast.info(`⛽ ${tail} schemalagd för tankning (bränslenivå: ${Math.round(selectedBase.fuel)}%)`);
+
+    } else if (zone === "ammo") {
+      if (aircraft.status === "on_mission") {
+        toast.info(`${tail} är på uppdrag — beväpning vid retur`);
+        return;
+      }
+      toast.info(`💣 ${tail} schemalagd för beväpning vid ammodepån`);
+    }
+  };
   const kritiskaResurser = selectedBase.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3).length +
     selectedBase.ammunition.filter((a) => a.quantity / a.max < 0.3).length;
 
@@ -112,7 +163,13 @@ const Index = () => {
               <h3 className="font-sans font-bold text-sm text-foreground">BASÖVERSIKT — {selectedBase.name}</h3>
               <span className="text-[9px] font-mono text-muted-foreground ml-2">Klicka på byggnader för detaljer</span>
             </div>
-            <BaseMap base={selectedBase} />
+            <BaseMap
+              base={selectedBase}
+              onDropAircraft={handleDropAircraft}
+              onUtfallOutcome={(aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel) => {
+                applyUtfallOutcome(selectedBaseId, aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel);
+              }}
+            />
           </div>
 
           {/* ROW 3: Spelprocess – Uppdragsflöde */}
@@ -166,7 +223,7 @@ const Index = () => {
           />
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <MaintenanceBays base={selectedBase} />
+            <MaintenanceBays base={selectedBase} onDropAircraft={handleDropAircraft} />
             {/* Remaining Life */}
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-border">

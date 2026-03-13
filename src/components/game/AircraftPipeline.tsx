@@ -2,6 +2,7 @@ import { Base, Aircraft } from "@/types/game";
 import { AircraftStatusBadge } from "./StatusBadge";
 import { motion } from "framer-motion";
 import { ArrowRight, Wrench, Plane, CheckCircle, AlertTriangle, RotateCcw } from "lucide-react";
+import React from "react";
 
 interface AircraftPipelineProps {
   base: Base;
@@ -28,18 +29,33 @@ function StageCard({
   actionLabel?: string;
   onAction?: (id: string) => void;
 }) {
+  const [dragOver, setDragOver] = React.useState(false);
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setDragOver(false);
+  };
+
   return (
-    <div className={`bg-card border rounded-lg overflow-hidden flex flex-col ${color}`}>
-      <div className="px-3 py-2 border-b border-border flex items-center justify-between">
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      className={`bg-card border rounded-lg overflow-hidden flex flex-col ${color} ${dragOver ? "ring-2 ring-primary/50" : ""} transition-all`}
+    >
+      <div className={`px-4 py-3 border-b border-border flex items-center justify-between ${dragOver ? "bg-primary/10" : "bg-muted/30"}`}>
         <div className="flex items-center gap-2">
           {icon}
-          <span className="text-xs font-bold text-foreground uppercase">{title}</span>
+          <span className="text-sm font-bold text-foreground uppercase">{title}</span>
         </div>
-        <span className="text-lg font-mono font-bold text-foreground">{count}</span>
+        <span className="text-xl font-mono font-bold text-foreground">{count}</span>
       </div>
-      <div className="p-2 flex-1 overflow-y-auto max-h-40 space-y-1">
+      <div className="p-2 flex-1 overflow-y-auto max-h-48 space-y-1.5">
         {aircraft.length === 0 ? (
-          <div className="text-[10px] text-muted-foreground text-center py-4">Inga flygplan</div>
+          <div className="text-[11px] text-muted-foreground text-center py-6">Inga flygplan</div>
         ) : (
           aircraft.map((ac) => (
             <motion.div
@@ -47,26 +63,27 @@ function StageCard({
               layout
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-between px-2 py-1.5 rounded bg-muted/40 text-xs font-mono"
+              whileHover={{ scale: 1.02 }}
+              className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/50 text-xs font-mono border border-border/50 hover:bg-muted/70 transition-all cursor-pointer"
             >
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-foreground">{ac.tailNumber}</span>
-                <span className="text-[10px] text-muted-foreground">{ac.type.replace("_", "/")}</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-bold text-foreground text-sm">{ac.tailNumber}</span>
+                <span className="text-[10px] text-muted-foreground truncate">{ac.type.replace("_", "/")}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 {ac.maintenanceTimeRemaining != null && (
-                  <span className="text-[10px] text-status-amber">{ac.maintenanceTimeRemaining}h</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-status-amber/20 text-status-amber">{ac.maintenanceTimeRemaining}h</span>
                 )}
                 {ac.maintenanceType && (
                   <span className="text-[10px] text-muted-foreground">{ac.maintenanceType}</span>
                 )}
                 {ac.currentMission && (
-                  <span className="text-[10px] text-status-blue">{ac.currentMission}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-status-blue/20 text-status-blue">{ac.currentMission}</span>
                 )}
                 {action && onAction && (
                   <button
                     onClick={() => onAction(ac.id)}
-                    className="px-2 py-0.5 rounded text-[10px] bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                    className="px-2 py-1 rounded text-[10px] bg-primary/30 text-primary hover:bg-primary/50 transition-colors font-semibold border border-primary/40"
                   >
                     {actionLabel}
                   </button>
@@ -97,6 +114,11 @@ export function AircraftPipeline({ base, onStartMaintenance, onSendMission }: Ai
 
       {/* Flow visualization */}
       <div className="p-4">
+        {/* Info banner */}
+        <div className="mb-4 p-3 rounded-lg bg-primary/10 border border-primary/30">
+          <div className="text-[11px] font-semibold text-primary">💡 Tips: Drag aircraft from Basöversikt below to move them between statuses</div>
+        </div>
+
         {/* Flow arrows diagram */}
         <div className="flex items-center justify-center gap-2 mb-4 text-[10px] font-mono text-muted-foreground">
           <span className="px-2 py-1 rounded bg-status-green/10 text-status-green border border-status-green/30">Klargöring</span>

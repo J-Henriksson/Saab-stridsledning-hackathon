@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Base, Aircraft } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -9,7 +9,9 @@ import {
   Wrench,
   AlertTriangle,
   Plane,
+  Dice6,
 } from "lucide-react";
+import { UtfallModal, UtfallOutcome } from "./UtfallModal";
 
 type BuildingId =
   | "apron"
@@ -20,8 +22,34 @@ type BuildingId =
   | "spareparts"
   | null;
 
+export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
+
 interface BaseMapProps {
   base: Base;
+  onDropAircraft: (aircraftId: string, zone: DropZone) => void;
+  onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string) => void;
+}
+
+// Drop zones in SVG coordinate space (viewBox 900×500)
+const SVG_ZONES: {
+  id: DropZone;
+  x: number; y: number; w: number; h: number;
+  label: string;
+  colorFill: string;
+  colorBorder: string;
+}[] = [
+  { id: "runway",     x: 60,  y: 170, w: 780, h: 60,  label: "✈️  STARTA UPPDRAG",    colorFill: "rgba(22,163,74,0.35)",  colorBorder: "#16a34a" },
+  { id: "hangar",     x: 60,  y: 365, w: 186, h: 126, label: "🔧  UNDERHÅLL / SERVICE", colorFill: "rgba(217,119,6,0.35)",  colorBorder: "#d97706" },
+  { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "📦  SNABB LRU-REP",      colorFill: "rgba(234,88,12,0.35)",  colorBorder: "#ea580c" },
+  { id: "fuel",       x: 280, y: 365, w: 110, h: 68,  label: "⛽  TANKNING",            colorFill: "rgba(5,150,105,0.35)",  colorBorder: "#059669" },
+  { id: "ammo",       x: 430, y: 365, w: 130, h: 40,  label: "💣  BEVÄPNING",           colorFill: "rgba(220,38,38,0.35)",  colorBorder: "#dc2626" },
+];
+
+function getZoneAt(x: number, y: number): DropZone | null {
+  for (const z of SVG_ZONES) {
+    if (x >= z.x && x <= z.x + z.w && y >= z.y && y <= z.y + z.h) return z.id;
+  }
+  return null;
 }
 
 // Aircraft status colours — MC = SAAB Blue
@@ -49,10 +77,61 @@ function getAircraftColor(ac: Aircraft): string {
   return "#16a34a";
 }
 
-export function BaseMap({ base }: BaseMapProps) {
+// Reusable Gripen top-down silhouette, facing LEFT (nose at cx-x), centered at (cx,cy)
+function GripenShape({ cx, cy, color, opacity = 1 }: { cx: number; cy: number; color: string; opacity?: number }) {
+  return (
+    <g opacity={opacity}>
+      {/* Main fuselage — long needle shape */}
+      <path
+        d={`M ${cx-15},${cy}
+            L ${cx-11},${cy-2}
+            L ${cx-6},${cy-2.5}
+            L ${cx+1},${cy-2}
+            L ${cx+11},${cy-1.5}
+            L ${cx+14},${cy}
+            L ${cx+11},${cy+1.5}
+            L ${cx+1},${cy+2}
+            L ${cx-6},${cy+2.5}
+            L ${cx-11},${cy+2} Z`}
+        fill={color}
+      />
+      {/* Left main delta wing — sweeps back from mid-fuselage */}
+      <polygon
+        points={`${cx-4},${cy-2} ${cx-1},${cy-14} ${cx+8},${cy-13} ${cx+10},${cy-2}`}
+        fill={color} opacity="0.9"
+      />
+      {/* Right main delta wing */}
+      <polygon
+        points={`${cx-4},${cy+2} ${cx-1},${cy+14} ${cx+8},${cy+13} ${cx+10},${cy+2}`}
+        fill={color} opacity="0.9"
+      />
+      {/* Left forward canard — sweeps forward */}
+      <polygon
+        points={`${cx-9},${cy-2} ${cx-13},${cy-6} ${cx-8},${cy-5} ${cx-7},${cy-2}`}
+        fill={color} opacity="0.85"
+      />
+      {/* Right forward canard */}
+      <polygon
+        points={`${cx-9},${cy+2} ${cx-13},${cy+6} ${cx-8},${cy+5} ${cx-7},${cy+2}`}
+        fill={color} opacity="0.85"
+      />
+      {/* Engine nozzle circle at tail */}
+      <circle cx={cx+14} cy={cy} r="2.5" fill={color} opacity="0.65" />
+    </g>
+  );
+}
+
+export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
   const [selectedAcId, setSelectedAcId] = useState<string | null>(null);
+  const [utfallAcId, setUtfallAcId] = useState<string | null>(null);
+
+  // Pointer-event drag state (SVG-native, no HTML drag API)
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [draggingAcId, setDraggingAcId] = useState<string | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [dropZoneHover, setDropZoneHover] = useState<DropZone | null>(null);
 
   const mc = base.aircraft.filter((a) => a.status === "mission_capable");
   const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
@@ -69,22 +148,68 @@ export function BaseMap({ base }: BaseMapProps) {
     setSelected(null);
   }
 
-  // Lay out aircraft icons on the apron – max 30 visible
-  const apronAircraft = base.aircraft.slice(0, 32);
+  function screenToSVG(clientX: number, clientY: number) {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const rect = svg.getBoundingClientRect();
+    return {
+      x: ((clientX - rect.left) / rect.width) * 900,
+      y: ((clientY - rect.top) / rect.height) * 500,
+    };
+  }
+
+  function handleSVGPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    if (!draggingAcId) return;
+    const pos = screenToSVG(e.clientX, e.clientY);
+    setDragPos(pos);
+    setDropZoneHover(getZoneAt(pos.x, pos.y));
+  }
+
+  function handleSVGPointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (!draggingAcId) return;
+    const pos = screenToSVG(e.clientX, e.clientY);
+    const zone = getZoneAt(pos.x, pos.y);
+    if (zone) onDropAircraft(draggingAcId, zone);
+    setDraggingAcId(null);
+    setDragPos(null);
+    setDropZoneHover(null);
+  }
+
+  function cancelDrag() {
+    setDraggingAcId(null);
+    setDragPos(null);
+    setDropZoneHover(null);
+  }
+
+  // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
+  const apronAircraft = base.aircraft
+    .filter((a) => a.status === "mission_capable" || a.status === "not_mission_capable")
+    .slice(0, 32);
   const cols = 16;
 
   return (
     <div>
       {/* ── SVG MAP ───────────────────────────────────────────────── */}
-      <div className="relative w-full bg-[#e8f0e8] overflow-x-auto">
+      <div className="relative w-full bg-[#e8f0e8] overflow-x-auto select-none">
+  
         <svg
+          ref={svgRef}
           viewBox="0 0 900 500"
-          className="w-full"
-          style={{ minWidth: 600 }}
-          onClick={() => { setSelected(null); setSelectedAcId(null); }}
+          className="w-full relative z-0"
+          style={{ minWidth: 600, cursor: draggingAcId ? "grabbing" : "default", touchAction: "none" }}
+          onClick={() => { if (!draggingAcId) { setSelected(null); setSelectedAcId(null); } }}
+          onPointerMove={handleSVGPointerMove}
+          onPointerUp={handleSVGPointerUp}
+          onPointerLeave={cancelDrag}
         >
           {/* Grass background */}
           <rect width="900" height="500" fill="#dceadc" />
+
+          {/* Drag-drop instructions banner */}
+          <rect x="20" y="8" width="860" height="24" rx="3" fill="#e0f2fe" stroke="#0284c7" strokeWidth="1.5" opacity="0.85" />
+          <text x="30" y="24" fontSize="9" fill="#0c4a6e" fontFamily="monospace" fontWeight="bold">
+            💡 Dra flygplan → Bana (✈️ uppdrag) · Hangar (🔧 underhåll) · Reservdel (📦 LRU 2h) · Bränsle (⛽) · Ammo (💣)
+          </text>
 
           {/* ── Perimeter fence ── */}
           <rect x="20" y="20" width="860" height="460" fill="none" stroke="#7aad7a" strokeWidth="2" strokeDasharray="6 4" />
@@ -92,7 +217,7 @@ export function BaseMap({ base }: BaseMapProps) {
           {/* ── Taxiway (south of runway) ── */}
           <rect x="60" y="238" width="780" height="14" fill="#b0b8c8" />
 
-          {/* ── Runway ── */}
+          {/* ── Runway drop zone ── */}
           <rect x="60" y="170" width="780" height="60" rx="2" fill="#9aa4b8" />
           {/* Runway centre-line */}
           <line x1="60" y1="200" x2="840" y2="200" stroke="#f8fafc" strokeWidth="1.5" strokeDasharray="20 14" />
@@ -106,6 +231,30 @@ export function BaseMap({ base }: BaseMapProps) {
           <text x="450" y="203" textAnchor="middle" fontSize="9" fill="#fff" fontFamily="monospace" letterSpacing="3">
             LANDNINGSBANA 09/27
           </text>
+
+          {/* ── On-mission aircraft rendered ON the runway ── */}
+          {onMission.slice(0, 10).map((ac, i) => {
+            const rx = 95 + i * 75;
+            const ry = 192;
+            const color = "#2563eb";
+            return (
+              <g key={`mission-${ac.id}`}
+                onMouseEnter={() => setHoveredAc(ac.id)}
+                onMouseLeave={() => setHoveredAc(null)}
+              >
+                <GripenShape cx={rx} cy={ry} color={color} />
+                {/* Speed lines */}
+                <line x1={rx+15} y1={ry-1} x2={rx+22} y2={ry-1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
+                <line x1={rx+15} y1={ry+1} x2={rx+22} y2={ry+1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
+                {hoveredAc === ac.id && (
+                  <g>
+                    <rect x={rx-18} y={ry-22} width="36" height="11" rx="2" fill="#1e3a8a" opacity="0.9" />
+                    <text x={rx} y={ry-14} textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
 
           {/* ── Apron / Parking ── */}
           <rect
@@ -131,10 +280,21 @@ export function BaseMap({ base }: BaseMapProps) {
             return (
               <g
                 key={ac.id}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setHoveredAc(ac.id)}
+                style={{ cursor: draggingAcId === ac.id ? "grabbing" : isSelAc ? "pointer" : "grab" }}
+                onMouseEnter={() => { if (!draggingAcId) setHoveredAc(ac.id); }}
                 onMouseLeave={() => setHoveredAc(null)}
-                onClick={(e) => { e.stopPropagation(); selectAircraft(ac.id); }}
+                onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); selectAircraft(ac.id); } }}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  // Capture pointer on the SVG so move/up fire on SVG even when cursor leaves aircraft
+                  svgRef.current?.setPointerCapture(e.pointerId);
+                  setDraggingAcId(ac.id);
+                  setSelectedAcId(null);
+                  const pos = screenToSVG(e.clientX, e.clientY);
+                  setDragPos(pos);
+                  setDropZoneHover(null);
+                }}
               >
                 {/* Selection ring */}
                 {isSelAc && (
@@ -142,33 +302,25 @@ export function BaseMap({ base }: BaseMapProps) {
                 )}
                 {/* Drop shadow */}
                 <ellipse cx={cx} cy={cy + 1.5} rx="13" ry="5" fill="rgba(0,0,0,0.12)" />
-                {/* Fuselage */}
-                <path
-                  d={`M ${cx - 15},${cy} L ${cx - 12},${cy - 2.5} L ${cx + 10},${cy - 1} L ${cx + 14},${cy} L ${cx + 10},${cy + 1} L ${cx - 12},${cy + 2.5} Z`}
-                  fill={color}
-                />
-                {/* Left delta wing */}
-                <polygon
-                  points={`${cx + 2},${cy - 2} ${cx - 8},${cy - 13} ${cx - 12},${cy - 3} ${cx - 3},${cy - 2}`}
-                  fill={color} opacity="0.88"
-                />
-                {/* Right delta wing */}
-                <polygon
-                  points={`${cx + 2},${cy + 2} ${cx - 8},${cy + 13} ${cx - 12},${cy + 3} ${cx - 3},${cy + 2}`}
-                  fill={color} opacity="0.88"
-                />
-                {/* Left canard */}
-                <polygon
-                  points={`${cx - 8},${cy - 2} ${cx - 10},${cy - 7} ${cx - 5},${cy - 6} ${cx - 5},${cy - 2}`}
-                  fill={color} opacity="0.82"
-                />
-                {/* Right canard */}
-                <polygon
-                  points={`${cx - 8},${cy + 2} ${cx - 10},${cy + 7} ${cx - 5},${cy + 6} ${cx - 5},${cy + 2}`}
-                  fill={color} opacity="0.82"
-                />
-                {/* Engine nozzle */}
-                <rect x={cx + 11} y={cy - 2.5} width="4" height="5" rx="2" fill={color} opacity="0.7" />
+                {/* Gripen silhouette */}
+                <GripenShape cx={cx} cy={cy} color={color} />
+
+                {/* ── Battery indicator ── */}
+                {(() => {
+                  const battPct = Math.min(1, ac.hoursToService / 100);
+                  const battColor = ac.hoursToService <= 20 ? "#dc2626" : ac.hoursToService < 50 ? "#d97706" : "#16a34a";
+                  const bX = cx - 11, bY = cy + 15, bW = 22, bH = 6;
+                  return (
+                    <g>
+                      {/* Outer casing */}
+                      <rect x={bX} y={bY} width={bW} height={bH} rx={1.5} fill="rgba(0,0,0,0.25)" stroke="white" strokeWidth={1} />
+                      {/* Terminal nub */}
+                      <rect x={bX + bW + 0.5} y={bY + 1.5} width={2} height={bH - 3} rx={0.5} fill="white" opacity={0.75} />
+                      {/* Fill level */}
+                      <rect x={bX + 1.5} y={bY + 1.5} width={Math.max(0, (bW - 3) * battPct)} height={bH - 3} rx={1} fill={battColor} />
+                    </g>
+                  );
+                })()}
 
                 {/* Hover label */}
                 {isHovered && !isSelAc && (
@@ -194,20 +346,22 @@ export function BaseMap({ base }: BaseMapProps) {
             const hy = 365 + row * 68;
             const occupied = i < base.maintenanceBays.occupied;
             const isSel = selected === "hangar";
+            const isHangarHot = dropZoneHover === "hangar";
             return (
               <g
                 key={i}
                 style={{ cursor: "pointer" }}
-                onClick={(e) => { e.stopPropagation(); toggle("hangar"); }}
+                onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("hangar"); } }}
               >
                 {/* Roof */}
                 <rect
                   x={hx} y={hy} width="86" height="58"
-                  fill={occupied ? "#fefce8" : "#eff6ff"}
-                  stroke={isSel ? "#005AA0" : occupied ? "#d97706" : "#93b4d8"}
-                  strokeWidth={isSel ? 2 : 1.2}
+                  fill={isHangarHot ? "#c7d2e8" : occupied ? "#fefce8" : "#eff6ff"}
+                  stroke={isHangarHot ? "#d97706" : isSel ? "#005AA0" : occupied ? "#d97706" : "#93b4d8"}
+                  strokeWidth={isHangarHot || isSel ? 2 : 1.2}
                   rx="2"
                 />
+                
                 {/* Door */}
                 <rect x={hx + 18} y={hy + 30} width="50" height="28" rx="1"
                   fill={occupied ? "#fde68a40" : "#bfdbfe40"} stroke={occupied ? "#d9770640" : "#93b4d8"} strokeWidth="0.8" />
@@ -217,6 +371,7 @@ export function BaseMap({ base }: BaseMapProps) {
                 <text x={hx + 43} y={hy + 12} textAnchor="middle" fontSize="7" fill={occupied ? "#92400e" : "#1e3a5f"} fontFamily="monospace">
                   HANGAR {i + 1}
                 </text>
+                
                 {occupied && (
                   <circle cx={hx + 72} cy={hy + 8} r="5" fill="#d97706" opacity="0.8">
                     <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2s" repeatCount="indefinite" />
@@ -227,6 +382,29 @@ export function BaseMap({ base }: BaseMapProps) {
           })}
           {/* Hangar label */}
           <text x="146" y="358" textAnchor="middle" fontSize="7" fill="#1e3a5f" fontFamily="monospace">UNDERHÅLLSHALLAR</text>
+
+          {/* ── Maintenance aircraft inside hangars ── */}
+          {maint.slice(0, 4).map((ac, i) => {
+            const col = i % 2;
+            const row = Math.floor(i / 2);
+            const hx = 60 + col * 100;
+            const hy = 365 + row * 68;
+            const mx = hx + 43, my = hy + 42;
+            return (
+              <g key={`maint-${ac.id}`}
+                onMouseEnter={() => setHoveredAc(ac.id)}
+                onMouseLeave={() => setHoveredAc(null)}
+              >
+                <GripenShape cx={mx} cy={my} color="#d97706" opacity={0.7} />
+                {hoveredAc === ac.id && (
+                  <g>
+                    <rect x={mx-18} y={my-20} width="36" height="11" rx="2" fill="#92400e" opacity="0.95" />
+                    <text x={mx} y={my-12} textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
 
           {/* ── Fuel Depot ── */}
           {(() => {
@@ -403,11 +581,60 @@ export function BaseMap({ base }: BaseMapProps) {
             {base.name.toUpperCase()}
           </text>
 
+          {/* ── Drop zone highlights — shown during pointer drag, in SVG space ── */}
+          {draggingAcId && SVG_ZONES.map((zone) => {
+            const isHot = dropZoneHover === zone.id;
+            return (
+              <g key={`dz-${zone.id}`} style={{ pointerEvents: "none" }}>
+                <rect
+                  x={zone.x} y={zone.y} width={zone.w} height={zone.h}
+                  fill={isHot ? zone.colorFill : "rgba(255,255,255,0.10)"}
+                  stroke={zone.colorBorder}
+                  strokeWidth={isHot ? 3 : 1.5}
+                  strokeDasharray={isHot ? "none" : "8 4"}
+                  rx="4"
+                />
+                <text
+                  x={zone.x + zone.w / 2}
+                  y={zone.y + zone.h / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize={isHot ? 12 : 9}
+                  fontWeight="bold"
+                  fill={zone.colorBorder}
+                  fontFamily="monospace"
+                  style={{ pointerEvents: "none" }}
+                >
+                  {zone.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* ── Ghost aircraft follows cursor during drag ── */}
+          {draggingAcId && dragPos && (() => {
+            const dragAc = base.aircraft.find((a) => a.id === draggingAcId);
+            if (!dragAc) return null;
+            const gc = getAircraftColor(dragAc);
+            const gx = dragPos.x, gy = dragPos.y;
+            return (
+              <g opacity="0.8" style={{ pointerEvents: "none" }}>
+                <ellipse cx={gx} cy={gy + 1.5} rx="14" ry="6" fill="rgba(0,0,0,0.2)" />
+                <GripenShape cx={gx} cy={gy} color={gc} />
+                {/* Tail number label on ghost */}
+                <rect x={gx-16} y={gy-28} width="32" height="10" rx="2" fill={gc} opacity="0.9" />
+                <text x={gx} y={gy-21} textAnchor="middle" fontSize="7" fill="white" fontFamily="monospace" fontWeight="bold">
+                  {dragAc.tailNumber}
+                </text>
+              </g>
+            );
+          })()}
+
           {/* ── Aircraft detail popup — rendered LAST so it paints above all buildings ── */}
           {selectedAcId && (() => {
-            const acIdx = base.aircraft.findIndex((a) => a.id === selectedAcId);
+            const acIdx = apronAircraft.findIndex((a) => a.id === selectedAcId);
             if (acIdx < 0) return null;
-            const ac = base.aircraft[acIdx];
+            const ac = apronAircraft[acIdx];
             const col = acIdx % cols;
             const row = Math.floor(acIdx / cols);
             const cx = 80 + col * 46;
@@ -556,6 +783,32 @@ export function BaseMap({ base }: BaseMapProps) {
                         </div>
                       </div>
 
+                      <div style={{ borderTop: "1px solid #e2e8f0" }} />
+
+                      {/* UTFALL-CHECK button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setUtfallAcId(ac.id); }}
+                        style={{
+                          width: "100%",
+                          padding: "5px 8px",
+                          background: ac.status === "not_mission_capable" ? "#dc2626" : "#005AA0",
+                          color: "#fff",
+                          border: "none",
+                          borderRadius: "5px",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: "8px",
+                          fontWeight: "900",
+                          cursor: "pointer",
+                          letterSpacing: "1px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        🎲 UTFALL-CHECK
+                      </button>
+
                     </div>
                   </div>
                 </foreignObject>
@@ -564,6 +817,29 @@ export function BaseMap({ base }: BaseMapProps) {
           })()}
         </svg>
       </div>
+
+      {/* ── UTFALL MODAL ─────────────────────────────────────────── */}
+      {utfallAcId && (() => {
+        const utfallAc = base.aircraft.find((a) => a.id === utfallAcId);
+        if (!utfallAc) return null;
+        return (
+          <UtfallModal
+            aircraft={utfallAc}
+            onClose={() => setUtfallAcId(null)}
+            onAccept={(outcome: UtfallOutcome) => {
+              setUtfallAcId(null);
+              setSelectedAcId(null);
+              onUtfallOutcome?.(
+                utfallAc.id,
+                outcome.repairTime,
+                outcome.maintenanceTypeKey,
+                outcome.weaponLoss,
+                outcome.actionType,
+              );
+            }}
+          />
+        );
+      })()}
 
       {/* ── BUILDING DETAIL PANEL ────────────────────────────────── */}
       <AnimatePresence>
