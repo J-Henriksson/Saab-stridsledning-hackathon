@@ -258,15 +258,15 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 
           {/* ── Apron / Parking ── */}
           <rect
-            x="60" y="260" width="780" height="90"
+            x="50" y="250" width="800" height="120"
             fill={selected === "apron" ? "#dbeafe" : "#c8d4e8"}
             stroke={selected === "apron" ? "#005AA0" : "#8099bb"}
             strokeWidth={selected === "apron" ? 2 : 1}
-            rx="2"
+            rx="4"
             style={{ cursor: "pointer" }}
             onClick={(e) => { e.stopPropagation(); toggle("apron"); }}
           />
-          <text x="75" y="274" fontSize="8" fill="#374e70" fontFamily="monospace">UPPSTÄLLNINGSPLATS</text>
+          <text x="75" y="265" fontSize="8" fill="#374e70" fontFamily="monospace">UPPSTÄLLNINGSPLATS</text>
 
           {/* Aircraft icons on apron — Gripen silhouette, facing left (nose at -x) */}
           {apronAircraft.map((ac, i) => {
