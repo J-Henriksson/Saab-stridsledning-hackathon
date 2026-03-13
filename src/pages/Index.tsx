@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useGameState } from "@/hooks/useGameState";
 import { TopBar } from "@/components/game/TopBar";
-import { FleetGrid } from "@/components/game/FleetGrid";
-import { ResourceDetail } from "@/components/game/ResourceDetail";
-import { PersonnelPanel } from "@/components/game/PersonnelPanel";
+import { MissionSchedule } from "@/components/game/MissionSchedule";
+import { AircraftPipeline } from "@/components/game/AircraftPipeline";
+import { MaintenanceBays } from "@/components/game/MaintenanceBays";
+import { ResourceSidebar } from "@/components/game/ResourceSidebar";
 import { OptimizationPanel } from "@/components/game/OptimizationPanel";
 import { EventLog } from "@/components/game/EventLog";
 import { AIAgent } from "@/components/game/AIAgent";
@@ -59,27 +60,33 @@ const Index = () => {
         })}
       </div>
 
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-0">
-        {/* Main content - single base focus */}
-        <div className="overflow-y-auto p-4">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            {/* Left column */}
-            <div className="space-y-4">
-              <FleetGrid
-                base={selectedBase}
-                onStartMaintenance={handleStartMaintenance}
-                onSendMission={handleSendMission}
-              />
-              <PersonnelPanel base={selectedBase} />
-              <EventLog events={state.events.filter((e) => !e.base || e.base === selectedBaseId)} />
-            </div>
+      {/* Main layout: content + resource sidebar + AI */}
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_240px_320px] gap-0">
+        {/* Main content area */}
+        <div className="overflow-y-auto p-4 space-y-4">
+          {/* Mission Schedule - top priority */}
+          <MissionSchedule base={selectedBase} day={state.day} hour={state.hour} phase={state.phase} />
 
-            {/* Right column */}
-            <div className="space-y-4">
-              <OptimizationPanel state={state} baseId={selectedBaseId} />
-              <ResourceDetail base={selectedBase} phase={state.phase} />
-            </div>
+          {/* Aircraft pipeline flow */}
+          <AircraftPipeline
+            base={selectedBase}
+            onStartMaintenance={handleStartMaintenance}
+            onSendMission={handleSendMission}
+          />
+
+          {/* Bottom row: Maintenance bays + Optimization */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <MaintenanceBays base={selectedBase} />
+            <OptimizationPanel state={state} baseId={selectedBaseId} />
           </div>
+
+          {/* Event log */}
+          <EventLog events={state.events.filter((e) => !e.base || e.base === selectedBaseId)} />
+        </div>
+
+        {/* Resource sidebar */}
+        <div className="border-l border-border h-full overflow-y-auto hidden lg:block p-3">
+          <ResourceSidebar base={selectedBase} phase={state.phase} />
         </div>
 
         {/* AI Agent sidebar */}
