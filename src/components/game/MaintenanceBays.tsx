@@ -3,9 +3,11 @@ import { motion } from "framer-motion";
 import { Wrench, Clock, CheckCircle } from "lucide-react";
 import { useState } from "react";
 
+import { DropZone } from "@/components/game/BaseMap";
+
 interface MaintenanceBaysProps {
   base: Base;
-  onDropAircraft?: (aircraftId: string) => void;
+  onDropAircraft?: (aircraftId: string, zone: DropZone) => void;
 }
 
 interface BayInfo {
@@ -49,7 +51,7 @@ export function MaintenanceBays({ base, onDropAircraft }: MaintenanceBaysProps) 
     
     const aircraftId = e.dataTransfer.getData("aircraftId");
     if (aircraftId && onDropAircraft) {
-      onDropAircraft(aircraftId);
+      onDropAircraft(aircraftId, "hangar");
     }
   };
 
