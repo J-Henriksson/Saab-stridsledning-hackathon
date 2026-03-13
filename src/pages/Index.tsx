@@ -1,11 +1,255 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import { useGameState } from "@/hooks/useGameState";
+import { TopBar } from "@/components/game/TopBar";
+import { MissionSchedule } from "@/components/game/MissionSchedule";
+import { AircraftPipeline } from "@/components/game/AircraftPipeline";
+import { MaintenanceBays } from "@/components/game/MaintenanceBays";
+import { AIAgent } from "@/components/game/AIAgent";
+import { StatusKort } from "@/components/dashboard/StatusKort";
+import { LarmPanel } from "@/components/dashboard/LarmPanel";
+import { DagensMissioner } from "@/components/dashboard/DagensMissioner";
+import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje";
+import { ResursPanel } from "@/components/dashboard/ResursPanel";
+import { SpelprocessFlode } from "@/components/dashboard/SpelprocessFlode";
+import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
+import { BaseMap, DropZone } from "@/components/game/BaseMap";
+import { toast } from "sonner";
+import { BaseType } from "@/types/game";
+import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, Activity, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
+  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome } = useGameState();
+  const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
+
+  const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
+
+  const mcTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "mission_capable").length, 0);
+  const onMissionTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "on_mission").length, 0);
+  const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "maintenance" || a.status === "not_mission_capable").length, 0);
+  const personnelAvail = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
+  const personnelTotal = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
+
+  const handleDropAircraft = (aircraftId: string, zone: DropZone) => {
+    const aircraft = selectedBase.aircraft.find((a) => a.id === aircraftId);
+    if (!aircraft) return;
+    const tail = aircraft.tailNumber || aircraftId;
+
+    if (zone === "runway") {
+      if (aircraft.status !== "mission_capable") {
+        toast.error(`${tail} är inte MC — kan ej sändas på uppdrag`);
+        return;
+      }
+      sendMissionDrop(selectedBaseId, aircraftId, "DCA");
+      toast.success(`✈️ ${tail} skickad på DCA-uppdrag`);
+
+    } else if (zone === "hangar") {
+      if (aircraft.status === "on_mission") {
+        toast.error(`${tail} är på uppdrag — kan inte gå till hangar`);
+        return;
+      }
+      if (selectedBase.maintenanceBays.occupied >= selectedBase.maintenanceBays.total) {
+        toast.error("Alla underhållsplatser är upptagna!");
+        return;
+      }
+      moveAircraftToMaintenance(selectedBaseId, aircraftId);
+      toast.success(`🔧 ${tail} skickad till underhållshangar`);
+
+    } else if (zone === "spareparts") {
+      if (aircraft.status === "on_mission") {
+        toast.error(`${tail} är på uppdrag`);
+        return;
+      }
+      // Quick LRU via spare parts — 2h fix
+      applyUtfallOutcome(selectedBaseId, aircraftId, 2, "quick_lru", 10, "Quick LRU replacement (reservdelslager)");
+      toast.success(`📦 ${tail} → Snabb LRU-reparation 2h via reservdelslager`);
+
+    } else if (zone === "fuel") {
+      if (aircraft.status === "on_mission") {
+        toast.info(`${tail} är på uppdrag — tankning vid retur`);
+        return;
+      }
+      // Fuel is base-level — just inform
+      toast.info(`⛽ ${tail} schemalagd för tankning (bränslenivå: ${Math.round(selectedBase.fuel)}%)`);
+
+    } else if (zone === "ammo") {
+      if (aircraft.status === "on_mission") {
+        toast.info(`${tail} är på uppdrag — beväpning vid retur`);
+        return;
+      }
+      toast.info(`💣 ${tail} schemalagd för beväpning vid ammodepån`);
+    }
+  };
+  const kritiskaResurser = selectedBase.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3).length +
+    selectedBase.ammunition.filter((a) => a.quantity / a.max < 0.3).length;
+
+  const handleStartMaintenance = (aircraftId: string) => {
+    if (selectedBase.maintenanceBays.occupied >= selectedBase.maintenanceBays.total) {
+      toast.error("Alla underhållsplatser är upptagna!");
+      return;
+    }
+    startMaintenance(selectedBaseId, aircraftId);
+    toast.success(`Underhåll påbörjat på ${aircraftId}`);
+  };
+
+  const handleSendMission = (aircraftId: string) => {
+    sendOnMission(selectedBaseId, aircraftId, "DCA");
+    toast.success(`${aircraftId} skickad på DCA-uppdrag`);
+  };
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("sv-SE", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+    <div className="flex flex-col h-screen bg-background">
+      <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />
+
+      {/* Sub-header: datum, fas, bas-tabs */}
+      <div className="border-b border-border bg-card px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            {dateStr}
+          </div>
+          {/* Base tabs */}
+          <div className="flex items-center gap-1">
+            {state.bases.map((base) => {
+              const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+              const total = base.aircraft.length;
+              const isSelected = base.id === selectedBaseId;
+              return (
+                <button
+                  key={base.id}
+                  onClick={() => setSelectedBaseId(base.id)}
+                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
+                    isSelected
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span className="font-bold">{base.id}</span>
+                  <span className="ml-1.5 text-[10px] opacity-70">{mc}/{total}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {kritiskaResurser > 0 && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-red/20 text-status-red border border-status-red/30 flex items-center gap-1">
+              <Siren className="h-3 w-3" />
+              {kritiskaResurser} KRITISKA
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Main scrollable content */}
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-0">
+        <div className="overflow-y-auto p-4 space-y-4">
+
+          {/* ROW 1: KPI strip */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <StatusKort titel="Mission Capable" varde={mcTotal} subtitel={`av ${state.bases.reduce((s, b) => s + b.aircraft.length, 0)} totalt`} ikon={<ShieldCheck className="h-5 w-5" />} farg="green" />
+            <StatusKort titel="På uppdrag" varde={onMissionTotal} subtitel="aktiva flygningar" ikon={<Crosshair className="h-5 w-5" />} farg="blue" />
+            <StatusKort titel="I underhåll" varde={inMaintTotal} subtitel="NMC + UH" ikon={<Hammer className="h-5 w-5" />} farg="yellow" />
+            <StatusKort titel="Personal" varde={`${personnelAvail}/${personnelTotal}`} subtitel="tillgänglig personal" ikon={<Users className="h-5 w-5" />} farg="purple" />
+            <StatusKort titel="Resurslarm" varde={kritiskaResurser} subtitel={kritiskaResurser > 0 ? "behöver åtgärd" : "alla nominella"} ikon={<Siren className="h-5 w-5" />} farg={kritiskaResurser > 0 ? "red" : "green"} />
+          </div>
+
+          {/* ROW 2: Base Map */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-primary" />
+              <h3 className="font-sans font-bold text-sm text-foreground">BASÖVERSIKT — {selectedBase.name}</h3>
+              <span className="text-[9px] font-mono text-muted-foreground ml-2">Klicka på byggnader för detaljer</span>
+            </div>
+            <BaseMap
+              base={selectedBase}
+              onDropAircraft={handleDropAircraft}
+              onUtfallOutcome={(aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel) => {
+                applyUtfallOutcome(selectedBaseId, aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel);
+              }}
+            />
+          </div>
+
+          {/* ROW 3: Spelprocess – Uppdragsflöde */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="h-4 w-4 text-primary" />
+              <h3 className="font-sans font-bold text-sm text-foreground">SPELPROCESS — UPPDRAGSFLÖDE</h3>
+              <span className="text-[9px] text-muted-foreground font-mono ml-auto">Start från ATO</span>
+            </div>
+            <SpelprocessFlode base={selectedBase} />
+          </div>
+
+          {/* ROW 3: Dagens missioner + Larm */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Crosshair className="h-4 w-4 text-primary" />
+                  <h3 className="font-sans font-bold text-sm text-foreground">DAGENS MISSIONER — ATO-UPPDRAG</h3>
+                </div>
+              </div>
+              <div className="p-4">
+                <DagensMissioner base={selectedBase} hour={state.hour} phase={state.phase} />
+              </div>
+            </div>
+            <LarmPanel events={state.events} />
+          </div>
+
+          {/* ROW 4: Flygschema Tidslinje */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-status-blue" />
+                <h3 className="font-sans font-bold text-sm text-foreground">FLYGSCHEMA — DAGENS AKTIVITETER</h3>
+                <span className="text-[9px] text-muted-foreground font-mono ml-2">06:00–22:00 · Timmar kvar till 100h-service visas höger</span>
+              </div>
+            </div>
+            <div className="p-4">
+              <FlygschemaTidslinje base={selectedBase} hour={state.hour} />
+            </div>
+          </div>
+
+          {/* ROW 5: Uppdragsschema (Gantt) */}
+          <MissionSchedule base={selectedBase} day={state.day} hour={state.hour} phase={state.phase} />
+
+          {/* ROW 6: Aircraft Pipeline + Maintenance */}
+          <AircraftPipeline
+            base={selectedBase}
+            onStartMaintenance={handleStartMaintenance}
+            onSendMission={handleSendMission}
+          />
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <MaintenanceBays base={selectedBase} onDropAircraft={handleDropAircraft} />
+            {/* Remaining Life */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <PlaneTakeoff className="h-4 w-4 text-primary" />
+                  <h3 className="font-sans font-bold text-sm text-foreground">REMAINING LIFE & SERVICE</h3>
+                </div>
+              </div>
+              <div className="p-4">
+                <RemainingLifeGraf base={selectedBase} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right sidebar: Resources + AI */}
+        <div className="border-l border-border h-full overflow-y-auto hidden lg:flex flex-col">
+          {/* Resources */}
+          <div className="p-3 border-b border-border">
+            <ResursPanel base={selectedBase} phase={state.phase} />
+          </div>
+          {/* AI Agent */}
+          <div className="flex-1 min-h-[300px]">
+            <AIAgent getResourceSummary={getResourceSummary} />
+          </div>
+        </div>
       </div>
     </div>
   );
