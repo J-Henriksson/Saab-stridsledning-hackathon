@@ -4,18 +4,31 @@ import { TopBar } from "@/components/game/TopBar";
 import { MissionSchedule } from "@/components/game/MissionSchedule";
 import { AircraftPipeline } from "@/components/game/AircraftPipeline";
 import { MaintenanceBays } from "@/components/game/MaintenanceBays";
-import { ResourceSidebar } from "@/components/game/ResourceSidebar";
-import { OptimizationPanel } from "@/components/game/OptimizationPanel";
-import { EventLog } from "@/components/game/EventLog";
 import { AIAgent } from "@/components/game/AIAgent";
+import { StatusKort } from "@/components/dashboard/StatusKort";
+import { LarmPanel } from "@/components/dashboard/LarmPanel";
+import { DagensMissioner } from "@/components/dashboard/DagensMissioner";
+import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje";
+import { ResursPanel } from "@/components/dashboard/ResursPanel";
+import { SpelprocessFlode } from "@/components/dashboard/SpelprocessFlode";
+import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
+import { Plane, Users, AlertTriangle, Activity, Clock, Target, Bot } from "lucide-react";
 
 const Index = () => {
   const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame } = useGameState();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
 
   const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
+
+  const mcTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "mission_capable").length, 0);
+  const onMissionTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "on_mission").length, 0);
+  const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "maintenance" || a.status === "not_mission_capable").length, 0);
+  const personnelAvail = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
+  const personnelTotal = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
+  const kritiskaResurser = selectedBase.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3).length +
+    selectedBase.ammunition.filter((a) => a.quantity / a.max < 0.3).length;
 
   const handleStartMaintenance = (aircraftId: string) => {
     if (selectedBase.maintenanceBays.occupied >= selectedBase.maintenanceBays.total) {
@@ -31,67 +44,143 @@ const Index = () => {
     toast.success(`${aircraftId} skickad på DCA-uppdrag`);
   };
 
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("sv-SE", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
   return (
     <div className="flex flex-col h-screen bg-background">
       <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />
 
-      {/* Base selector tabs */}
-      <div className="border-b border-border bg-card px-4 flex items-center gap-1">
-        {state.bases.map((base) => {
-          const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
-          const total = base.aircraft.length;
-          const isSelected = base.id === selectedBaseId;
-          return (
-            <button
-              key={base.id}
-              onClick={() => setSelectedBaseId(base.id)}
-              className={`px-4 py-2.5 text-xs font-mono border-b-2 transition-colors ${
-                isSelected
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span className="font-bold">{base.id}</span>
-              <span className="ml-2 text-[10px]">
-                {mc}/{total} MC
-              </span>
-            </button>
-          );
-        })}
+      {/* Sub-header: datum, fas, bas-tabs */}
+      <div className="border-b border-border bg-card px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Clock className="h-3.5 w-3.5" />
+            {dateStr}
+          </div>
+          {/* Base tabs */}
+          <div className="flex items-center gap-1">
+            {state.bases.map((base) => {
+              const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+              const total = base.aircraft.length;
+              const isSelected = base.id === selectedBaseId;
+              return (
+                <button
+                  key={base.id}
+                  onClick={() => setSelectedBaseId(base.id)}
+                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
+                    isSelected
+                      ? "bg-primary/20 text-primary border border-primary/30"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <span className="font-bold">{base.id}</span>
+                  <span className="ml-1.5 text-[10px] opacity-70">{mc}/{total}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {kritiskaResurser > 0 && (
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-red/20 text-status-red border border-status-red/30 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" />
+              {kritiskaResurser} KRITISKA
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Main layout: content + resource sidebar + AI */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_240px_320px] gap-0">
-        {/* Main content area */}
+      {/* Main scrollable content */}
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-0">
         <div className="overflow-y-auto p-4 space-y-4">
-          {/* Mission Schedule - top priority */}
+
+          {/* ROW 1: KPI strip */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <StatusKort titel="Mission Capable" varde={mcTotal} subtitel={`av ${state.bases.reduce((s, b) => s + b.aircraft.length, 0)} totalt`} ikon={<Plane className="h-5 w-5" />} farg="green" />
+            <StatusKort titel="På uppdrag" varde={onMissionTotal} subtitel="aktiva flygningar" ikon={<Target className="h-5 w-5" />} farg="blue" />
+            <StatusKort titel="I underhåll" varde={inMaintTotal} subtitel="NMC + UH" ikon={<Activity className="h-5 w-5" />} farg="yellow" />
+            <StatusKort titel="Personal" varde={`${personnelAvail}/${personnelTotal}`} subtitel="tillgänglig personal" ikon={<Users className="h-5 w-5" />} farg="purple" />
+            <StatusKort titel="Resurslarm" varde={kritiskaResurser} subtitel={kritiskaResurser > 0 ? "behöver åtgärd" : "alla nominella"} ikon={<AlertTriangle className="h-5 w-5" />} farg={kritiskaResurser > 0 ? "red" : "green"} />
+          </div>
+
+          {/* ROW 2: Spelprocess – Uppdragsflöde */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Activity className="h-4 w-4 text-primary" />
+              <h3 className="font-sans font-bold text-sm text-foreground">SPELPROCESS — UPPDRAGSFLÖDE</h3>
+              <span className="text-[9px] text-muted-foreground font-mono ml-auto">Start från ATO</span>
+            </div>
+            <SpelprocessFlode base={selectedBase} />
+          </div>
+
+          {/* ROW 3: Dagens missioner + Larm */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-status-green" />
+                  <h3 className="font-sans font-bold text-sm text-foreground">DAGENS MISSIONER — ATO-UPPDRAG</h3>
+                </div>
+              </div>
+              <div className="p-4">
+                <DagensMissioner base={selectedBase} hour={state.hour} phase={state.phase} />
+              </div>
+            </div>
+            <LarmPanel events={state.events} />
+          </div>
+
+          {/* ROW 4: Flygschema Tidslinje */}
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-status-blue" />
+                <h3 className="font-sans font-bold text-sm text-foreground">FLYGSCHEMA — DAGENS AKTIVITETER</h3>
+                <span className="text-[9px] text-muted-foreground font-mono ml-2">06:00–22:00 · Timmar kvar till 100h-service visas höger</span>
+              </div>
+            </div>
+            <div className="p-4">
+              <FlygschemaTidslinje base={selectedBase} hour={state.hour} />
+            </div>
+          </div>
+
+          {/* ROW 5: Uppdragsschema (Gantt) */}
           <MissionSchedule base={selectedBase} day={state.day} hour={state.hour} phase={state.phase} />
 
-          {/* Aircraft pipeline flow */}
+          {/* ROW 6: Aircraft Pipeline + Maintenance */}
           <AircraftPipeline
             base={selectedBase}
             onStartMaintenance={handleStartMaintenance}
             onSendMission={handleSendMission}
           />
 
-          {/* Bottom row: Maintenance bays + Optimization */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             <MaintenanceBays base={selectedBase} />
-            <OptimizationPanel state={state} baseId={selectedBaseId} />
+            {/* Remaining Life */}
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="px-4 py-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <Plane className="h-4 w-4 text-primary" />
+                  <h3 className="font-sans font-bold text-sm text-foreground">REMAINING LIFE & SERVICE</h3>
+                </div>
+              </div>
+              <div className="p-4">
+                <RemainingLifeGraf base={selectedBase} />
+              </div>
+            </div>
           </div>
-
-          {/* Event log */}
-          <EventLog events={state.events.filter((e) => !e.base || e.base === selectedBaseId)} />
         </div>
 
-        {/* Resource sidebar */}
-        <div className="border-l border-border h-full overflow-y-auto hidden lg:block p-3">
-          <ResourceSidebar base={selectedBase} phase={state.phase} />
-        </div>
-
-        {/* AI Agent sidebar */}
-        <div className="border-l border-border h-full hidden lg:flex flex-col">
-          <AIAgent getResourceSummary={getResourceSummary} />
+        {/* Right sidebar: Resources + AI */}
+        <div className="border-l border-border h-full overflow-y-auto hidden lg:flex flex-col">
+          {/* Resources */}
+          <div className="p-3 border-b border-border">
+            <ResursPanel base={selectedBase} phase={state.phase} />
+          </div>
+          {/* AI Agent */}
+          <div className="flex-1 min-h-[300px]">
+            <AIAgent getResourceSummary={getResourceSummary} />
+          </div>
         </div>
       </div>
     </div>
