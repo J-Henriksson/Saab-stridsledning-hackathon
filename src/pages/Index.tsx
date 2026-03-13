@@ -100,13 +100,18 @@ const Index = () => {
   const dateStr = now.toLocaleDateString("sv-SE", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen" style={{ background: "hsl(216 18% 95%)" }}>
       <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />
 
-      {/* Sub-header: datum, fas, bas-tabs */}
-      <div className="border-b border-border bg-card px-4 py-2 flex items-center justify-between">
+      {/* Sub-header: datum + base tabs */}
+      <div className="px-4 py-2 flex items-center justify-between"
+        style={{
+          background: "hsl(0 0% 100%)",
+          borderBottom: "1px solid hsl(215 14% 86%)",
+          boxShadow: "0 1px 4px hsl(220 63% 18% / 0.06)",
+        }}>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs font-mono" style={{ color: "hsl(218 15% 50%)" }}>
             <Clock className="h-3.5 w-3.5" />
             {dateStr}
           </div>
@@ -116,18 +121,30 @@ const Index = () => {
               const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
               const total = base.aircraft.length;
               const isSelected = base.id === selectedBaseId;
+              const mcPct = total > 0 ? mc / total : 0;
               return (
                 <button
                   key={base.id}
                   onClick={() => setSelectedBaseId(base.id)}
-                  className={`px-3 py-1.5 text-xs font-mono rounded transition-colors ${
-                    isSelected
-                      ? "bg-primary/20 text-primary border border-primary/30"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                  }`}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded-lg transition-all"
+                  style={isSelected ? {
+                    background: "hsl(220 63% 18%)",
+                    color: "hsl(200 12% 92%)",
+                    boxShadow: "0 2px 8px hsl(220 63% 18% / 0.25)",
+                  } : {
+                    background: "hsl(216 18% 96%)",
+                    color: "hsl(218 15% 50%)",
+                    border: "1px solid hsl(215 14% 86%)",
+                  }}
                 >
-                  <span className="font-bold">{base.id}</span>
-                  <span className="ml-1.5 text-[10px] opacity-70">{mc}/{total}</span>
+                  <span className="font-black">{base.id}</span>
+                  <span className="text-[10px] px-1.5 py-px rounded-full"
+                    style={{
+                      background: isSelected ? "hsl(42 64% 53% / 0.3)" : "hsl(215 14% 90%)",
+                      color: isSelected ? "hsl(42 64% 62%)" : "hsl(218 15% 55%)",
+                    }}>
+                    {mc}/{total}
+                  </span>
                 </button>
               );
             })}
@@ -135,9 +152,14 @@ const Index = () => {
         </div>
         <div className="flex items-center gap-2">
           {kritiskaResurser > 0 && (
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-status-red/20 text-status-red border border-status-red/30 flex items-center gap-1">
-              <Siren className="h-3 w-3" />
-              {kritiskaResurser} KRITISKA
+            <span className="flex items-center gap-1.5 text-[10px] font-mono px-3 py-1 rounded-full font-bold"
+              style={{
+                background: "hsl(353 74% 47% / 0.10)",
+                color: "hsl(353 74% 42%)",
+                border: "1px solid hsl(353 74% 47% / 0.3)",
+              }}>
+              <Siren className="h-3 w-3 animate-pulse" />
+              {kritiskaResurser} KRITISKA RESURSER
             </span>
           )}
         </div>
