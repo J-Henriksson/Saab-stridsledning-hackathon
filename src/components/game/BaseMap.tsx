@@ -11,7 +11,7 @@ import {
   Plane,
   Dice6,
 } from "lucide-react";
-import { UtfallModal, UtfallOutcome } from "./UtfallModal";
+import { UtfallModal } from "./UtfallModal";
 
 type BuildingId =
   | "apron"
@@ -53,24 +53,34 @@ function getZoneAt(x: number, y: number): DropZone | null {
 }
 
 // Aircraft status colours — SAAB palette
-const AC_COLOR: Record<Aircraft["status"], string> = {
-  mission_capable: "#0C234C",
+const AC_COLOR: Record<string, string> = {
+  ready: "#0C234C",
+  allocated: "#1a5a7a",
+  in_preparation: "#8a6a1a",
+  awaiting_launch: "#2a7a5a",
   on_mission: "#1a4a8a",
-  maintenance: "#D7AB3A",
-  not_mission_capable: "#D9192E",
+  returning: "#5a3a8a",
+  recovering: "#8a5a2a",
+  under_maintenance: "#D7AB3A",
+  unavailable: "#D9192E",
 };
 
-const AC_LABEL: Record<Aircraft["status"], string> = {
-  mission_capable: "MC",
+const AC_LABEL: Record<string, string> = {
+  ready: "MC",
+  allocated: "TILL",
+  in_preparation: "KLAR",
+  awaiting_launch: "VÄNT",
   on_mission: "UPP",
-  maintenance: "UH",
-  not_mission_capable: "NMC",
+  returning: "RET",
+  recovering: "MOTT",
+  under_maintenance: "UH",
+  unavailable: "NMC",
 };
 
 // Plane silhouette color = remaining-life battery indicator
 function getAircraftColor(ac: Aircraft): string {
-  if (ac.status === "maintenance") return "#D7AB3A";
-  if (ac.status === "not_mission_capable") return "#D9192E";
+  if (ac.status === "under_maintenance") return "#D7AB3A";
+  if (ac.status === "unavailable") return "#D9192E";
   if (ac.hoursToService <= 20) return "#D9192E";
   if (ac.hoursToService < 50) return "#D7AB3A";
   return "#0C234C";
@@ -132,9 +142,9 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dropZoneHover, setDropZoneHover] = useState<DropZone | null>(null);
 
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable");
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
-  const maint = base.aircraft.filter((a) => a.status === "maintenance");
+  const mc = base.aircraft.filter((a) => a.status === "ready");
+  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
+  const maint = base.aircraft.filter((a) => a.status === "under_maintenance");
   const onMission = base.aircraft.filter((a) => a.status === "on_mission");
 
   function toggle(id: BuildingId) {
@@ -182,7 +192,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 
   // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
   const apronAircraft = base.aircraft
-    .filter((a) => a.status === "mission_capable" || a.status === "not_mission_capable")
+    .filter((a) => a.status === "ready" || a.status === "unavailable")
     .slice(0, 32);
   const cols = 16;
 
@@ -715,8 +725,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                       {/* Engine */}
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: "#64748b" }}>Motor</span>
-                        <span style={{ fontWeight: "700", color: ac.status === "maintenance" || ac.status === "not_mission_capable" ? "#d97706" : "#16a34a" }}>
-                          {ac.status === "maintenance" ? "UNDERHÅLL" : ac.status === "not_mission_capable" ? "EJ KLAR" : "OPERATIV"}
+                        <span style={{ fontWeight: "700", color: ac.status === "under_maintenance" || ac.status === "unavailable" ? "#d97706" : "#16a34a" }}>
+                          {ac.status === "under_maintenance" ? "UNDERHÅLL" : ac.status === "unavailable" ? "EJ KLAR" : "OPERATIV"}
                         </span>
                       </div>
 
@@ -780,7 +790,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                         style={{
                           width: "100%",
                           padding: "5px 8px",
-                          background: ac.status === "not_mission_capable" ? "#dc2626" : "#005AA0",
+                          background: ac.status === "unavailable" ? "#dc2626" : "#005AA0",
                           color: "#fff",
                           border: "none",
                           borderRadius: "5px",
@@ -815,7 +825,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           <UtfallModal
             aircraft={utfallAc}
             onClose={() => setUtfallAcId(null)}
-            onAccept={(outcome: UtfallOutcome) => {
+            onAccept={(outcome) => {
               setUtfallAcId(null);
               setSelectedAcId(null);
               onUtfallOutcome?.(
@@ -823,7 +833,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 outcome.repairTime,
                 outcome.maintenanceTypeKey,
                 outcome.weaponLoss,
-                outcome.actionType,
+                outcome.actionLabel,
               );
             }}
           />
@@ -876,18 +886,16 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 // ── Detail sub-panels ─────────────────────────────────────────────────────
 
 function ApronDetail({ base }: { base: Base }) {
-  const groups: Record<Aircraft["status"], Aircraft[]> = {
-    mission_capable: [],
-    on_mission: [],
-    maintenance: [],
-    not_mission_capable: [],
-  };
-  base.aircraft.forEach((ac) => groups[ac.status].push(ac));
+  const groups: Record<string, Aircraft[]> = {};
+  base.aircraft.forEach((ac) => {
+    if (!groups[ac.status]) groups[ac.status] = [];
+    groups[ac.status].push(ac);
+  });
 
   return (
     <div className="space-y-3">
-      {(["mission_capable", "on_mission", "maintenance", "not_mission_capable"] as const).map((status) => {
-        const list = groups[status];
+      {(["ready", "allocated", "in_preparation", "awaiting_launch", "on_mission", "returning", "recovering", "under_maintenance", "unavailable"] as const).map((status) => {
+        const list = groups[status] ?? [];
         if (list.length === 0) return null;
         return (
           <div key={status}>
@@ -924,7 +932,7 @@ function ApronDetail({ base }: { base: Base }) {
 
 function HangarDetail({ base }: { base: Base }) {
   const inMaint = base.aircraft.filter(
-    (a) => a.status === "maintenance" || a.status === "not_mission_capable"
+    (a) => a.status === "under_maintenance" || a.status === "unavailable"
   );
   const { total, occupied } = base.maintenanceBays;
 
@@ -1098,11 +1106,16 @@ function AircraftDetail({ ac }: { ac: Aircraft }) {
   const isLow = ac.hoursToService < 40;
   const barColor = isCritical ? "#dc2626" : isLow ? "#d97706" : "#16a34a";
 
-  const statusLabels: Record<Aircraft["status"], string> = {
-    mission_capable: "Mission Capable",
+  const statusLabels: Record<string, string> = {
+    ready: "Mission Capable",
+    allocated: "Tilldelad",
+    in_preparation: "Klargöring",
+    awaiting_launch: "Väntar Start",
     on_mission: "På Uppdrag",
-    maintenance: "Underhåll",
-    not_mission_capable: "Ej Operativ",
+    returning: "Retur",
+    recovering: "Mottagning",
+    under_maintenance: "Underhåll",
+    unavailable: "Ej Operativ",
   };
 
   return (

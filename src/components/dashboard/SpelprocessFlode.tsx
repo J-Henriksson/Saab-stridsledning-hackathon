@@ -25,9 +25,9 @@ const stepDefs = [
 ];
 
 export function SpelprocessFlode({ base }: SpelprocessFlodeProps) {
-  const mc        = base.aircraft.filter((a) => a.status === "mission_capable").length;
-  const nmc       = base.aircraft.filter((a) => a.status === "not_mission_capable").length;
-  const maint     = base.aircraft.filter((a) => a.status === "maintenance").length;
+  const mc        = base.aircraft.filter((a) => a.status === "ready").length;
+  const nmc       = base.aircraft.filter((a) => a.status === "unavailable").length;
+  const maint     = base.aircraft.filter((a) => a.status === "under_maintenance").length;
   const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
   const fuelOk    = base.fuel > 30;
   const totalPersonnel = base.personnel.reduce((s, p) => s + p.available, 0);

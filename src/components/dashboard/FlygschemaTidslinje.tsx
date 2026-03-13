@@ -30,7 +30,7 @@ function getSlots(ac: Aircraft, hour: number): Slot[] {
     ];
   }
 
-  if (ac.status === "mission_capable") {
+  if (ac.status === "ready") {
     const mStart = 6 + (hash % 9);
     const mLen = 2 + (hash % 3);
     const mEnd = Math.min(21, mStart + mLen);
@@ -44,7 +44,7 @@ function getSlots(ac: Aircraft, hour: number): Slot[] {
     ];
   }
 
-  if (ac.status === "maintenance") {
+  if (ac.status === "under_maintenance") {
     const isCorrective = (ac.maintenanceType || "").includes("corrective") || ac.hoursToService < 15;
     return [{
       label: isCorrective ? "avhjalpande" : "forebyggande",
@@ -53,7 +53,7 @@ function getSlots(ac: Aircraft, hour: number): Slot[] {
     }];
   }
 
-  if (ac.status === "not_mission_capable") {
+  if (ac.status === "unavailable") {
     return [{ label: "NMC", start: 6, end: 22, color: "#dc2626" }];
   }
 
@@ -135,7 +135,7 @@ export function FlygschemaTidslinje({ base, hour }: FlygschemaTidslinjeProps) {
               >
                 {/* Aircraft label */}
                 <div className="w-[100px] shrink-0 px-1.5 py-0.5 flex items-center gap-1">
-                  {isCritical || ac.status === "not_mission_capable" ? (
+                  {isCritical || ac.status === "unavailable" ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0 animate-pulse" />
                   ) : isLow ? (
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />

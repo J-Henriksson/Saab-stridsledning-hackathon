@@ -20,7 +20,7 @@ interface BayInfo {
 export function MaintenanceBays({ base, onDropAircraft }: MaintenanceBaysProps) {
   const [dragOverId, setDragOverId] = useState<number | null>(null);
 
-  const maintAircraft = base.aircraft.filter((a) => a.status === "maintenance");
+  const maintAircraft = base.aircraft.filter((a) => a.status === "under_maintenance");
   const bayLabels = [
     { label: "UHplats 1", type: "Bakre underhåll — Stol, motor" },
     { label: "UHplats 2", type: "Främre underhåll" },

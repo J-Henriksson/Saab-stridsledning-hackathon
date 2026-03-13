@@ -1,31 +1,33 @@
 import { useState } from "react";
-import { useGameState } from "@/hooks/useGameState";
+import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { MissionSchedule } from "@/components/game/MissionSchedule";
 import { AircraftPipeline } from "@/components/game/AircraftPipeline";
 import { MaintenanceBays } from "@/components/game/MaintenanceBays";
 import { AIAgent } from "@/components/game/AIAgent";
+import { TurnPhaseTracker } from "@/components/game/TurnPhaseTracker";
+import { PhasePanel } from "@/components/game/PhasePanel";
+import { RecommendationFeed } from "@/components/game/RecommendationFeed";
 import { StatusKort } from "@/components/dashboard/StatusKort";
 import { LarmPanel } from "@/components/dashboard/LarmPanel";
 import { DagensMissioner } from "@/components/dashboard/DagensMissioner";
 import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje";
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
-import { SpelprocessFlode } from "@/components/dashboard/SpelprocessFlode";
 import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { BaseMap, DropZone } from "@/components/game/BaseMap";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
-import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, Activity, PlaneTakeoff } from "lucide-react";
+import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
-  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome } = useGameState();
+  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, applyRecommendation, dismissRecommendation } = useGame();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
 
   const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
 
-  const mcTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "mission_capable").length, 0);
+  const mcTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
   const onMissionTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "on_mission").length, 0);
-  const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "maintenance" || a.status === "not_mission_capable").length, 0);
+  const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length, 0);
   const personnelAvail = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
   const personnelTotal = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
 
@@ -35,7 +37,7 @@ const Index = () => {
     const tail = aircraft.tailNumber || aircraftId;
 
     if (zone === "runway") {
-      if (aircraft.status !== "mission_capable") {
+      if (aircraft.status !== "ready") {
         toast.error(`${tail} är inte MC — kan ej sändas på uppdrag`);
         return;
       }
@@ -118,7 +120,7 @@ const Index = () => {
           {/* Base tabs */}
           <div className="flex items-center gap-1">
             {state.bases.map((base) => {
-              const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+              const mc = base.aircraft.filter((a) => a.status === "ready").length;
               const total = base.aircraft.length;
               const isSelected = base.id === selectedBaseId;
               const mcPct = total > 0 ? mc / total : 0;
@@ -205,26 +207,15 @@ const Index = () => {
             />
           </div>
 
-          {/* ROW 3: Spelprocess */}
-          <div className="rounded-xl overflow-hidden"
-            style={{
-              background: "hsl(0 0% 100%)",
-              border: "1px solid hsl(215 14% 84%)",
-              boxShadow: "0 1px 3px hsl(220 63% 18% / 0.06)",
-            }}>
-            <div className="px-4 py-3 flex items-center gap-2"
-              style={{ borderBottom: "1px solid hsl(215 14% 88%)",
-                background: "linear-gradient(90deg, hsl(220 63% 18% / 0.04), transparent)" }}>
-              <Activity className="h-4 w-4" style={{ color: "hsl(220 63% 30%)" }} />
-              <h3 className="font-sans font-bold text-sm" style={{ color: "hsl(220 63% 18%)" }}>
-                SPELPROCESS — UPPDRAGSFLÖDE
-              </h3>
-              <span className="text-[9px] text-muted-foreground font-mono ml-auto">Start från ATO</span>
-            </div>
-            <div className="p-4">
-              <SpelprocessFlode base={selectedBase} />
-            </div>
-          </div>
+          {/* ROW 3: Turn Phase Tracker */}
+          <TurnPhaseTracker
+            currentPhase={state.turnPhase}
+            turnNumber={state.turnNumber}
+            onAdvancePhase={advanceTurn}
+          />
+
+          {/* Phase-specific panel */}
+          <PhasePanel state={state} />
 
           {/* ROW 4: Dagens missioner + Larm */}
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
@@ -275,7 +266,7 @@ const Index = () => {
           </div>
 
           {/* ROW 6: Uppdragsschema (Gantt) */}
-          <MissionSchedule base={selectedBase} day={state.day} hour={state.hour} phase={state.phase} />
+          <MissionSchedule atoOrders={state.atoOrders} day={state.day} hour={state.hour} />
 
           {/* ROW 7: Aircraft Pipeline + Maintenance */}
           <AircraftPipeline
@@ -316,6 +307,15 @@ const Index = () => {
           <div className="p-3" style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}>
             <ResursPanel base={selectedBase} phase={state.phase} />
           </div>
+          {state.recommendations.length > 0 && (
+            <div style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}>
+              <RecommendationFeed
+                recommendations={state.recommendations}
+                onApply={applyRecommendation}
+                onDismiss={dismissRecommendation}
+              />
+            </div>
+          )}
           <div className="flex-1 min-h-[300px]">
             <AIAgent getResourceSummary={getResourceSummary} />
           </div>

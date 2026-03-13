@@ -1,5 +1,6 @@
 import { GameState } from "@/types/game";
 import { PhaseBadge } from "./StatusBadge";
+import { getPhaseDefinition } from "@/data/config/phases";
 import { Clock, RotateCcw, Send, LayoutDashboard, Map, ChevronRight } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
@@ -12,7 +13,7 @@ interface TopBarProps {
 
 export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
   const totalAircraft = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
-  const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "mission_capable").length, 0);
+  const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
   const mcPct = totalAircraft > 0 ? Math.round((mcAircraft / totalAircraft) * 100) : 0;
 
   return (
@@ -90,6 +91,9 @@ export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
           <span className="font-mono font-bold text-white">{String(state.hour).padStart(2, "0")}:00</span>
         </div>
         <PhaseBadge phase={state.phase} />
+        <span className="text-[9px] font-mono px-2 py-0.5 rounded-full" style={{ background: "hsl(42 64% 53% / 0.15)", color: "hsl(42 64% 62%)", border: "1px solid hsl(42 64% 53% / 0.3)" }}>
+          {getPhaseDefinition(state.turnPhase).shortLabel}
+        </span>
         <div className="flex items-center gap-2">
           <div className="text-right">
             <div className="text-[10px] font-mono" style={{ color: "hsl(200 12% 60%)" }}>MC-RATE</div>
@@ -120,7 +124,7 @@ export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
             letterSpacing: "0.12em",
           }}
         >
-          NÄSTA VARV
+          {getPhaseDefinition(state.turnPhase).buttonLabel ?? "NÄSTA FAS"}
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
         <button

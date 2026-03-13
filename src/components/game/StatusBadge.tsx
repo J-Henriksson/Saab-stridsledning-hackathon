@@ -1,19 +1,33 @@
 import { AircraftStatus, ScenarioPhase } from "@/types/game";
 
 const statusConfig: Record<AircraftStatus, { label: string; bg: string; color: string; border: string; dot: string }> = {
-  mission_capable: {
+  ready: {
     label: "MC",
     bg: "hsl(152 60% 32% / 0.10)",
     color: "hsl(152 60% 28%)",
     border: "hsl(152 60% 32% / 0.35)",
     dot: "hsl(152 60% 38%)",
   },
-  not_mission_capable: {
-    label: "NMC",
-    bg: "hsl(353 74% 47% / 0.10)",
-    color: "hsl(353 74% 40%)",
-    border: "hsl(353 74% 47% / 0.35)",
-    dot: "hsl(353 74% 47%)",
+  allocated: {
+    label: "TILLDELAD",
+    bg: "hsl(200 60% 38% / 0.10)",
+    color: "hsl(200 60% 32%)",
+    border: "hsl(200 60% 38% / 0.35)",
+    dot: "hsl(200 60% 45%)",
+  },
+  in_preparation: {
+    label: "KLARGÖRING",
+    bg: "hsl(42 64% 53% / 0.10)",
+    color: "hsl(42 64% 36%)",
+    border: "hsl(42 64% 53% / 0.35)",
+    dot: "hsl(42 64% 53%)",
+  },
+  awaiting_launch: {
+    label: "VÄNTAR START",
+    bg: "hsl(180 50% 40% / 0.10)",
+    color: "hsl(180 50% 32%)",
+    border: "hsl(180 50% 40% / 0.35)",
+    dot: "hsl(180 50% 45%)",
   },
   on_mission: {
     label: "UPPDRAG",
@@ -22,12 +36,33 @@ const statusConfig: Record<AircraftStatus, { label: string; bg: string; color: s
     border: "hsl(220 63% 38% / 0.35)",
     dot: "hsl(220 63% 50%)",
   },
-  maintenance: {
+  returning: {
+    label: "RETUR",
+    bg: "hsl(260 50% 45% / 0.10)",
+    color: "hsl(260 50% 38%)",
+    border: "hsl(260 50% 45% / 0.35)",
+    dot: "hsl(260 50% 50%)",
+  },
+  recovering: {
+    label: "MOTTAGNING",
+    bg: "hsl(30 70% 50% / 0.10)",
+    color: "hsl(30 70% 38%)",
+    border: "hsl(30 70% 50% / 0.35)",
+    dot: "hsl(30 70% 50%)",
+  },
+  under_maintenance: {
     label: "UH",
     bg: "hsl(42 64% 53% / 0.10)",
     color: "hsl(42 64% 36%)",
     border: "hsl(42 64% 53% / 0.35)",
     dot: "hsl(42 64% 53%)",
+  },
+  unavailable: {
+    label: "NMC",
+    bg: "hsl(353 74% 47% / 0.10)",
+    color: "hsl(353 74% 40%)",
+    border: "hsl(353 74% 47% / 0.35)",
+    dot: "hsl(353 74% 47%)",
   },
 };
 
@@ -46,7 +81,7 @@ const phaseConfig: Record<ScenarioPhase, { label: string; bg: string; color: str
     pulse: true,
   },
   KRIG: {
-    label: "⚠ KRIG",
+    label: "KRIG",
     bg: "hsl(353 74% 47% / 0.12)",
     color: "hsl(353 74% 42%)",
     border: "hsl(353 74% 47% / 0.5)",
@@ -56,6 +91,7 @@ const phaseConfig: Record<ScenarioPhase, { label: string; bg: string; color: str
 
 export function AircraftStatusBadge({ status }: { status: AircraftStatus }) {
   const c = statusConfig[status];
+  if (!c) return null;
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold rounded-full"

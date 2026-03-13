@@ -1,119 +1,12 @@
 import { useState } from "react";
 import { Aircraft } from "@/types/game";
+import { UTFALL_TABLE_A, UTFALL_TABLE_B, WEAPON_LOSS_BY_ROLL, EXTRA_MAINTENANCE_TIME_BY_ROLL, type UtfallOutcome } from "@/data/config/probabilities";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dice6, CheckCircle, AlertTriangle, RefreshCw, Wrench, X, Zap } from "lucide-react";
 
-// ── Utfall table data ─────────────────────────────────────────────────────
-export interface UtfallOutcome {
-  roll: number;
-  bitCheck: "ok" | "fel";
-  actionType: string;
-  maintenanceTypeKey: "quick_lru" | "complex_lru" | "direct_repair" | "troubleshooting" | "scheduled_service";
-  repairTime: number; // hours
-  capability: string;
-  facility: string;
-  reception: "OK" | "Avhj";
-  weaponLoss: number; // percent
-  serviceType: "A" | "B" | "C";
-  serviceDays: number;
-  uhTilläggPct: number; // % addition to nominal UH time
-  isNegative: boolean;
-}
+type UtfallContext = "prep" | "reception";
 
-export const UTFALL_TABLE: UtfallOutcome[] = [
-  {
-    roll: 1,
-    bitCheck: "ok",
-    actionType: "Quick LRU replacement",
-    maintenanceTypeKey: "quick_lru",
-    repairTime: 2,
-    capability: "AU Steg 1",
-    facility: "Service Bay (flight line)",
-    reception: "OK",
-    weaponLoss: 10,
-    serviceType: "A",
-    serviceDays: 5,
-    uhTilläggPct: 0,
-    isNegative: false,
-  },
-  {
-    roll: 2,
-    bitCheck: "ok",
-    actionType: "Quick LRU replacement",
-    maintenanceTypeKey: "quick_lru",
-    repairTime: 2,
-    capability: "AU Steg 2/3",
-    facility: "Minor Maint Workshop",
-    reception: "OK",
-    weaponLoss: 30,
-    serviceType: "A",
-    serviceDays: 5,
-    uhTilläggPct: 0,
-    isNegative: false,
-  },
-  {
-    roll: 3,
-    bitCheck: "ok",
-    actionType: "Complex LRU replacement",
-    maintenanceTypeKey: "complex_lru",
-    repairTime: 6,
-    capability: "AU Steg 4",
-    facility: "Major Maint Workshop",
-    reception: "OK",
-    weaponLoss: 50,
-    serviceType: "B",
-    serviceDays: 8,
-    uhTilläggPct: 0,
-    isNegative: false,
-  },
-  {
-    roll: 4,
-    bitCheck: "ok",
-    actionType: "Direct repair",
-    maintenanceTypeKey: "direct_repair",
-    repairTime: 16,
-    capability: "Kompositrep",
-    facility: "Major Maint Workshop",
-    reception: "OK",
-    weaponLoss: 70,
-    serviceType: "B",
-    serviceDays: 8,
-    uhTilläggPct: 10,
-    isNegative: false,
-  },
-  {
-    roll: 5,
-    bitCheck: "fel",
-    actionType: "Felsökning liten",
-    maintenanceTypeKey: "troubleshooting",
-    repairTime: 4,
-    capability: "FK steg 1-3",
-    facility: "Service Bay",
-    reception: "Avhj",
-    weaponLoss: 90,
-    serviceType: "C",
-    serviceDays: 20,
-    uhTilläggPct: 20,
-    isNegative: true,
-  },
-  {
-    roll: 6,
-    bitCheck: "fel",
-    actionType: "Felsökning liten",
-    maintenanceTypeKey: "troubleshooting",
-    repairTime: 4,
-    capability: "FK steg 1-3",
-    facility: "Service Bay",
-    reception: "Avhj",
-    weaponLoss: 100,
-    serviceType: "C",
-    serviceDays: 20,
-    uhTilläggPct: 50,
-    isNegative: true,
-  },
-];
-
-// Alternative scenarios for negative outcomes
+// Negative alternatives for bad outcomes
 const NEGATIVE_ALTERNATIVES = [
   {
     id: "accept",
@@ -155,17 +48,40 @@ const NEGATIVE_ALTERNATIVES = [
 
 interface UtfallModalProps {
   aircraft: Aircraft;
+  context?: UtfallContext;
   onClose: () => void;
-  onAccept: (outcome: UtfallOutcome) => void;
+  onAccept: (outcome: {
+    roll: number;
+    repairTime: number;
+    maintenanceTypeKey: string;
+    weaponLoss: number;
+    actionLabel: string;
+  }) => void;
 }
 
-export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
+function getTable(ctx: UtfallContext): UtfallOutcome[] {
+  return ctx === "prep" ? UTFALL_TABLE_A : UTFALL_TABLE_B;
+}
+
+function isNegativeRoll(roll: number): boolean {
+  return roll >= 5;
+}
+
+export function UtfallModal({ aircraft, context = "prep", onClose, onAccept }: UtfallModalProps) {
   const [rolled, setRolled] = useState<number | null>(null);
   const [rolling, setRolling] = useState(false);
   const [decision, setDecision] = useState<string | null>(null);
   const [rollCount, setRollCount] = useState(0);
+  const [activeContext, setActiveContext] = useState<UtfallContext>(context);
 
-  const outcome = rolled !== null ? UTFALL_TABLE[rolled - 1] : null;
+  const table = getTable(activeContext);
+  const outcome = rolled !== null ? table[rolled - 1] : null;
+  const negative = rolled !== null && isNegativeRoll(rolled);
+  const weaponLoss = rolled !== null ? WEAPON_LOSS_BY_ROLL[rolled - 1] : 0;
+  const extraTimePct = rolled !== null ? EXTRA_MAINTENANCE_TIME_BY_ROLL[rolled - 1] : 0;
+  const effectiveRepairTime = outcome
+    ? outcome.repairTime + Math.ceil(outcome.repairTime * (extraTimePct / 100))
+    : 0;
 
   const rollDice = () => {
     setRolling(true);
@@ -191,15 +107,37 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
       return;
     }
 
-    let appliedOutcome = outcome;
+    let repairTime = effectiveRepairTime;
+    let maintenanceTypeKey = outcome.faultType;
+    let actionLabel = outcome.description;
+
     if (decisionId === "quickfix") {
-      appliedOutcome = UTFALL_TABLE[0]; // Quick LRU 2h
+      repairTime = 2;
+      maintenanceTypeKey = "quick_lru";
+      actionLabel = "Snabbfix (Quick LRU)";
     } else if (decisionId === "groundall") {
-      // Keep as NMC, don't change maintenance time, just accept current state
-      appliedOutcome = { ...outcome, repairTime: 0 };
+      repairTime = 0;
+      actionLabel = "Parkerad som NMC";
     }
 
-    setTimeout(() => onAccept(appliedOutcome), 400);
+    setTimeout(() => onAccept({
+      roll: rolled!,
+      repairTime,
+      maintenanceTypeKey,
+      weaponLoss,
+      actionLabel,
+    }), 400);
+  };
+
+  const handleAcceptPositive = () => {
+    if (!outcome) return;
+    onAccept({
+      roll: rolled!,
+      repairTime: effectiveRepairTime,
+      maintenanceTypeKey: outcome.faultType,
+      weaponLoss,
+      actionLabel: outcome.description,
+    });
   };
 
   return (
@@ -212,7 +150,7 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
         className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden"
         style={{ border: "2px solid #005AA0" }}
       >
-        {/* ── Header ── */}
+        {/* Header */}
         <div className="bg-[#005AA0] text-white px-6 py-4 flex items-center justify-between">
           <div>
             <div className="text-lg font-black font-mono tracking-widest flex items-center gap-2">
@@ -224,18 +162,37 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
               <span className="text-yellow-300 font-bold">{aircraft.status.replace(/_/g, " ").toUpperCase()}</span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white rounded-lg p-1 transition-colors"
-          >
+          <button onClick={onClose} className="text-white/70 hover:text-white rounded-lg p-1 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-5">
-          {/* ── Dice + outcome grid ── */}
+          {/* Context selector */}
+          <div className="flex gap-2">
+            {([
+              { id: "prep" as const, label: "A: Klargöring/BIT", desc: "Lastning, tankning, startup" },
+              { id: "reception" as const, label: "B: Mottagning", desc: "Post-uppdrag inspektion" },
+            ]).map((ctx) => (
+              <button
+                key={ctx.id}
+                onClick={() => { setActiveContext(ctx.id); setRolled(null); setDecision(null); }}
+                className={`flex-1 px-3 py-2 rounded-xl border-2 text-left transition-all ${
+                  activeContext === ctx.id
+                    ? "border-[#005AA0] bg-blue-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <div className={`text-[11px] font-black font-mono ${activeContext === ctx.id ? "text-[#005AA0]" : "text-gray-600"}`}>
+                  {ctx.label}
+                </div>
+                <div className="text-[9px] text-gray-500 font-mono">{ctx.desc}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Dice + outcome grid */}
           <div className="flex gap-5 items-start">
-            {/* Dice */}
             <div className="flex flex-col items-center gap-3 shrink-0">
               <motion.div
                 key={rolled}
@@ -244,7 +201,7 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
                 className={`w-24 h-24 rounded-2xl flex items-center justify-center text-6xl font-black border-4 shadow-inner transition-colors ${
                   rolled === null
                     ? "border-gray-300 bg-gray-50 text-gray-300"
-                    : outcome?.isNegative
+                    : negative
                     ? "border-red-500 bg-red-50 text-red-600"
                     : "border-green-500 bg-green-50 text-green-600"
                 }`}
@@ -266,32 +223,33 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
 
             {/* Outcome cards 1-6 */}
             <div className="flex-1">
-              <div className="text-[9px] font-mono text-gray-400 mb-2 uppercase tracking-wider">Möjliga utfall</div>
+              <div className="text-[9px] font-mono text-gray-400 mb-2 uppercase tracking-wider">
+                Tabell {activeContext === "prep" ? "A" : "B"} — Möjliga utfall
+              </div>
               <div className="grid grid-cols-6 gap-1.5">
-                {UTFALL_TABLE.map((row) => (
-                  <div
-                    key={row.roll}
-                    className={`p-2 rounded-lg border text-center transition-all ${
-                      rolled === row.roll
-                        ? row.isNegative
-                          ? "bg-red-100 border-red-400 shadow-md scale-105"
-                          : "bg-green-100 border-green-400 shadow-md scale-105"
-                        : "bg-gray-50 border-gray-200 opacity-50"
-                    }`}
-                  >
-                    <div className="font-black text-xl text-gray-800">{row.roll}</div>
+                {table.map((row, idx) => {
+                  const isNeg = isNegativeRoll(row.roll);
+                  return (
                     <div
-                      className={`text-[8px] font-bold uppercase ${
-                        row.isNegative ? "text-red-600" : "text-green-600"
+                      key={row.roll}
+                      className={`p-2 rounded-lg border text-center transition-all ${
+                        rolled === row.roll
+                          ? isNeg
+                            ? "bg-red-100 border-red-400 shadow-md scale-105"
+                            : "bg-green-100 border-green-400 shadow-md scale-105"
+                          : "bg-gray-50 border-gray-200 opacity-50"
                       }`}
                     >
-                      {row.isNegative ? "FEL" : "OK"}
+                      <div className="font-black text-xl text-gray-800">{row.roll}</div>
+                      <div className={`text-[8px] font-bold uppercase ${isNeg ? "text-red-600" : "text-green-600"}`}>
+                        {isNeg ? "FEL" : "OK"}
+                      </div>
+                      <div className="text-[7px] text-gray-500 font-mono mt-0.5">
+                        {row.repairTime}h
+                      </div>
                     </div>
-                    <div className="text-[7px] text-gray-500 font-mono mt-0.5">
-                      {row.repairTime}h
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-2 text-[9px] font-mono text-gray-400">
                 Utfall 1–4 = BIT OK · 5–6 = BIT-FEL (negativt resultat)
@@ -299,7 +257,7 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
             </div>
           </div>
 
-          {/* ── Result details ── */}
+          {/* Result details */}
           <AnimatePresence mode="wait">
             {outcome && !rolling && (
               <motion.div
@@ -308,99 +266,67 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 className={`rounded-xl border-2 p-4 ${
-                  outcome.isNegative
-                    ? "border-red-400 bg-red-50"
-                    : "border-green-400 bg-green-50"
+                  negative ? "border-red-400 bg-red-50" : "border-green-400 bg-green-50"
                 }`}
               >
                 <div className="flex items-center gap-2 mb-3">
-                  {outcome.isNegative ? (
+                  {negative ? (
                     <AlertTriangle className="h-5 w-5 text-red-600" />
                   ) : (
                     <CheckCircle className="h-5 w-5 text-green-600" />
                   )}
-                  <span
-                    className={`font-black font-mono text-sm ${
-                      outcome.isNegative ? "text-red-700" : "text-green-700"
-                    }`}
-                  >
-                    UTFALL {outcome.roll} —{" "}
-                    {outcome.isNegative ? "⚠ NEGATIVT RESULTAT" : "✓ ACCEPTABELT RESULTAT"}
+                  <span className={`font-black font-mono text-sm ${negative ? "text-red-700" : "text-green-700"}`}>
+                    UTFALL {outcome.roll} — {negative ? "NEGATIVT RESULTAT" : "ACCEPTABELT RESULTAT"}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-[11px] font-mono">
                   <div>
-                    <span className="text-gray-500">BIT-kontroll:</span>
-                    <span
-                      className={`ml-2 font-bold uppercase ${
-                        outcome.bitCheck === "ok" ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {outcome.bitCheck}
-                    </span>
+                    <span className="text-gray-500">Åtgärd:</span>
+                    <span className="ml-2 font-bold text-gray-800">{outcome.description}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">Facilitet:</span>
                     <span className="ml-2 font-bold text-gray-800">{outcome.facility}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Åtgärd:</span>
-                    <span className="ml-2 font-bold text-gray-800">{outcome.actionType}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Mottagning:</span>
-                    <span
-                      className={`ml-2 font-bold ${
-                        outcome.reception === "OK" ? "text-green-600" : "text-red-600"
-                      }`}
-                    >
-                      {outcome.reception}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Avhjälpningstid:</span>
-                    <span className="ml-2 font-bold text-[#005AA0]">{outcome.repairTime}h</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Vapensystemsförlust:</span>
-                    <span
-                      className={`ml-2 font-bold ${
-                        outcome.weaponLoss >= 70
-                          ? "text-red-600"
-                          : outcome.weaponLoss >= 30
-                          ? "text-amber-600"
-                          : "text-green-600"
-                      }`}
-                    >
-                      {outcome.weaponLoss}%
-                    </span>
+                    <span className="text-gray-500">Feltyp:</span>
+                    <span className="ml-2 font-bold text-gray-800">{outcome.faultType.replace(/_/g, " ")}</span>
                   </div>
                   <div>
                     <span className="text-gray-500">Förmåga:</span>
                     <span className="ml-2 font-bold text-gray-800">{outcome.capability}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Servicetype:</span>
-                    <span className="ml-2 font-bold text-[#005AA0]">
-                      Typ {outcome.serviceType} ({outcome.serviceDays} dygn)
+                    <span className="text-gray-500">Nominell tid:</span>
+                    <span className="ml-2 font-bold text-[#005AA0]">{outcome.repairTime}h</span>
+                    {extraTimePct > 0 && (
+                      <span className="ml-1 text-amber-600">(+{extraTimePct}% = {effectiveRepairTime}h)</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Vapensystemsförlust:</span>
+                    <span className={`ml-2 font-bold ${
+                      weaponLoss >= 70 ? "text-red-600" : weaponLoss >= 30 ? "text-amber-600" : "text-green-600"
+                    }`}>
+                      {weaponLoss}%
                     </span>
                   </div>
                 </div>
 
-                {outcome.uhTilläggPct > 0 && (
+                {extraTimePct > 0 && (
                   <div className="mt-3 text-[10px] font-mono text-amber-700 bg-amber-100 rounded-lg px-3 py-2 border border-amber-300 flex items-center gap-2">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    Tillägg till nominell UH-tid: +{outcome.uhTilläggPct}%
+                    Tillägg till nominell UH-tid: +{extraTimePct}%
                   </div>
                 )}
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* ── Decision panel: negative outcomes ── */}
+          {/* Decision panel for negative outcomes */}
           <AnimatePresence>
-            {outcome?.isNegative && !rolling && (
+            {negative && outcome && !rolling && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -421,9 +347,7 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
                         onClick={() => handleDecision(alt.id)}
                         disabled={!!decision && decision !== "reroll"}
                         className={`p-3 rounded-xl border-2 text-left transition-all active:scale-95 ${
-                          isSelected
-                            ? "scale-[0.97] shadow-inner"
-                            : "hover:shadow-md hover:-translate-y-0.5"
+                          isSelected ? "scale-[0.97] shadow-inner" : "hover:shadow-md hover:-translate-y-0.5"
                         }`}
                         style={{
                           borderColor: isSelected ? alt.color : "#e5e7eb",
@@ -432,20 +356,12 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
                         }}
                       >
                         <div className="flex items-start gap-2">
-                          <Icon
-                            className="h-4 w-4 mt-0.5 shrink-0"
-                            style={{ color: alt.color }}
-                          />
+                          <Icon className="h-4 w-4 mt-0.5 shrink-0" style={{ color: alt.color }} />
                           <div>
-                            <div
-                              className="text-[11px] font-black font-mono"
-                              style={{ color: alt.color }}
-                            >
+                            <div className="text-[11px] font-black font-mono" style={{ color: alt.color }}>
                               {alt.label}
                             </div>
-                            <div className="text-[9px] font-mono text-gray-500 mt-0.5">
-                              {alt.description}
-                            </div>
+                            <div className="text-[9px] font-mono text-gray-500 mt-0.5">{alt.description}</div>
                           </div>
                         </div>
                       </button>
@@ -456,9 +372,9 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
             )}
           </AnimatePresence>
 
-          {/* ── Accept button for positive outcomes ── */}
+          {/* Accept button for positive outcomes */}
           <AnimatePresence>
-            {outcome && !outcome.isNegative && !rolling && (
+            {outcome && !negative && !rolling && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -471,7 +387,7 @@ export function UtfallModal({ aircraft, onClose, onAccept }: UtfallModalProps) {
                   Avbryt
                 </button>
                 <button
-                  onClick={() => onAccept(outcome)}
+                  onClick={handleAcceptPositive}
                   className="px-6 py-2 bg-[#005AA0] text-white text-sm font-mono font-bold rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-md active:scale-95"
                 >
                   <CheckCircle className="h-4 w-4" />

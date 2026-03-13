@@ -14,9 +14,9 @@ interface BaseOverviewProps {
 export function BaseOverview({ base, onSelectAircraft, onStartMaintenance, onSendMission }: BaseOverviewProps) {
   const [draggedAircraft, setDraggedAircraft] = useState<string | null>(null);
   
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable").length;
-  const maint = base.aircraft.filter((a) => a.status === "maintenance").length;
+  const mc = base.aircraft.filter((a) => a.status === "ready").length;
+  const nmc = base.aircraft.filter((a) => a.status === "unavailable").length;
+  const maint = base.aircraft.filter((a) => a.status === "under_maintenance").length;
   const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
 
   const typeColor = base.type === "huvudbas" ? "border-status-green" : base.type === "sidobas" ? "border-status-amber" : "border-status-red";
@@ -96,15 +96,15 @@ export function BaseOverview({ base, onSelectAircraft, onStartMaintenance, onSen
               onDragStart={(e) => handleDragStart(e, ac.id)}
               onDragEnd={handleDragEnd}
               onClick={() => {
-                if (ac.status === "not_mission_capable") onStartMaintenance(base.id, ac.id);
-                else if (ac.status === "mission_capable") onSendMission(base.id, ac.id);
+                if (ac.status === "unavailable") onStartMaintenance(base.id, ac.id);
+                else if (ac.status === "ready") onSendMission(base.id, ac.id);
               }}
               className={`px-3 py-3 rounded-lg text-[12px] font-mono text-center border-2 transition-all hover:shadow-lg font-semibold ${draggedAircraft === ac.id ? "cursor-grabbing opacity-40 scale-110" : "cursor-move hover:scale-105"} ${
-                ac.status === "mission_capable"
+                ac.status === "ready"
                   ? "border-status-green/60 bg-status-green/20 hover:bg-status-green/30"
-                  : ac.status === "not_mission_capable"
+                  : ac.status === "unavailable"
                   ? "border-status-red/60 bg-status-red/20 hover:bg-status-red/30"
-                  : ac.status === "maintenance"
+                  : ac.status === "under_maintenance"
                   ? "border-status-amber/60 bg-status-amber/20 hover:bg-status-amber/30"
                   : "border-status-blue/60 bg-status-blue/20 hover:bg-status-blue/30"
               }`}

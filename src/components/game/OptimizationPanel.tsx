@@ -11,11 +11,11 @@ export function OptimizationPanel({ state, baseId }: OptimizationPanelProps) {
   const base = state.bases.find((b) => b.id === baseId);
   if (!base) return null;
 
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+  const mc = base.aircraft.filter((a) => a.status === "ready").length;
   const total = base.aircraft.length;
   const readinessRate = total > 0 ? (mc / total) * 100 : 0;
 
-  const nmcWaiting = base.aircraft.filter((a) => a.status === "not_mission_capable").length;
+  const nmcWaiting = base.aircraft.filter((a) => a.status === "unavailable").length;
   const baysAvailable = base.maintenanceBays.total - base.maintenanceBays.occupied;
   const criticalParts = base.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3);
   const lowAmmo = base.ammunition.filter((a) => a.quantity / a.max < 0.3);
@@ -113,7 +113,7 @@ export function OptimizationPanel({ state, baseId }: OptimizationPanelProps) {
         <div>
           <div className="text-[10px] text-muted-foreground">I UH</div>
           <div className="text-lg font-mono font-bold text-status-amber">
-            {base.aircraft.filter((a) => a.status === "maintenance").length}
+            {base.aircraft.filter((a) => a.status === "under_maintenance").length}
           </div>
         </div>
         <div>

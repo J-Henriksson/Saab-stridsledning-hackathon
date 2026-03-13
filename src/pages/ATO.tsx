@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useGameState } from "@/hooks/useGameState";
+import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
+import { ATOEditor } from "@/components/game/ATOEditor";
 import { ATOOrder, Aircraft, BaseType, MissionType } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -59,10 +60,12 @@ function formatHour(h: number) {
 }
 
 export default function ATO() {
-  const { state, advanceTurn, resetGame, assignAircraftToOrder, dispatchOrder } = useGameState();
+  const { state, advanceTurn, resetGame, assignAircraftToOrder, dispatchOrder, createATOOrder, editATOOrder, deleteATOOrder } = useGame();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedAircraft, setSelectedAircraft] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "dispatched" | "completed">("all");
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<ATOOrder | undefined>(undefined);
 
   const selectedOrder = state.atoOrders.find((o) => o.id === selectedOrderId) ?? null;
   const selectedBase = selectedOrder
@@ -72,7 +75,7 @@ export default function ATO() {
   const availableAircraft: Aircraft[] = selectedBase
     ? selectedBase.aircraft.filter(
         (ac) =>
-          ac.status === "mission_capable" &&
+          ac.status === "ready" &&
           (!selectedOrder?.aircraftType || ac.type === selectedOrder.aircraftType)
       )
     : [];
@@ -144,6 +147,13 @@ export default function ATO() {
               {dispatchedCount} AKTIVA UPPDRAG
             </span>
           )}
+          <button
+            onClick={() => { setEditingOrder(undefined); setShowEditor(true); }}
+            className="flex items-center gap-1 text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg transition-all hover:opacity-90"
+            style={{ background: "hsl(220 63% 18%)", color: "hsl(42 64% 62%)", border: "1px solid hsl(42 64% 53% / 0.3)" }}
+          >
+            + NY ORDER
+          </button>
         </div>
       </div>
 
@@ -180,7 +190,7 @@ export default function ATO() {
               const base = state.bases.find((b) => b.id === order.launchBase);
               const mcAtBase = base?.aircraft.filter(
                 (ac) =>
-                  ac.status === "mission_capable" &&
+                  ac.status === "ready" &&
                   (!order.aircraftType || ac.type === order.aircraftType)
               ).length ?? 0;
 
@@ -461,6 +471,25 @@ export default function ATO() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* ATO Editor Modal */}
+      {showEditor && (
+        <ATOEditor
+          order={editingOrder}
+          onSave={(order) => {
+            if (editingOrder) {
+              editATOOrder(editingOrder.id, order);
+              toast.success("Order uppdaterad");
+            } else {
+              createATOOrder(order);
+              toast.success("Ny ATO-order skapad");
+            }
+            setShowEditor(false);
+            setEditingOrder(undefined);
+          }}
+          onCancel={() => { setShowEditor(false); setEditingOrder(undefined); }}
+        />
+      )}
     </div>
   );
 }

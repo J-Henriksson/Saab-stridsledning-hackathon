@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGameState } from "@/hooks/useGameState";
+import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { Base, BaseType, Aircraft } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
@@ -56,7 +56,7 @@ const GOTLAND_PATH = "M 730,490 L 748,485 L 758,498 L 752,518 L 738,525 L 725,51
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function statusColor(base: Base | undefined) {
   if (!base) return "#4a5568";
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+  const mc = base.aircraft.filter((a) => a.status === "ready").length;
   const ratio = mc / base.aircraft.length;
   if (ratio >= 0.7) return "#22c55e";
   if (ratio >= 0.4) return "#eab308";
@@ -70,7 +70,7 @@ function fuelColor(pct: number) {
 }
 
 function getReadiness(base: Base) {
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
+  const mc = base.aircraft.filter((a) => a.status === "ready").length;
   const total = base.aircraft.length;
   const ratio = mc / total;
   if (ratio >= 0.7) return { label: "GRÖN", cls: "text-status-green bg-status-green/10 border-status-green/40" };
@@ -86,7 +86,7 @@ type SelectedEntity =
 
 // ── Component ────────────────────────────────────────────────────────────────
 export default function MapPage() {
-  const { state, advanceTurn, resetGame } = useGameState();
+  const { state, advanceTurn, resetGame } = useGame();
   const [selected, setSelected] = useState<SelectedEntity>(null);
 
   const selectedBase =
@@ -198,23 +198,40 @@ export default function MapPage() {
               </radialGradient>
             </defs>
 
-            {/* Supply lines */}
+            {/* Supply lines — thickness reflects logistics flow */}
             {SUPPLY_LINES.map(([a, b]) => {
               const pa = toSVG(BASE_POSITIONS[a].x, BASE_POSITIONS[a].y);
               const pb = toSVG(BASE_POSITIONS[b].x, BASE_POSITIONS[b].y);
               const aBase = state.bases.find((bs) => bs.id === a);
               const bBase = state.bases.find((bs) => bs.id === b);
               const active = aBase && bBase;
+              // Logistics flow: more aircraft + lower fuel = thicker line (more demand)
+              const totalAc = (aBase?.aircraft.length ?? 0) + (bBase?.aircraft.length ?? 0);
+              const avgFuel = ((aBase?.fuel ?? 100) + (bBase?.fuel ?? 100)) / 2;
+              const flowIntensity = active ? Math.max(1, Math.min(4, totalAc / 10 + (100 - avgFuel) / 40)) : 1;
+              const stressed = active && avgFuel < 30;
               return (
-                <line
-                  key={`${a}-${b}`}
-                  x1={pa.x} y1={pa.y}
-                  x2={pb.x} y2={pb.y}
-                  stroke={active ? "#2563eb" : "#1e293b"}
-                  strokeWidth={active ? 1.5 : 1}
-                  strokeDasharray={active ? "8 4" : "4 6"}
-                  opacity={active ? 0.6 : 0.25}
-                />
+                <g key={`${a}-${b}`}>
+                  <line
+                    x1={pa.x} y1={pa.y}
+                    x2={pb.x} y2={pb.y}
+                    stroke={stressed ? "#ef4444" : active ? "#2563eb" : "#1e293b"}
+                    strokeWidth={active ? flowIntensity : 1}
+                    strokeDasharray={active ? "8 4" : "4 6"}
+                    opacity={active ? 0.6 : 0.25}
+                  />
+                  {stressed && (
+                    <circle
+                      cx={(pa.x + pb.x) / 2}
+                      cy={(pa.y + pb.y) / 2}
+                      r="5"
+                      fill="#ef4444"
+                      opacity="0.8"
+                    >
+                      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="1.5s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+                </g>
               );
             })}
 
@@ -223,11 +240,16 @@ export default function MapPage() {
               const base = state.bases.find((b) => b.id === id);
               const { x, y } = toSVG(pos.x, pos.y);
               const isSelected = selected?.baseId === id;
-              const mc = base ? base.aircraft.filter((a) => a.status === "mission_capable").length : 0;
+              const mc = base ? base.aircraft.filter((a) => a.status === "ready").length : 0;
               const onMission = base ? base.aircraft.filter((a) => a.status === "on_mission").length : 0;
               const color = statusColor(base);
               const isMainBase = id === "MOB";
               const radius = isMainBase ? 22 : 16;
+              const isBottleneck = base && (
+                mc / base.aircraft.length < 0.4 ||
+                base.maintenanceBays.occupied >= base.maintenanceBays.total ||
+                base.fuel < 20
+              );
 
               return (
                 <g
@@ -250,6 +272,22 @@ export default function MapPage() {
                     >
                       <animate attributeName="r" values={`${radius + 6};${radius + 16};${radius + 6}`} dur="3s" repeatCount="indefinite" />
                       <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
+                    </circle>
+                  )}
+
+                  {/* Bottleneck indicator — pulsing red ring */}
+                  {isBottleneck && (
+                    <circle
+                      cx={x} cy={y}
+                      r={radius + 4}
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="2.5"
+                      strokeDasharray="4 3"
+                      opacity="0.8"
+                    >
+                      <animate attributeName="opacity" values="0.9;0.3;0.9" dur="1s" repeatCount="indefinite" />
+                      <animate attributeName="stroke-dashoffset" values="0;14" dur="1s" repeatCount="indefinite" />
                     </circle>
                   )}
 
@@ -435,9 +473,9 @@ function BaseDetail({
   base: Base;
   onSelectAircraft: (id: string) => void;
 }) {
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable");
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
-  const maintenance = base.aircraft.filter((a) => a.status === "maintenance");
+  const mc = base.aircraft.filter((a) => a.status === "ready");
+  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
+  const maintenance = base.aircraft.filter((a) => a.status === "under_maintenance");
   const onMission = base.aircraft.filter((a) => a.status === "on_mission");
   const readiness = getReadiness(base);
   const totalPersonnel = base.personnel.reduce((s, p) => s + p.total, 0);
@@ -568,6 +606,42 @@ function BaseDetail({
         </div>
       </div>
 
+      {/* Zone overview */}
+      {base.zones && base.zones.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
+            <MapPin className="h-3 w-3" /> BASYZONER
+          </div>
+          <div className="space-y-1">
+            {base.zones.filter((z) => z.capacity > 0).map((zone) => {
+              const load = zone.currentQueue.length / zone.capacity;
+              const isFull = zone.currentQueue.length >= zone.capacity;
+              const zoneLabels: Record<string, string> = {
+                runway: "Rullbana",
+                prep_slot: "Klargöringsplats",
+                front_maintenance: "Främre UH",
+                rear_maintenance: "Bakre UH",
+                parking: "Parkering",
+                fuel_zone: "Bränsledepå",
+                ammo_zone: "Ammunitionsdepå",
+                spare_parts_zone: "Reservdelslager",
+                logistics_area: "Logistikyta",
+              };
+              return (
+                <div key={zone.id} className="flex items-center justify-between text-[10px]">
+                  <span className={isFull ? "text-status-red font-bold" : "text-foreground"}>
+                    {zoneLabels[zone.type] ?? zone.type}
+                  </span>
+                  <span className={`font-mono ${isFull ? "text-status-red" : load > 0.7 ? "text-status-yellow" : "text-muted-foreground"}`}>
+                    {zone.currentQueue.length}/{zone.capacity}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Aircraft list */}
       <div>
         <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
@@ -582,11 +656,11 @@ function BaseDetail({
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  ac.status === "mission_capable"
+                  ac.status === "ready"
                     ? "bg-status-green"
                     : ac.status === "on_mission"
                     ? "bg-status-blue"
-                    : ac.status === "maintenance"
+                    : ac.status === "under_maintenance"
                     ? "bg-status-yellow"
                     : "bg-status-red"
                 }`}
@@ -611,13 +685,18 @@ function AircraftDetail({
   aircraft: Aircraft;
   onBack: () => void;
 }) {
-  const statusMap = {
-    mission_capable: { label: "Mission Capable", cls: "text-status-green bg-status-green/10 border-status-green/40" },
-    not_mission_capable: { label: "Ej operativ (NMC)", cls: "text-status-red bg-status-red/10 border-status-red/40" },
+  const statusMap: Record<string, { label: string; cls: string }> = {
+    ready: { label: "Mission Capable", cls: "text-status-green bg-status-green/10 border-status-green/40" },
+    allocated: { label: "Tilldelad", cls: "text-status-blue bg-status-blue/10 border-status-blue/40" },
+    in_preparation: { label: "Klargöring", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" },
+    awaiting_launch: { label: "Väntar start", cls: "text-cyan-400 bg-cyan-400/10 border-cyan-400/40" },
     on_mission: { label: "På uppdrag", cls: "text-status-blue bg-status-blue/10 border-status-blue/40" },
-    maintenance: { label: "Underhåll pågår", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" },
+    returning: { label: "Retur", cls: "text-purple-400 bg-purple-400/10 border-purple-400/40" },
+    recovering: { label: "Mottagning", cls: "text-orange-400 bg-orange-400/10 border-orange-400/40" },
+    under_maintenance: { label: "Underhåll pågår", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" },
+    unavailable: { label: "Ej operativ (NMC)", cls: "text-status-red bg-status-red/10 border-status-red/40" },
   };
-  const s = statusMap[aircraft.status];
+  const s = statusMap[aircraft.status] ?? statusMap.unavailable;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
