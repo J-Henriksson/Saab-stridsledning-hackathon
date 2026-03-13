@@ -258,7 +258,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           {onMission.slice(0, 10).map((ac, i) => {
             const rx = 95 + i * 75;
             const ry = 192;
-            const color = "#2563eb";
+            const color = "#1a4a8a";
             return (
               <g key={`mission-${ac.id}`}
                 onMouseEnter={() => setHoveredAc(ac.id)}
@@ -266,12 +266,12 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
               >
                 <GripenShape cx={rx} cy={ry} color={color} />
                 {/* Speed lines */}
-                <line x1={rx+15} y1={ry-1} x2={rx+22} y2={ry-1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
-                <line x1={rx+15} y1={ry+1} x2={rx+22} y2={ry+1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
+                <line x1={rx+15} y1={ry-1} x2={rx+24} y2={ry-1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
+                <line x1={rx+15} y1={ry+1} x2={rx+24} y2={ry+1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
                 {hoveredAc === ac.id && (
                   <g>
-                    <rect x={rx-18} y={ry-22} width="36" height="11" rx="2" fill="#1e3a8a" opacity="0.9" />
-                    <text x={rx} y={ry-14} textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
+                    <rect x={rx-18} y={ry-22} width="36" height="11" rx="2" fill="#0C234C" opacity="0.9" />
+                    <text x={rx} y={ry-14} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
                   </g>
                 )}
               </g>
