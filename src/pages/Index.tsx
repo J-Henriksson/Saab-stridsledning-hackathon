@@ -249,7 +249,7 @@ const Index = () => {
                 </h3>
               </div>
               <div className="p-4">
-                <DagensMissioner base={selectedBase} hour={state.hour} phase={state.phase} />
+                <DagensMissioner base={selectedBase} hour={state.hour} phase={state.phase} atoOrders={state.atoOrders} />
               </div>
             </div>
             <LarmPanel events={state.events} />
@@ -276,7 +276,7 @@ const Index = () => {
               </div>
             </div>
             <div className="p-4">
-              <FlygschemaTidslinje base={selectedBase} hour={state.hour} />
+              <FlygschemaTidslinje base={selectedBase} hour={state.hour} atoOrders={state.atoOrders} />
             </div>
           </div>
 
