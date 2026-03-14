@@ -30,6 +30,7 @@ export interface GameEngine {
   hangarDropConfirm: (baseId: string, aircraftId: string, repairTime: number, maintenanceTypeKey: string, restoreHealth: boolean) => void;
   pauseMaintenance: (baseId: string, aircraftId: string) => void;
   markFaultNMC: (baseId: string, aircraftId: string, repairTime: number, maintenanceTypeKey: string, actionLabel: string) => void;
+  consumeSparePart: (baseId: string, sparePartId: string, quantity?: number) => void;
 }
 
 export function useGameEngine(): GameEngine {
@@ -115,6 +116,10 @@ export function useGameEngine(): GameEngine {
     dispatch({ type: "MARK_FAULT_NMC", baseId: baseId as BaseType, aircraftId, repairTime, maintenanceTypeKey, actionLabel });
   }, []);
 
+  const consumeSparePart = useCallback((baseId: string, sparePartId: string, quantity = 1) => {
+    dispatch({ type: "CONSUME_SPARE_PART", baseId: baseId as BaseType, sparePartId, quantity });
+  }, []);
+
   const getResourceSummary = useCallback((): string => {
     const lines: string[] = [];
     lines.push(`=== RESURSLÄGE DAG ${state.day} ${String(state.hour).padStart(2, "0")}:00 - FAS: ${state.phase} ===\n`);
@@ -158,11 +163,13 @@ export function useGameEngine(): GameEngine {
     applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
+    consumeSparePart,
   }), [
     state, advanceTurn, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
     applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
+    consumeSparePart,
   ]);
 }

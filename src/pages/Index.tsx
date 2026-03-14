@@ -24,7 +24,7 @@ import { BaseType } from "@/types/game";
 import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
-  const { state, advanceTurn, startMaintenance, sendOnMission, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, completeLandingCheck, applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC } = useGame();
+  const { state, advanceTurn, startMaintenance, sendOnMission, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, completeLandingCheck, applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart } = useGame();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
   const [pendingRunwayCheck, setPendingRunwayCheck] = useState<string | null>(null);
   const [pendingMaintenanceCheck, setPendingMaintenanceCheck] = useState<string | null>(null);
@@ -85,9 +85,17 @@ const Index = () => {
         toast.error(`${tail} är på uppdrag`);
         return;
       }
-      // Quick LRU via spare parts — 2h fix
-      applyUtfallOutcome(selectedBaseId, aircraftId, 2, "quick_lru", 10, "Quick LRU replacement (reservdelslager)");
-      toast.success(`📦 ${tail} → Snabb LRU-reparation 2h via reservdelslager`);
+      // Pick first available LRU-type spare part (Avionik category preferred, then any with stock)
+      const lruPart = selectedBase.spareParts.find((p) => p.quantity > 0 && p.category === "Avionik")
+        ?? selectedBase.spareParts.find((p) => p.quantity > 0);
+      if (!lruPart) {
+        toast.error(`Inga reservdelar kvar vid ${selectedBase.name} — LRU-rep ej möjlig`);
+        return;
+      }
+      // Consume 1 part and start quick repair
+      consumeSparePart(selectedBaseId, lruPart.id, 1);
+      applyUtfallOutcome(selectedBaseId, aircraftId, 2, "quick_lru", 10, `Quick LRU replacement (${lruPart.name})`);
+      toast.success(`${tail} → Snabb LRU-reparation 2h — använder ${lruPart.name} (kvar: ${lruPart.quantity - 1})`);
 
     } else if (zone === "fuel") {
       if (aircraft.status === "on_mission") {

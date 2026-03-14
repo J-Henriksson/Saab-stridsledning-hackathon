@@ -170,6 +170,7 @@ export type GameAction =
   | { type: "HANGAR_DROP_CONFIRM"; baseId: BaseType; aircraftId: string; repairTime: number; maintenanceTypeKey: string; restoreHealth: boolean }
   | { type: "PAUSE_MAINTENANCE"; baseId: BaseType; aircraftId: string }
   | { type: "MARK_FAULT_NMC"; baseId: BaseType; aircraftId: string; repairTime: number; maintenanceTypeKey: string; actionLabel: string }
+  | { type: "CONSUME_SPARE_PART"; baseId: BaseType; sparePartId: string; quantity?: number }
   | { type: "RESET_GAME" };
 
 // ── Core interfaces ───────────────────────────────────────────────────────

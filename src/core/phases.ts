@@ -2,7 +2,7 @@ import type { GameState, GameEvent, AircraftStatus, BaseType } from "@/types/gam
 import { isMissionCapable } from "@/types/game";
 import { getPhaseForDay } from "@/data/config/scenario";
 import { generateATOOrders } from "@/data/initialGameState";
-import { FUEL_DRAIN_RATE } from "@/data/config/capacities";
+import { FUEL_DRAIN_RATE, MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
 import { generateRecommendations } from "./recommendations";
 
 /** Handle a specific phase, returning the updated state */
@@ -139,10 +139,12 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
   const newEvents: GameEvent[] = [];
 
   const updatedBases = state.bases.map((base) => {
+    let completedCount = 0;
     const updatedAircraft = base.aircraft.map((ac) => {
       if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
         const remaining = ac.maintenanceTimeRemaining - 1;
         if (remaining <= 0) {
+          completedCount++;
           newEvents.push({
             id: crypto.randomUUID(),
             timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:00`,
@@ -166,9 +168,17 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
     });
 
     const maintenanceCount = updatedAircraft.filter((a) => a.status === "under_maintenance").length;
+    // Restore crew for each aircraft that finished maintenance this tick
+    const personnel = completedCount > 0
+      ? base.personnel.map((p) => ({
+          ...p,
+          available: Math.min(p.total, p.available + completedCount * (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
+        }))
+      : base.personnel;
     return {
       ...base,
       aircraft: updatedAircraft,
+      personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintenanceCount, base.maintenanceBays.total) },
     };
   });
