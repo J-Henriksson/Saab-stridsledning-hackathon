@@ -208,23 +208,45 @@ export function ATOEditor({ order, defaultStartHour, availableAircraft, onSave, 
 
           {/* Aircraft selection (only when creating new) */}
           {!order && availableAircraft && (
-            <div>
+            <div
+              style={aircraftType ? {
+                border: "1px solid hsl(42 64% 53% / 0.5)",
+                borderRadius: "0.5rem",
+                padding: "0.75rem",
+                background: "hsl(42 64% 53% / 0.04)",
+              } : {
+                border: "1px dashed hsl(215 14% 80%)",
+                borderRadius: "0.5rem",
+                padding: "0.75rem",
+                background: "hsl(216 18% 98%)",
+              }}
+            >
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-mono font-bold" style={{ color: "hsl(218 15% 45%)" }}>
-                  VÄLJ FLYGPLAN
+                <label className="text-[10px] font-mono font-bold" style={{ color: aircraftType ? "hsl(42 64% 40%)" : "hsl(218 15% 55%)" }}>
+                  {aircraftType
+                    ? `VÄLJ SPECIFIKA ${aircraftType.toUpperCase()} FLYGPLAN`
+                    : "VÄLJ SPECIFIKA FLYGPLAN"}
                 </label>
-                <span
-                  className="text-[10px] font-mono font-bold"
-                  style={{ color: selectedAircraftIds.length >= requiredCount ? "hsl(152 60% 38%)" : "hsl(218 15% 50%)" }}
-                >
-                  {selectedAircraftIds.length} / {requiredCount} valda
-                </span>
+                {aircraftType && (
+                  <span
+                    className="text-[10px] font-mono font-bold"
+                    style={{ color: selectedAircraftIds.length >= requiredCount ? "hsl(152 60% 38%)" : "hsl(218 15% 50%)" }}
+                  >
+                    {selectedAircraftIds.length} / {requiredCount} valda
+                  </span>
+                )}
               </div>
-              {filteredAircraft.length === 0 ? (
+
+              {!aircraftType ? (
+                <div className="text-[10px] font-mono text-center py-2" style={{ color: "hsl(218 15% 60%)" }}>
+                  Välj flygplanstyp ovan för att tilldela specifika flygplan till uppdraget.
+                  <br />
+                  <span style={{ color: "hsl(218 15% 75%)" }}>Tilldelade flygplan visas direkt i flygschema.</span>
+                </div>
+              ) : filteredAircraft.length === 0 ? (
                 <div className="text-[10px] font-mono text-center py-3 rounded-lg"
                   style={{ color: "hsl(218 15% 55%)", border: "1px dashed hsl(215 14% 86%)" }}>
-                  Inga tillgängliga flygplan vid MOB
-                  {aircraftType ? ` av typ ${aircraftType}` : ""}
+                  Inga tillgängliga {aircraftType} vid {launchBase}
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-1.5 p-2 rounded-lg" style={{ background: "hsl(216 18% 97%)", border: "1px solid hsl(215 14% 86%)" }}>
@@ -248,7 +270,7 @@ export function ATOEditor({ order, defaultStartHour, availableAircraft, onSave, 
                           opacity: 0.5,
                         } : {
                           background: "hsl(0 0% 100%)",
-                          border: "1px solid hsl(215 14% 80%)",
+                          border: "1px solid hsl(42 64% 53% / 0.4)",
                           color: "hsl(220 63% 25%)",
                         }}
                       >
