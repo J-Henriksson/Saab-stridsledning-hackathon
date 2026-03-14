@@ -120,5 +120,101 @@ export function generateRecommendations(state: GameState): Recommendation[] {
     ));
   }
 
+  recs.push(...generateFleetOptimizationRecs(state));
+  recs.push(...generateBayBalanceRecs(state));
+
+  return recs;
+}
+
+function generateFleetOptimizationRecs(state: GameState): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  for (const base of state.bases) {
+    const readyAircraft = base.aircraft
+      .filter((ac) => ac.status === "ready")
+      .sort((a, b) => {
+        const hDiff = (b.health ?? 100) - (a.health ?? 100);
+        return hDiff !== 0 ? hDiff : b.hoursToService - a.hoursToService;
+      });
+
+    if (readyAircraft.length === 0) continue;
+
+    const bestForMission = readyAircraft.filter(
+      (ac) => (ac.health ?? 100) >= 70 && ac.hoursToService >= 20
+    );
+    const needService = readyAircraft.filter((ac) => ac.hoursToService < 15);
+
+    if (bestForMission.length > 0) {
+      const top = bestForMission.slice(0, 3);
+      recs.push(makeRec(
+        `Bäst för uppdrag: ${base.id}`,
+        `${top.map((ac) => ac.tailNumber).join(", ")} är i bäst skick — hög hälsa och god servicemarginal.`,
+        "schedule",
+        "medium",
+        { type: "ADVANCE_PHASE" },
+        { affectedAssets: top.map((ac) => ac.id), expectedBenefit: "Maximera operativ tillgänglighet" },
+      ));
+    }
+
+    if (needService.length > 0) {
+      const urgent = needService.some((ac) => ac.hoursToService < 5);
+      recs.push(makeRec(
+        `Planera service snart: ${base.id}`,
+        `${needService.slice(0, 3).map((ac) => `${ac.tailNumber} (${ac.hoursToService}h)`).join(", ")} är nära 100h-service — undvik långa uppdrag.`,
+        "maintenance",
+        urgent ? "high" : "medium",
+        { type: "ADVANCE_PHASE" },
+        { affectedAssets: needService.map((ac) => ac.id), tradeoff: "Flygplan otillgängligt under service" },
+      ));
+    }
+  }
+
+  return recs;
+}
+
+function generateBayBalanceRecs(state: GameState): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  for (const base of state.bases) {
+    const { occupied, total } = base.maintenanceBays;
+    if (total === 0) continue;
+
+    const pct = occupied / total;
+
+    if (pct > 0.85) {
+      recs.push(makeRec(
+        `Underhållsbay nästan full: ${base.id}`,
+        `${occupied}/${total} platser upptagna. Prioritera snabba LRU-jobb för att frigöra kapacitet.`,
+        "rebalance",
+        "high",
+        { type: "ADVANCE_PHASE" },
+        { expectedBenefit: "Frigör hangarkapacitet", tradeoff: "Skjut upp icke-kritiska jobb" },
+      ));
+    } else if (pct < 0.2 && total > 1) {
+      const nearService = base.aircraft.filter(
+        (ac) => ac.status === "ready" && ac.hoursToService < 20
+      );
+      if (nearService.length > 0) {
+        recs.push(makeRec(
+          `Ledig underhållskapacitet: ${base.id}`,
+          `${occupied}/${total} platser används — bra tillfälle för förebyggande service (${nearService.length} flygplan nära service-intervall).`,
+          "maintenance",
+          "medium",
+          { type: "ADVANCE_PHASE" },
+          { affectedAssets: nearService.map((ac) => ac.id), expectedBenefit: "Optimera serviceschema" },
+        ));
+      }
+      if (occupied === 0 && state.phase === "KRIG") {
+        recs.push(makeRec(
+          `Tom underhållshall under KRIG: ${base.id}`,
+          `Inga flygplan i underhåll vid ${base.name} under krigsläge — bör preventiv service schemaläggas?`,
+          "warning",
+          "high",
+          { type: "ADVANCE_PHASE" },
+        ));
+      }
+    }
+  }
+
   return recs;
 }

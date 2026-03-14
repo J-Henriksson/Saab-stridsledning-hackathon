@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Aircraft, BaseType } from "@/types/game";
+import { ContextualRecommendation } from "./ContextualRecommendation";
 
 // Fault table for red aircraft troubleshooting: roll d6 → repair time
 const RED_FAULT_TABLE: Record<number, { time: number; typeKey: string; label: string }> = {
@@ -144,6 +145,15 @@ export function MaintenanceConfirmModal({ aircraft, baseId, onConfirm, onCancel 
                   Det finns en risk att tekniker hittar ett dolt fel.
                 </div>
               </div>
+              {(() => {
+                const health = aircraft.health ?? 100;
+                const h2s = aircraft.hoursToService;
+                if (health < 50)
+                  return <ContextualRecommendation text={`Låg hälsa (${health}%) — service starkt rekommenderat för att återställa operativ kapacitet.`} type="warning" />;
+                if (h2s < 15)
+                  return <ContextualRecommendation text={`Bara ${h2s}h kvar till schemalagd 100h-service — bra tillfälle att köra service nu och återställa till 100% hälsa.`} type="warning" />;
+                return <ContextualRecommendation text="Förebyggande service kan avslöja dolda fel och återställa planet till 100% hälsa (2h om inga fel hittas)." type="neutral" />;
+              })()}
               <div className="flex gap-3">
                 <button
                   onClick={handleConfirmMaintenance}
