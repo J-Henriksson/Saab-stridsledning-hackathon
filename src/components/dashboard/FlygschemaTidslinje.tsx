@@ -185,8 +185,19 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
   });
 
   const chartW = 640;
-  const chartH = 210;
+  const chartH = 260;
   const m = { l: 56, r: 16, t: 18, b: 32 };
+
+  const AC_LINE_COLORS = [
+    "#3B82F6",
+    "#10B981",
+    "#F59E0B",
+    "#EF4444",
+    "#8B5CF6",
+    "#06B6D4",
+    "#F97316",
+    "#EC4899",
+  ];
   const xScale = (v: number) => m.l + ((v - 0) / 24) * (chartW - m.l - m.r);
   const yScale = (v: number) => m.t + (1 - (v - 0) / 100) * (chartH - m.t - m.b);
 
@@ -476,7 +487,7 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
           </div>
         </div>
         <div className="w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-900/90">
-          <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-[190px]">
+          <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-auto">
             {/* Grid */}
             {yTicks.map((tick, i) => {
               const y = yScale(tick);
@@ -533,8 +544,7 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
 
             {/* Lines */}
             {flygschema.map((ac, i) => {
-              const isLowLife = ac.currentLife < 30 || ac.status === "unavailable" || ac.status === "under_maintenance";
-              const stroke = isLowLife ? "hsl(var(--status-amber))" : "hsl(var(--status-green))";
+              const stroke = AC_LINE_COLORS[i % AC_LINE_COLORS.length];
               const isActive = hoveredAc === ac.aircraftId;
               const points = lifeSeries
                 .map((d) => `${xScale(d.t)},${yScale(d[ac.aircraftId] ?? ac.currentLife)}`)
@@ -561,13 +571,13 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
             })}
           </svg>
         </div>
-        <div className="flex items-center gap-3 pt-2 text-[8px] font-mono text-muted-foreground">
-          <span>Mission = diagonal nedåt</span>
-          <span>Ground = horisontell</span>
-          <span>Service slut = hopp till 100</span>
-          <span className="ml-2"><span className="text-red-500">—</span> Underhåll</span>
-          <span><span className="text-blue-500">—</span> På uppdrag</span>
-          <span><span className="text-green-500">—</span> Klar</span>
+        <div className="flex flex-wrap items-center gap-2 pt-2 text-[8px] font-mono text-muted-foreground">
+          {flygschema.map((ac, i) => (
+            <span key={ac.aircraftId} style={{ color: AC_LINE_COLORS[i % AC_LINE_COLORS.length] }}>
+              ● {ac.aircraftId}
+            </span>
+          ))}
+          <span className="ml-2 text-muted-foreground/60">| Mission = nedåt · Ground = plant · Service = hopp till 100</span>
         </div>
       </div>
     </div>

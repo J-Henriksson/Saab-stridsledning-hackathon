@@ -456,7 +456,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                     <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
-                <text x="494" y="354" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMUNITION DEPÅ</text>
+                <text x="487" y="362" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMUNITION DEPÅ</text>
               </g>
             );
           })()}
