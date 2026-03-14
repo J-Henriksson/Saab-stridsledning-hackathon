@@ -164,8 +164,9 @@ export type GameAction =
   | { type: "DISPATCH_ORDER"; orderId: string }
   | { type: "APPLY_RECOMMENDATION"; recommendationId: string }
   | { type: "DISMISS_RECOMMENDATION"; recommendationId: string }
-  | { type: "SEND_MISSION_DROP"; baseId: BaseType; aircraftId: string; missionType: MissionType }
+  | { type: "SEND_MISSION_DROP"; baseId: BaseType; aircraftId: string; missionType: MissionType; durationHours?: number }
   | { type: "APPLY_UTFALL_OUTCOME"; baseId: BaseType; aircraftId: string; repairTime: number; maintenanceTypeKey: string; weaponLoss: number; actionLabel: string }
+  | { type: "COMPLETE_LANDING_CHECK"; baseId: BaseType; aircraftId: string; sendToMaintenance: boolean; repairTime?: number; maintenanceTypeKey?: string; weaponLoss?: number; actionLabel?: string }
   | { type: "RESET_GAME" };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
@@ -178,6 +179,7 @@ export interface Aircraft {
   flightHours: number;
   hoursToService: number;
   currentMission?: MissionType;
+  missionEndHour?: number; // hour at which drag-drop mission completes
   payload?: string;
   maintenanceTimeRemaining?: number;
   maintenanceType?: MaintenanceType;
@@ -234,6 +236,7 @@ export interface GameState {
   turnNumber: number;
   recommendations: Recommendation[];
   maintenanceTasks: MaintenanceTask[];
+  pendingLandingChecks: { aircraftId: string; baseId: BaseType }[];
 }
 
 export interface GameEvent {

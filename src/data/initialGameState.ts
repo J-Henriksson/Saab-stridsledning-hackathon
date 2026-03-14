@@ -333,4 +333,5 @@ export const initialGameState: GameState = {
   turnNumber: 1,
   recommendations: [],
   maintenanceTasks: [],
+  pendingLandingChecks: [],
 };

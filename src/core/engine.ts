@@ -49,10 +49,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleStartMaintenance(state, action.baseId, action.aircraftId);
 
     case "SEND_MISSION_DROP":
-      return handleSendMissionDrop(state, action.baseId, action.aircraftId, action.missionType);
+      return handleSendMissionDrop(state, action.baseId, action.aircraftId, action.missionType, action.durationHours);
 
     case "APPLY_UTFALL_OUTCOME":
       return handleApplyUtfall(state, action.baseId, action.aircraftId, action.repairTime, action.maintenanceTypeKey, action.weaponLoss, action.actionLabel);
+
+    case "COMPLETE_LANDING_CHECK":
+      return handleCompleteLandingCheck(state, action.baseId, action.aircraftId, action.sendToMaintenance, action.repairTime, action.maintenanceTypeKey, action.weaponLoss, action.actionLabel);
 
     case "MOVE_AIRCRAFT":
       return state; // TODO: implement zone-based movement
@@ -211,12 +214,13 @@ function handleStartMaintenance(state: GameState, baseId: string, aircraftId: st
   });
 }
 
-function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: string, missionType: MissionType): GameState {
+function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: string, missionType: MissionType, durationHours?: number): GameState {
+  const endHour = durationHours ? state.hour + durationHours : undefined;
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
     const aircraft = base.aircraft.map((ac) => {
       if (ac.id !== aircraftId || !isMissionCapable(ac.status)) return ac;
-      return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType };
+      return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType, missionEndHour: endHour };
     });
     return { ...base, aircraft };
   });
@@ -225,6 +229,45 @@ function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: str
     type: "success",
     message: `${aircraftId} skickad på ${missionType}-uppdrag via drag-drop`,
     base: baseId,
+  });
+}
+
+function handleCompleteLandingCheck(
+  state: GameState,
+  baseId: string,
+  aircraftId: string,
+  sendToMaintenance: boolean,
+  repairTime?: number,
+  maintenanceTypeKey?: string,
+  weaponLoss?: number,
+  actionLabel?: string,
+): GameState {
+  const updatedLandingChecks = (state.pendingLandingChecks ?? []).filter(
+    (c) => !(c.aircraftId === aircraftId && c.baseId === baseId)
+  );
+
+  if (sendToMaintenance && repairTime && maintenanceTypeKey) {
+    const afterMaint = handleApplyUtfall(state, baseId, aircraftId, repairTime, maintenanceTypeKey, weaponLoss ?? 0, actionLabel ?? "Underhåll efter landning");
+    return { ...afterMaint, pendingLandingChecks: updatedLandingChecks };
+  }
+
+  // Clear returning status → ready, remove currentMission
+  const updatedBases = state.bases.map((base) => {
+    if (base.id !== baseId) return base;
+    return {
+      ...base,
+      aircraft: base.aircraft.map((ac) =>
+        ac.id === aircraftId
+          ? { ...ac, status: "ready" as AircraftStatus, currentMission: undefined }
+          : ac
+      ),
+    };
+  });
+
+  return addEvent({ ...state, bases: updatedBases, pendingLandingChecks: updatedLandingChecks }, {
+    type: "success",
+    message: `${aircraftId} landad och godkänd — återvänder till uppställningsplats`,
+    base: baseId as any,
   });
 }
 

@@ -1,4 +1,4 @@
-import type { GameState, GameEvent, AircraftStatus } from "@/types/game";
+import type { GameState, GameEvent, AircraftStatus, BaseType } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import { getPhaseForDay } from "@/data/config/scenario";
 import { generateATOOrders } from "@/data/initialGameState";
@@ -238,20 +238,58 @@ function handleIncrementTime(state: GameState): GameState {
     ? generateATOOrders(nextDay, nextPhase)
     : state.atoOrders;
 
-  // Mark completed orders
-  const updatedATOOrders = newATOOrders.map((o) =>
-    o.status === "dispatched" && nextHour >= o.endHour
-      ? { ...o, status: "completed" as const }
-      : o
-  );
+  // Mark completed orders and collect returning aircraft
+  const returningAircraft: { aircraftId: string; baseId: string }[] = [];
+  const updatedATOOrders = newATOOrders.map((o) => {
+    if (o.status === "dispatched" && nextHour >= o.endHour) {
+      o.assignedAircraft.forEach((acId) =>
+        returningAircraft.push({ aircraftId: acId, baseId: o.launchBase })
+      );
+      return { ...o, status: "completed" as const };
+    }
+    return o;
+  });
+
+  // Also collect drag-drop aircraft whose missionEndHour has been reached
+  const basesAfterReturn = updatedBases.map((base) => ({
+    ...base,
+    aircraft: base.aircraft.map((ac) => {
+      if (ac.status === "on_mission") {
+        const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
+        const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;
+        if (fromATO || fromDrop) {
+          if (fromDrop && !fromATO) {
+            returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
+          }
+          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
+        }
+      }
+      return ac;
+    }),
+  }));
+
+  const newLandingChecks = returningAircraft.map((r) => ({
+    aircraftId: r.aircraftId,
+    baseId: r.baseId as BaseType,
+  }));
+
+  if (returningAircraft.length > 0) {
+    newEvents.push({
+      id: crypto.randomUUID(),
+      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+      type: "info" as const,
+      message: `${returningAircraft.length} flygplan återvänder — mottagningskontroll krävs`,
+    });
+  }
 
   return {
     ...state,
     day: nextDay,
     hour: nextHour,
     phase: nextPhase,
-    bases: updatedBases,
+    bases: basesAfterReturn,
     atoOrders: updatedATOOrders,
+    pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],
     events: [...newEvents, ...state.events].slice(0, 50),
   };
 }

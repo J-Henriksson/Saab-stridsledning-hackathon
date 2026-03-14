@@ -145,7 +145,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
   const mc = base.aircraft.filter((a) => a.status === "ready");
   const nmc = base.aircraft.filter((a) => a.status === "unavailable");
   const maint = base.aircraft.filter((a) => a.status === "under_maintenance");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission");
+  const onMission = base.aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
 
   function toggle(id: BuildingId) {
     setSelected((prev) => (prev === id ? null : id));
@@ -264,29 +264,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
               fill={i < 2 ? "#D9192E" : "#ffffff"} opacity="0.9" />
           ))}
 
-          {/* ── On-mission aircraft rendered ON the runway ── */}
-          {onMission.slice(0, 10).map((ac, i) => {
-            const rx = 95 + i * 75;
-            const ry = 192;
-            const color = "#1a4a8a";
-            return (
-              <g key={`mission-${ac.id}`}
-                onMouseEnter={() => setHoveredAc(ac.id)}
-                onMouseLeave={() => setHoveredAc(null)}
-              >
-                <GripenShape cx={rx} cy={ry} color={color} />
-                {/* Speed lines */}
-                <line x1={rx+15} y1={ry-1} x2={rx+24} y2={ry-1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
-                <line x1={rx+15} y1={ry+1} x2={rx+24} y2={ry+1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
-                {hoveredAc === ac.id && (
-                  <g>
-                    <rect x={rx-18} y={ry-22} width="36" height="11" rx="2" fill="#0C234C" opacity="0.9" />
-                    <text x={rx} y={ry-14} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
+          {/* (on-mission aircraft shown in PÅ UPPDRAG box below, not on runway) */}
 
           {/* ── Apron / Parking ── */}
           <rect
@@ -472,6 +450,69 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   </circle>
                 )}
                 <text x="494" y="368" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMO DEPOT</text>
+              </g>
+            );
+          })()}
+
+          {/* ── På Uppdrag Box ── */}
+          {(() => {
+            const boxX = 600, boxY = 318, boxW = 255, boxH = 160;
+            const cols = 4;
+            return (
+              <g>
+                <rect x={boxX} y={boxY} width={boxW} height={boxH} rx="4"
+                  fill="#0a1d3e" stroke="#1a4a8a" strokeWidth="1.5" opacity="0.95" />
+                <rect x={boxX} y={boxY} width={boxW} height={16} rx="4"
+                  fill="#1a3a6a" />
+                <text x={boxX + boxW / 2} y={boxY + 11} textAnchor="middle" fontSize="8"
+                  fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" letterSpacing="2">
+                  PÅ UPPDRAG ({onMission.length})
+                </text>
+                {onMission.length === 0 && (
+                  <text x={boxX + boxW / 2} y={boxY + 90} textAnchor="middle" fontSize="8"
+                    fill="#5566aa" fontFamily="monospace">— inga aktiva uppdrag —</text>
+                )}
+                {onMission.slice(0, 16).map((ac, i) => {
+                  const col = i % cols;
+                  const row = Math.floor(i / cols);
+                  const cx = boxX + 32 + col * 60;
+                  const cy = boxY + 42 + row * 50;
+                  const isRet = ac.status === "returning";
+                  const color = isRet ? "#5a3a8a" : "#1a4a8a";
+                  return (
+                    <g key={`uppdrag-${ac.id}`}
+                      onMouseEnter={() => setHoveredAc(ac.id)}
+                      onMouseLeave={() => setHoveredAc(null)}
+                    >
+                      <GripenShape cx={cx} cy={cy} color={color} opacity={isRet ? 0.7 : 1} />
+                      {/* Speed lines (not for returning) */}
+                      {!isRet && (
+                        <>
+                          <line x1={cx+15} y1={cy-1} x2={cx+24} y2={cy-1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
+                          <line x1={cx+15} y1={cy+1} x2={cx+24} y2={cy+1} stroke="#D7AB3A" strokeWidth="0.8" opacity="0.7" />
+                        </>
+                      )}
+                      {/* Returning indicator */}
+                      {isRet && (
+                        <text x={cx} y={cy - 18} textAnchor="middle" fontSize="7" fill="#aa88ff" fontFamily="monospace">↩</text>
+                      )}
+                      {/* Tail number label */}
+                      <rect x={cx-17} y={cy+8} width="34" height="11" rx="2"
+                        fill={color} fillOpacity="0.9" />
+                      <text x={cx} y={cy+16} textAnchor="middle" fontSize="6"
+                        fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
+                      {/* Hover tooltip */}
+                      {hoveredAc === ac.id && (
+                        <g>
+                          <rect x={cx-20} y={cy-34} width="40" height="13" rx="2" fill="#0C234C" opacity="0.95" />
+                          <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
+                            {isRet ? "Återvänder" : ac.currentMission ?? "UPP"}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
               </g>
             );
           })()}

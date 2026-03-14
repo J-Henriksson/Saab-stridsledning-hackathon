@@ -15,13 +15,16 @@ import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje"
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
 import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { BaseMap, DropZone } from "@/components/game/BaseMap";
+import { LandingReceptionModal } from "@/components/game/LandingReceptionModal";
+import { RunwayCheckModal } from "@/components/game/RunwayCheckModal";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
-  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, applyRecommendation, dismissRecommendation } = useGame();
+  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, completeLandingCheck, applyRecommendation, dismissRecommendation } = useGame();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
+  const [pendingRunwayCheck, setPendingRunwayCheck] = useState<string | null>(null);
 
   const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
 
@@ -41,8 +44,8 @@ const Index = () => {
         toast.error(`${tail} är inte MC — kan ej sändas på uppdrag`);
         return;
       }
-      sendMissionDrop(selectedBaseId, aircraftId, "DCA");
-      toast.success(`✈️ ${tail} skickad på DCA-uppdrag`);
+      setPendingRunwayCheck(aircraftId);
+      return;
 
     } else if (zone === "hangar") {
       if (aircraft.status === "on_mission") {
@@ -100,6 +103,18 @@ const Index = () => {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString("sv-SE", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  // Runway check: aircraft awaiting pre-flight BIT check
+  const runwayAircraft = pendingRunwayCheck
+    ? selectedBase.aircraft.find((a) => a.id === pendingRunwayCheck)
+    : null;
+
+  // Landing check: drive modal from aircraft with status "returning" directly
+  let firstReturning: { aircraft: (typeof state.bases)[0]["aircraft"][0]; baseId: BaseType } | null = null;
+  for (const base of state.bases) {
+    const ac = base.aircraft.find((a) => a.status === "returning");
+    if (ac) { firstReturning = { aircraft: ac, baseId: base.id }; break; }
+  }
 
   return (
     <div className="flex flex-col h-screen" style={{ background: "hsl(216 18% 95%)" }}>
@@ -321,6 +336,43 @@ const Index = () => {
           </div>
         </div>
       </div>
+
+      {/* Runway Pre-flight Check Modal */}
+      {pendingRunwayCheck && runwayAircraft && (
+        <RunwayCheckModal
+          key={pendingRunwayCheck}
+          aircraft={runwayAircraft}
+          onMission={(durationHours) => {
+            sendMissionDrop(selectedBaseId, pendingRunwayCheck, "DCA", durationHours);
+            setPendingRunwayCheck(null);
+            toast.success(`✈️ ${runwayAircraft.tailNumber} lyfter! Uppdrag ${durationHours}h`);
+          }}
+          onMaintenance={(repairTime, typeKey, weaponLoss, label) => {
+            applyUtfallOutcome(selectedBaseId, pendingRunwayCheck, repairTime, typeKey, weaponLoss, label);
+            setPendingRunwayCheck(null);
+            toast.error(`🔧 ${runwayAircraft.tailNumber} → Service: ${label} (${repairTime}h)`);
+          }}
+          onClose={() => setPendingRunwayCheck(null)}
+        />
+      )}
+
+      {/* Landing Reception Modal */}
+      {firstReturning && (
+        <LandingReceptionModal
+          key={firstReturning.aircraft.id}
+          aircraft={firstReturning.aircraft}
+          baseId={firstReturning.baseId}
+          remaining={state.bases.flatMap((b) => b.aircraft).filter((a) => a.status === "returning").length - 1}
+          onComplete={(aircraftId, baseId, sendToMaintenance, repairTime, maintenanceTypeKey, weaponLoss, actionLabel) => {
+            completeLandingCheck(baseId, aircraftId, sendToMaintenance, repairTime, maintenanceTypeKey, weaponLoss, actionLabel);
+            if (sendToMaintenance) {
+              toast.error(`🔧 ${aircraftId} skickad till underhåll (${repairTime}h)`);
+            } else {
+              toast.success(`✅ ${aircraftId} godkänd — tillbaka till uppställning`);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

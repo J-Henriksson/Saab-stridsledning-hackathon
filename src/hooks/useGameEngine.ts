@@ -15,8 +15,9 @@ export interface GameEngine {
   assignAircraftToOrder: (orderId: string, aircraftIds: string[]) => void;
   dispatchOrder: (orderId: string) => void;
   moveAircraftToMaintenance: (baseId: string, aircraftId: string) => void;
-  sendMissionDrop: (baseId: string, aircraftId: string, missionType?: string) => void;
+  sendMissionDrop: (baseId: string, aircraftId: string, missionType?: string, durationHours?: number) => void;
   applyUtfallOutcome: (baseId: string, aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string) => void;
+  completeLandingCheck: (baseId: string, aircraftId: string, sendToMaintenance: boolean, repairTime?: number, maintenanceTypeKey?: string, weaponLoss?: number, actionLabel?: string) => void;
   resetGame: () => void;
   getResourceSummary: () => string;
 
@@ -54,8 +55,8 @@ export function useGameEngine(): GameEngine {
     dispatch({ type: "START_MAINTENANCE", baseId: baseId as BaseType, aircraftId });
   }, []);
 
-  const sendMissionDrop = useCallback((baseId: string, aircraftId: string, missionType = "DCA") => {
-    dispatch({ type: "SEND_MISSION_DROP", baseId: baseId as BaseType, aircraftId, missionType: missionType as MissionType });
+  const sendMissionDrop = useCallback((baseId: string, aircraftId: string, missionType = "DCA", durationHours?: number) => {
+    dispatch({ type: "SEND_MISSION_DROP", baseId: baseId as BaseType, aircraftId, missionType: missionType as MissionType, durationHours });
   }, []);
 
   const applyUtfallOutcome = useCallback((
@@ -65,6 +66,17 @@ export function useGameEngine(): GameEngine {
     dispatch({
       type: "APPLY_UTFALL_OUTCOME",
       baseId: baseId as BaseType, aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel,
+    });
+  }, []);
+
+  const completeLandingCheck = useCallback((
+    baseId: string, aircraftId: string, sendToMaintenance: boolean,
+    repairTime?: number, maintenanceTypeKey?: string, weaponLoss?: number, actionLabel?: string,
+  ) => {
+    dispatch({
+      type: "COMPLETE_LANDING_CHECK",
+      baseId: baseId as BaseType, aircraftId, sendToMaintenance,
+      repairTime, maintenanceTypeKey, weaponLoss, actionLabel,
     });
   }, []);
 
@@ -128,13 +140,13 @@ export function useGameEngine(): GameEngine {
     state, dispatch,
     advanceTurn, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
-    applyUtfallOutcome, resetGame, getResourceSummary,
+    applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation,
   }), [
     state, advanceTurn, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
-    applyUtfallOutcome, resetGame, getResourceSummary,
+    applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation,
   ]);
