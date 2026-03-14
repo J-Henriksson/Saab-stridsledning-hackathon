@@ -32,9 +32,9 @@ const Index = () => {
 
   const selectedBase = state.bases.find((b) => b.id === selectedBaseId)!;
 
-  const mcTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
-  const onMissionTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "on_mission").length, 0);
-  const inMaintTotal = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length, 0);
+  const mcTotal = selectedBase.aircraft.filter((a) => a.status === "ready").length;
+  const onMissionTotal = selectedBase.aircraft.filter((a) => a.status === "on_mission").length;
+  const inMaintTotal = selectedBase.aircraft.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length;
   const personnelAvail = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
   const personnelTotal = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
 
@@ -202,7 +202,7 @@ const Index = () => {
 
           {/* ROW 1: KPI strip */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <StatusKort titel="Mission Capable" varde={mcTotal} subtitel={`av ${state.bases.reduce((s, b) => s + b.aircraft.length, 0)} totalt`} ikon={<ShieldCheck className="h-5 w-5" />} farg="green" />
+            <StatusKort titel="Mission Capable" varde={mcTotal} subtitel={`av ${selectedBase.aircraft.length} totalt`} ikon={<ShieldCheck className="h-5 w-5" />} farg="green" />
             <StatusKort titel="På uppdrag" varde={onMissionTotal} subtitel="aktiva flygningar" ikon={<Crosshair className="h-5 w-5" />} farg="blue" />
             <StatusKort titel="I underhåll" varde={inMaintTotal} subtitel="NMC + UH" ikon={<Hammer className="h-5 w-5" />} farg="yellow" />
             <StatusKort titel="Personal" varde={`${personnelAvail}/${personnelTotal}`} subtitel="tillgänglig personal" ikon={<Users className="h-5 w-5" />} farg="purple" />

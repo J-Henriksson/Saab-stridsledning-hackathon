@@ -154,6 +154,7 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
             ...ac,
             status: "ready" as AircraftStatus,
             health: 100,
+            hoursToService: 80,
             maintenanceTimeRemaining: undefined,
             maintenanceType: undefined,
             maintenanceTask: undefined,
@@ -205,17 +206,21 @@ function handleIncrementTime(state: GameState): GameState {
     aircraft: base.aircraft.map((ac) => {
       let wear = 0;
       if (ac.status === "ready" || ac.status === "allocated") {
-        wear = Math.floor(Math.random() * 3) + 1; // 1–3% passive
+        wear = Math.floor(Math.random() * 6) + 5;  // 5–10% passive
       } else if (ac.status === "on_mission") {
-        wear = Math.floor(Math.random() * 11) + 10; // 10–20% mission wear
+        wear = Math.floor(Math.random() * 11) + 20; // 20–30% mission wear
       }
-      if (wear === 0) return ac;
+      const consumesServiceHours = ["ready", "allocated", "in_preparation", "awaiting_launch", "on_mission", "returning"];
+      const newHoursToService = consumesServiceHours.includes(ac.status)
+        ? Math.max(0, ac.hoursToService - 1)
+        : ac.hoursToService;
+      if (wear === 0) return { ...ac, hoursToService: newHoursToService };
       const newHealth = Math.max(0, (ac.health ?? 100) - wear);
       // Aircraft that hit 0% health become NMC
       if (newHealth === 0 && (ac.status === "ready" || ac.status === "allocated")) {
-        return { ...ac, health: 0, status: "unavailable" as AircraftStatus };
+        return { ...ac, health: 0, hoursToService: newHoursToService, status: "unavailable" as AircraftStatus };
       }
-      return { ...ac, health: newHealth };
+      return { ...ac, health: newHealth, hoursToService: newHoursToService };
     }),
   }));
 

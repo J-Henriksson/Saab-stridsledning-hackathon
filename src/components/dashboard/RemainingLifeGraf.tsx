@@ -36,8 +36,8 @@ export function RemainingLifeGraf({ bases, phase }: RemainingLifeGrafProps) {
     .sort((a, b) => a.hoursToService - b.hoursToService)
     .slice(0, 4);
 
-  // Bars section: all aircraft sorted by hoursToService asc, grouped by base
-  const sorted = [...allAircraft].sort((a, b) => a.hoursToService - b.hoursToService);
+  // Bars section: all aircraft sorted by health asc (worst first)
+  const sorted = [...allAircraft].sort((a, b) => (a.health ?? 100) - (b.health ?? 100));
 
   return (
     <div className="space-y-4">
@@ -149,13 +149,14 @@ export function RemainingLifeGraf({ bases, phase }: RemainingLifeGrafProps) {
         <div className="grid grid-cols-[90px_1fr_56px] gap-2 items-center pb-1"
           style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}>
           <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: "hsl(218 15% 55%)" }}>FLYGPLAN</span>
-          <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: "hsl(218 15% 55%)" }}>REMAINING LIFE</span>
-          <span className="text-[9px] font-mono uppercase tracking-widest text-right" style={{ color: "hsl(218 15% 55%)" }}>TIMMAR</span>
+          <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: "hsl(218 15% 55%)" }}>HÄLSA</span>
+          <span className="text-[9px] font-mono uppercase tracking-widest text-right" style={{ color: "hsl(218 15% 55%)" }}>%</span>
         </div>
         {sorted.map((ac, i) => {
-          const pct = Math.min(100, (ac.hoursToService / 100) * 100);
-          const isCritical = ac.hoursToService < 20;
-          const isLow = ac.hoursToService < 40;
+          const health = ac.health ?? 100;
+          const pct = health;
+          const isCritical = health < 30;
+          const isLow = health < 60;
           const barColor = isCritical ? "hsl(353 74% 47%)" : isLow ? "hsl(42 64% 53%)" : "hsl(152 60% 38%)";
           const textColor = isCritical ? "hsl(353 74% 42%)" : isLow ? "hsl(42 64% 38%)" : "hsl(220 63% 18%)";
 
@@ -185,7 +186,7 @@ export function RemainingLifeGraf({ bases, phase }: RemainingLifeGrafProps) {
                 />
               </div>
               <div className="text-[10px] font-mono font-bold text-right" style={{ color: textColor }}>
-                {ac.hoursToService}h
+                {ac.health ?? 100}%
               </div>
             </motion.div>
           );
