@@ -27,6 +27,10 @@ interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
   onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string) => void;
+  /** Aircraft IDs that should currently be on a mission per the ATO schedule but aren't dispatched yet */
+  overdueAircraftIds?: string[];
+  /** Mission label per overdue aircraft ID */
+  overdueMissionLabels?: Record<string, string>;
 }
 
 // Drop zones in SVG coordinate space (viewBox 900×500)
@@ -100,7 +104,7 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps) {
+export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
   const [selectedAcId, setSelectedAcId] = useState<string | null>(null);
@@ -287,10 +291,24 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 {isSelAc && (
                   <ellipse cx={cx} cy={cy} rx="20" ry="15" fill="none" stroke="#D7AB3A" strokeWidth="1.5" strokeDasharray="3 2" />
                 )}
+                {/* Overdue mission alert ring */}
+                {overdueAircraftIds.includes(ac.id) && (
+                  <g>
+                    <ellipse cx={cx} cy={cy} rx="22" ry="17" fill="none" stroke="#FF6B00" strokeWidth="2" strokeDasharray="4 2" opacity="0.9">
+                      <animate attributeName="stroke-opacity" values="0.9;0.2;0.9" dur="1s" repeatCount="indefinite" />
+                    </ellipse>
+                    {/* Mission badge */}
+                    <rect x={cx + 10} y={cy - 38} width={overdueMissionLabels[ac.id] ? Math.max(28, overdueMissionLabels[ac.id].length * 5 + 8) : 28} height="11" rx="2.5" fill="#FF6B00" />
+                    <text x={cx + 10 + (overdueMissionLabels[ac.id] ? Math.max(28, overdueMissionLabels[ac.id].length * 5 + 8) : 28) / 2}
+                      y={cy - 30} textAnchor="middle" fontSize="6" fill="white" fontFamily="monospace" fontWeight="bold">
+                      {overdueMissionLabels[ac.id] ?? "NU!"}
+                    </text>
+                  </g>
+                )}
                 {/* Tail label */}
                 <rect x={cx - 22} y={cy - 35} width="44" height="13" rx="2"
                   fill={color === "#0C234C" ? "#0C234C" : "#fff"} fillOpacity="0.92"
-                  stroke={color} strokeWidth="0.8" />
+                  stroke={overdueAircraftIds.includes(ac.id) ? "#FF6B00" : color} strokeWidth={overdueAircraftIds.includes(ac.id) ? 1.5 : 0.8} />
                 <text x={cx} y={cy - 26} textAnchor="middle" fontSize="6.5"
                   fill={color === "#0C234C" ? "#D7AB3A" : color} fontFamily="monospace" fontWeight="bold">
                   {ac.tailNumber}

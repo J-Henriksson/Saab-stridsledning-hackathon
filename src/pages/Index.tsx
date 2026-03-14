@@ -114,6 +114,30 @@ const Index = () => {
       toast.info(`💣 ${tail} schemalagd för beväpning vid ammodepån`);
     }
   };
+  // Aircraft that should currently be on a mission per the Flygschema — uses same hash logic as FlygschemaTidslinje
+  const SCHD_MISSIONS = ["DCA", "QRA", "RECCE", "AEW", "AI_DT", "ESCORT"] as const;
+  const overdueMap: Record<string, string> = {};
+  selectedBase.aircraft.forEach((ac) => {
+    if (ac.status !== "ready" && ac.status !== "allocated") return;
+    // Check real ATO orders first
+    const realOrder = state.atoOrders.find(
+      (o) => o.launchBase === selectedBaseId &&
+             o.assignedAircraft.includes(ac.id) &&
+             (o.status === "assigned" || o.status === "dispatched") &&
+             o.startHour <= state.hour && o.endHour > state.hour
+    );
+    if (realOrder) { overdueMap[ac.id] = realOrder.missionType; return; }
+    // Fall back to simulated Flygschema slot (same hash as FlygschemaTidslinje getSlots)
+    const hash = parseInt(ac.id.replace(/\D/g, "")) || 1;
+    const mStart = 6 + (hash % 9);
+    const mEnd = Math.min(21, mStart + 2 + (hash % 3));
+    if (state.hour >= mStart && state.hour < mEnd) {
+      overdueMap[ac.id] = SCHD_MISSIONS[hash % SCHD_MISSIONS.length];
+    }
+  });
+  const overdueAircraftIds = Object.keys(overdueMap);
+  const overdueMissionLabels = overdueMap;
+
   const kritiskaResurser = selectedBase.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3).length +
     selectedBase.ammunition.filter((a) => a.quantity / a.max < 0.3).length;
 
@@ -233,6 +257,8 @@ const Index = () => {
             <BaseMap
               base={selectedBase}
               onDropAircraft={handleDropAircraft}
+              overdueAircraftIds={overdueAircraftIds}
+              overdueMissionLabels={overdueMissionLabels}
               onUtfallOutcome={(aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel) => {
                 if (repairTime > 0 && selectedBase.maintenanceBays.occupied >= selectedBase.maintenanceBays.total) {
                   setPendingUtfallFull({ aircraftId, repairTime, typeKey: maintenanceTypeKey, weaponLoss, label: actionLabel });
