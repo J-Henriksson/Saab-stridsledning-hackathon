@@ -92,8 +92,8 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   return (
     <image
       href="/Jase_transparent.png"
-      x={cx - 18} y={cy - 14}
-      width="36" height="28"
+      x={cx - 26} y={cy - 20}
+      width="52" height="40"
       opacity={opacity}
       filter={`url(#${filterId})`}
     />
@@ -259,9 +259,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           {/* Aircraft icons on apron */}
           {apronAircraft.map((ac, i) => {
             const col = i % cols;
-            const row = Math.floor(i / cols);
-            const cx = 80 + col * 46;
-            const cy = 258 + row * 44;
+            const cx = 60 + (col + 0.5) * (780 / cols);
+            const cy = 263;
             const color = getAircraftColor(ac);
             const isSelAc = selectedAcId === ac.id;
             return (
@@ -283,32 +282,40 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 }}
               >
                 {isSelAc && (
-                  <ellipse cx={cx} cy={cy} rx="16" ry="12" fill="none" stroke="#D7AB3A" strokeWidth="1.5" strokeDasharray="3 2" />
+                  <ellipse cx={cx} cy={cy} rx="20" ry="15" fill="none" stroke="#D7AB3A" strokeWidth="1.5" strokeDasharray="3 2" />
                 )}
-                <AircraftImage cx={cx} cy={cy} color={color} />
-                {/* Battery bar */}
-                {(() => {
-                  const battPct = Math.min(1, ac.hoursToService / 100);
-                  const battColor = ac.hoursToService <= 20 ? "#D9192E" : ac.hoursToService < 50 ? "#D7AB3A" : "#0C234C";
-                  const bX = cx - 11, bY = cy + 15, bW = 22, bH = 5;
-                  return (
-                    <g>
-                      <rect x={bX} y={bY} width={bW} height={bH} rx={1.5} fill="rgba(255,255,255,0.5)" stroke="#0C234C" strokeWidth={0.6} opacity={0.7} />
-                      <rect x={bX + bW} y={bY + 1.2} width={2} height={bH - 2.4} rx={0.5} fill="#0C234C" opacity={0.5} />
-                      <rect x={bX + 1} y={bY + 1} width={Math.max(0, (bW - 2) * battPct)} height={bH - 2} rx={1} fill={battColor} />
-                    </g>
-                  );
-                })()}
                 {/* Label */}
-                <g>
-                  <rect x={cx - 18} y={cy - 28} width="36" height="13" rx="2"
-                    fill={color === "#0C234C" ? "#0C234C" : "#fff"} fillOpacity="0.92"
-                    stroke={color} strokeWidth="0.8" />
-                  <text x={cx} y={cy - 19} textAnchor="middle" fontSize="6.5"
-                    fill={color === "#0C234C" ? "#D7AB3A" : color} fontFamily="monospace" fontWeight="bold">
-                    {ac.tailNumber}
-                  </text>
-                </g>
+                <rect x={cx - 22} y={cy - 35} width="44" height="13" rx="2"
+                  fill={color === "#0C234C" ? "#0C234C" : "#fff"} fillOpacity="0.92"
+                  stroke={color} strokeWidth="0.8" />
+                <text x={cx} y={cy - 26} textAnchor="middle" fontSize="6.5"
+                  fill={color === "#0C234C" ? "#D7AB3A" : color} fontFamily="monospace" fontWeight="bold">
+                  {ac.tailNumber}
+                </text>
+                <AircraftImage cx={cx} cy={cy} color={color} />
+                {/* Battery tooltip on hover */}
+                {hoveredAc === ac.id && (
+                  <g style={{ pointerEvents: "none" }}>
+                    {(() => {
+                      const battPct = Math.min(1, ac.hoursToService / 100);
+                      const battColor = ac.hoursToService <= 20 ? "#D9192E" : ac.hoursToService < 50 ? "#D7AB3A" : "#0C234C";
+                      const bX = cx - 18, bY = cy + 23, bW = 36, bH = 6;
+                      return (
+                        <>
+                          <rect x={bX - 2} y={bY - 2} width={bW + 10} height={bH + 4} rx="3"
+                            fill="#0C234C" fillOpacity="0.85" />
+                          <rect x={bX} y={bY} width={bW} height={bH} rx={1.5}
+                            fill="rgba(255,255,255,0.4)" stroke="#D7DEE1" strokeWidth={0.5} />
+                          <rect x={bX + 1} y={bY + 1} width={Math.max(0, (bW - 2) * battPct)} height={bH - 2}
+                            rx={1} fill={battColor} />
+                          <text x={bX + bW + 4} y={bY + bH - 1} fontSize="6" fill="#D7DEE1" fontFamily="monospace">
+                            {ac.hoursToService}h
+                          </text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
               </g>
             );
           })}
@@ -640,9 +647,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             if (acIdx < 0) return null;
             const ac = apronAircraft[acIdx];
             const col = acIdx % cols;
-            const row = Math.floor(acIdx / cols);
-            const cx = 80 + col * 46;
-            const cy = 258 + row * 44;
+            const cx = 60 + (col + 0.5) * (780 / cols);
+            const cy = 263;
 
             const pw = 195, ph = 225;
             const acColor = getAircraftColor(ac);
