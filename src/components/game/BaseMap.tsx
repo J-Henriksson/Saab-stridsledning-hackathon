@@ -37,9 +37,9 @@ const SVG_ZONES: {
   colorBorder: string;
 }[] = [
   { id: "runway",     x: 60,  y: 148, w: 780, h: 62,  label: "✈️  STARTA UPPDRAG",    colorFill: "rgba(215,171,58,0.30)",  colorBorder: "#D7AB3A" },
-  { id: "hangar",     x: 60,  y: 318, w: 195, h: 128, label: "🔧  UNDERHÅLL / SERVICE", colorFill: "rgba(12,35,76,0.30)",    colorBorder: "#0C234C" },
+  { id: "hangar",     x: 55,  y: 313, w: 343, h: 125, label: "🔧  UNDERHÅLL / SERVICE", colorFill: "rgba(12,35,76,0.30)",    colorBorder: "#0C234C" },
   { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "📦  SNABB LRU-REP",      colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
-  { id: "fuel",       x: 280, y: 318, w: 110, h: 72,  label: "⛽  TANKNING",            colorFill: "rgba(12,35,76,0.25)",    colorBorder: "#0C234C" },
+  { id: "fuel",       x: 430, y: 370, w: 110, h: 72,  label: "⛽  TANKNING",            colorFill: "rgba(12,35,76,0.25)",    colorBorder: "#0C234C" },
   { id: "ammo",       x: 430, y: 318, w: 130, h: 40,  label: "💣  BEVÄPNING",           colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
 ];
 
@@ -75,21 +75,9 @@ const AC_LABEL: Record<string, string> = {
   unavailable: "NMC",
 };
 
-// Plane silhouette color based on health %
+// Plane silhouette color — status only (health shown in hover panel, not icon)
 function getAircraftColor(ac: Aircraft): string {
-  if (ac.status === "under_maintenance") return "#D7AB3A";
-  if (ac.status === "unavailable") return "#D9192E";
-  const h = ac.health ?? 100;
-  if (h <= 20) return "#CC2222";          // deep red — NMC / critical
-  if (h <= 50) return "#E07800";          // warm orange — degraded
-  return "#0C234C";                        // blue — operational
-}
-
-// Health color for text/bar display — readable against light background
-function getHealthColor(health: number): string {
-  if (health <= 20) return "#CC2222";   // deep red
-  if (health <= 50) return "#E07800";   // warm orange (readable)
-  return "#33C45A";                      // deep green (not neon)
+  return AC_COLOR[ac.status] ?? "#0C234C";
 }
 
 // Aircraft image using Jase_transparent.png, tinted by status color, centered at (cx,cy)
@@ -167,10 +155,13 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
   }
 
   // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
+  const apronX = 60;
+  const apronWidth = 780;
+  const apronCols = 12;
+  const apronColWidth = apronWidth / apronCols;
   const apronAircraft = base.aircraft
     .filter((a) => a.status === "ready" || a.status === "unavailable")
-    .slice(0, 32);
-  const cols = 16;
+    .slice(0, apronCols);
 
   return (
     <div>
@@ -256,17 +247,17 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             onClick={(e) => { e.stopPropagation(); toggle("apron"); }}
           />
           {/* Parking bay lines */}
-          {[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map((i) => (
-            <line key={`bay-${i}`} x1={80 + i * 46} y1={218} x2={80 + i * 46} y2={308}
+          {Array.from({ length: apronCols + 1 }, (_, i) => (
+            <line key={`bay-${i}`} x1={apronX + i * apronColWidth} y1={218} x2={apronX + i * apronColWidth} y2={308}
               stroke="#0C234C" strokeWidth="0.4" opacity="0.25" />
           ))}
           <text x="75" y="230" fontSize="8" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.6">UPPSTÄLLNINGSPLATS</text>
 
           {/* Aircraft icons on apron */}
           {apronAircraft.map((ac, i) => {
-            const col = i % cols;
-            const cx = 60 + (col + 0.5) * (780 / cols);
-            const cy = 263;
+            const col = i % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
+            const cy = 270; // lowered slightly to align inside the parking bay
             const color = getAircraftColor(ac);
             const isSelAc = selectedAcId === ac.id;
             return (
@@ -299,19 +290,38 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   {ac.tailNumber}
                 </text>
                 <AircraftImage cx={cx} cy={cy} color={color} />
-                {/* Health % bar (always visible) */}
-                {(() => {
+                {/* Hover info panel */}
+                {hoveredAc === ac.id && (() => {
                   const hp = ac.health ?? 100;
-                  const hColor = getHealthColor(hp);
-                  const bX = cx - 18, bY = cy + 23, bW = 36, bH = 6;
+                  const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
+                  const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
+                  const panelW = 110, panelH = 68;
+                  const px = cx + 30 > 840 ? cx - panelW - 6 : cx + 6;
+                  const py = cy - panelH - 4;
+                  const statusText =
+                    ac.status === "ready" ? "Mission Capable" :
+                    ac.status === "unavailable" ? "Ej operativ (NMC)" :
+                    ac.status === "under_maintenance" ? `Service – ${ac.maintenanceTimeRemaining ?? "?"}h kvar` :
+                    ac.status === "on_mission" ? "På uppdrag" :
+                    ac.status === "returning" ? "Återvänder" : ac.status;
                   return (
-                    <g>
-                      <rect x={bX} y={bY} width={bW} height={bH} rx={1.5}
-                        fill="rgba(0,0,0,0.55)" stroke="#333" strokeWidth={0.5} />
-                      <rect x={bX + 1} y={bY + 1} width={Math.max(0, (bW - 2) * (hp / 100))} height={bH - 2}
-                        rx={1} fill={hColor} />
-                      <text x={cx} y={bY + bH + 8} textAnchor="middle" fontSize="7" fill={hColor} fontFamily="monospace" fontWeight="bold">
-                        {hp}%
+                    <g style={{ pointerEvents: "none" }}>
+                      <rect x={px} y={py} width={panelW} height={panelH} rx="4"
+                        fill="#0C234C" opacity="0.96" stroke="#D7AB3A" strokeWidth="0.8" />
+                      {/* Row 1: Health bar */}
+                      <text x={px + 5} y={py + 11} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">HÄLSA</text>
+                      <rect x={px + 5} y={py + 14} width={panelW - 10} height={6} rx="1.5" fill="rgba(0,0,0,0.5)" />
+                      <rect x={px + 5} y={py + 14} width={Math.max(0, (panelW - 10) * (hp / 100))} height={6} rx="1.5" fill={hColor} />
+                      <text x={px + panelW - 5} y={py + 20} textAnchor="end" fontSize="6" fill={hpTextColor} fontFamily="monospace" fontWeight="bold">{hp}</text>
+                      {/* Row 2: Fuel */}
+                      <text x={px + 5} y={py + 33} fontSize="6.5" fill="#8899bb" fontFamily="monospace">BRÄNSLE: <tspan fill="#D7DEE1" fontWeight="bold">{Math.round(base.fuel)}%</tspan></text>
+                      {/* Row 3: Payload */}
+                      <text x={px + 5} y={py + 45} fontSize="6" fill="#8899bb" fontFamily="monospace">
+                        LAST: <tspan fill="#D7DEE1">{ac.payload ?? "–"}</tspan>
+                      </text>
+                      {/* Row 4: Status */}
+                      <text x={px + 5} y={py + 57} fontSize="6" fill="#8899bb" fontFamily="monospace">
+                        <tspan fill={color === "#D9192E" ? "#ff6655" : color === "#D7AB3A" ? "#D7AB3A" : "#aaccff"}>{statusText}</tspan>
                       </text>
                     </g>
                   );
@@ -320,12 +330,12 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             );
           })}
 
-          {/* ── Maintenance Hangars (4) ── */}
-          {[0, 1, 2, 3].map((i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            const hx = 60 + col * 100;
-            const hy = 318 + row * 65;
+          {/* ── Maintenance Hangars (8, 4×2 grid) ── */}
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const col = i % 4;
+            const row = Math.floor(i / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
             const occupied = i < base.maintenanceBays.occupied;
             const isSel = selected === "hangar";
             const isHangarHot = dropZoneHover === "hangar";
@@ -333,37 +343,37 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
               <g key={i} style={{ cursor: "pointer" }}
                 onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("hangar"); } }}>
                 {/* Hangar body */}
-                <rect x={hx} y={hy} width="86" height="58" rx="3"
+                <rect x={hx} y={hy} width="78" height="52" rx="3"
                   fill={isHangarHot ? "#D7AB3A22" : occupied ? "#D7AB3A15" : "#0C234C0a"}
                   stroke={isHangarHot ? "#D7AB3A" : isSel ? "#0C234C" : occupied ? "#D7AB3A" : "#0C234C55"}
                   strokeWidth={isHangarHot || isSel ? 2 : 1} />
                 {/* Roof ridge */}
-                <line x1={hx + 43} y1={hy} x2={hx + 43} y2={hy + 28} stroke="#0C234C" strokeWidth="0.5" opacity="0.3" />
+                <line x1={hx + 39} y1={hy} x2={hx + 39} y2={hy + 24} stroke="#0C234C" strokeWidth="0.5" opacity="0.3" />
                 {/* Door */}
-                <rect x={hx + 18} y={hy + 30} width="50" height="28" rx="1"
+                <rect x={hx + 16} y={hy + 26} width="46" height="24" rx="1"
                   fill={occupied ? "#D7AB3A20" : "#0C234C08"}
                   stroke={occupied ? "#D7AB3A80" : "#0C234C30"} strokeWidth="0.8" />
-                <text x={hx + 43} y={hy + 13} textAnchor="middle" fontSize="7"
+                <text x={hx + 39} y={hy + 12} textAnchor="middle" fontSize="7"
                   fill={occupied ? "#0C234C" : "#0C234C80"} fontFamily="monospace" fontWeight="bold">
                   H{i + 1}
                 </text>
                 {occupied && (
-                  <circle cx={hx + 73} cy={hy + 9} r="4" fill="#D7AB3A" opacity="0.9">
+                  <circle cx={hx + 66} cy={hy + 8} r="4" fill="#D7AB3A" opacity="0.9">
                     <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2s" repeatCount="indefinite" />
                   </circle>
                 )}
               </g>
             );
           })}
-          <text x="146" y="315" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">UNDERHÅLLSHALLAR</text>
+          <text x="228" y="314" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">UNDERHÅLLSHALLAR</text>
 
           {/* ── Maintenance aircraft inside hangars ── */}
-          {maint.slice(0, 4).map((ac, i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            const hx = 60 + col * 100;
-            const hy = 318 + row * 65;
-            const mx = hx + 43, my = hy + 43;
+          {maint.slice(0, 8).map((ac, i) => {
+            const col = i % 4;
+            const row = Math.floor(i / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
+            const mx = hx + 39, my = hy + 38;
             return (
               <g key={`maint-${ac.id}`}
                 onMouseEnter={() => setHoveredAc(ac.id)}
@@ -384,22 +394,35 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             const isSel = selected === "fuel";
             const fuelPct = base.fuel / 100;
             const fuelColor = base.fuel > 60 ? "#0C234C" : base.fuel > 30 ? "#D7AB3A" : "#D9192E";
+            const fuelX = 430;
+            const fuelY = 370;
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("fuel"); }}>
-                <rect x="280" y="318" width="110" height="72" rx="3"
+                <rect x={fuelX} y={fuelY} width="110" height="72" rx="3"
                   fill={isSel ? "#D7AB3A10" : "#0C234C08"}
                   stroke={isSel ? "#D7AB3A" : fuelColor + "60"}
                   strokeWidth={isSel ? 2 : 1} />
                 {/* Tanks */}
-                <circle cx="316" cy="345" r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
-                <circle cx="354" cy="345" r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
-                <clipPath id="fuelClip1"><circle cx="316" cy="345" r="17" /></clipPath>
-                <rect x="299" y={345 + 17 - 34 * fuelPct} width="34" height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip1)" />
-                <clipPath id="fuelClip2"><circle cx="354" cy="345" r="17" /></clipPath>
-                <rect x="337" y={345 + 17 - 34 * fuelPct} width="34" height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip2)" />
-                <text x="316" y="347" textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
-                <text x="354" y="347" textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
-                <text x="335" y="374" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">BRÄNSLE DEPÅ</text>
+                {(() => {
+                  const tank1Cx = fuelX + 36;
+                  const tank2Cx = fuelX + 74;
+                  const tankCy = fuelY + 27;
+                  const fillW = 34;
+                  const fillX = (cx: number) => cx - fillW / 2;
+                  return (
+                    <>
+                      <circle cx={tank1Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
+                      <circle cx={tank2Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
+                      <clipPath id="fuelClip1"><circle cx={tank1Cx} cy={tankCy} r="17" /></clipPath>
+                      <rect x={fillX(tank1Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip1)" />
+                      <clipPath id="fuelClip2"><circle cx={tank2Cx} cy={tankCy} r="17" /></clipPath>
+                      <rect x={fillX(tank2Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip2)" />
+                    </>
+                  );
+                })()}
+                <text x={fuelX + 36} y={fuelY + 29} textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
+                <text x={fuelX + 74} y={fuelY + 29} textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
+                <text x={fuelX + 55} y={fuelY + 56} textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">BRÄNSLE DEPÅ</text>
               </g>
             );
           })()}
@@ -542,17 +565,17 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 
           {/* ── Personnel barracks ── */}
           <g>
-            <rect x="360" y="40" width="100" height="70" rx="3"
+            <rect x="370" y="40" width="110" height="70" rx="3"
               fill="#0C234C0a" stroke="#0C234C45" strokeWidth="1" />
             {[0, 1, 2].map((row) =>
               [0, 1, 2, 3].map((col) => (
                 <rect key={`${row}-${col}`}
-                  x={370 + col * 20} y={50 + row * 16}
-                  width="12" height="9" rx="1"
+                  x={380 + col * 22} y={50 + row * 16}
+                  width="14" height="9" rx="1"
                   fill="#D7DEE1" stroke="#0C234C25" strokeWidth="0.5" />
               ))
             )}
-            <text x="410" y="120" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">FÖRLÄGGNING</text>
+            <text x="425" y="120" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">FÖRLÄGGNING</text>
           </g>
 
           {/* NO ROADS — only taxiway strip drawn above */}

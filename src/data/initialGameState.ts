@@ -49,11 +49,7 @@ const MOB: Base = {
   name: "Huvudbas MOB",
   type: "huvudbas",
   aircraft: [
-    ...createAircraft("MOB", "GripenE", "GE", 18),
-    ...createAircraft("MOB", "GripenF_EA", "GF", 6),
-    ...createAircraft("MOB", "GlobalEye", "GB", 2),
-    ...createAircraft("MOB", "VLO_UCAV", "VL", 4),
-    ...createAircraft("MOB", "LOTUS", "LO", 2),
+    ...createAircraft("MOB", "GripenE", "GE", 12),
   ],
   spareParts: createSpareParts(),
   personnel: createPersonnel(1),
