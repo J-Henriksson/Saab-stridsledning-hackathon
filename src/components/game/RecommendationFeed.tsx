@@ -26,22 +26,22 @@ const priorityStyles: Record<string, { bg: string; border: string; color: string
 export function RecommendationFeed({ recommendations, onApply, onDismiss }: RecommendationFeedProps) {
   const active = recommendations.filter((r) => !r.dismissed);
 
-  if (active.length === 0) {
-    return (
-      <div className="p-4 text-center">
-        <CheckCircle className="h-8 w-8 mx-auto mb-2 opacity-20" style={{ color: "hsl(152 60% 38%)" }} />
-        <p className="text-[11px] font-mono" style={{ color: "hsl(218 15% 55%)" }}>Inga rekommendationer</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2 p-3">
       <div className="flex items-center justify-between mb-1">
-        <h4 className="text-[10px] font-mono font-bold tracking-wider" style={{ color: "hsl(220 63% 18%)" }}>
-          REKOMMENDATIONER ({active.length})
-        </h4>
+        <div>
+          <h4 className="text-[10px] font-mono font-bold tracking-wider" style={{ color: "hsl(220 63% 18%)" }}>
+            REKOMMENDATIONER {active.length > 0 ? `(${active.length})` : ""}
+          </h4>
+          <p className="text-[8px] font-mono" style={{ color: "hsl(218 15% 55%)" }}>SYSTEM-ANALYS — AKTIVA ÅTGÄRDER</p>
+        </div>
       </div>
+      {active.length === 0 && (
+        <div className="py-3 text-center">
+          <CheckCircle className="h-6 w-6 mx-auto mb-1 opacity-20" style={{ color: "hsl(152 60% 38%)" }} />
+          <p className="text-[10px] font-mono" style={{ color: "hsl(218 15% 55%)" }}>Inga aktiva rekommendationer</p>
+        </div>
+      )}
       {active.map((rec) => {
         const ps = priorityStyles[rec.priority] ?? priorityStyles.low;
         return (

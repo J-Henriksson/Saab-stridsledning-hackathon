@@ -4,7 +4,6 @@ import { TopBar } from "@/components/game/TopBar";
 import { MissionSchedule } from "@/components/game/MissionSchedule";
 import { AircraftPipeline } from "@/components/game/AircraftPipeline";
 import { MaintenanceBays } from "@/components/game/MaintenanceBays";
-import { AIAgent } from "@/components/game/AIAgent";
 import { TurnPhaseTracker } from "@/components/game/TurnPhaseTracker";
 import { PhasePanel } from "@/components/game/PhasePanel";
 import { RecommendationFeed } from "@/components/game/RecommendationFeed";
@@ -24,7 +23,7 @@ import { BaseType } from "@/types/game";
 import { ShieldCheck, Crosshair, Hammer, Users, Siren, Clock, MapPin, PlaneTakeoff } from "lucide-react";
 
 const Index = () => {
-  const { state, advanceTurn, startMaintenance, sendOnMission, getResourceSummary, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, completeLandingCheck, applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC } = useGame();
+  const { state, advanceTurn, startMaintenance, sendOnMission, resetGame, moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome, completeLandingCheck, applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC } = useGame();
   const [selectedBaseId, setSelectedBaseId] = useState<BaseType>("MOB");
   const [pendingRunwayCheck, setPendingRunwayCheck] = useState<string | null>(null);
   const [pendingMaintenanceCheck, setPendingMaintenanceCheck] = useState<string | null>(null);
@@ -325,7 +324,7 @@ const Index = () => {
                 </div>
               </div>
               <div className="p-4">
-                <RemainingLifeGraf base={selectedBase} />
+                <RemainingLifeGraf bases={state.bases} phase={state.phase} />
               </div>
             </div>
           </div>
@@ -337,17 +336,12 @@ const Index = () => {
           <div className="p-3" style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}>
             <ResursPanel base={selectedBase} phase={state.phase} />
           </div>
-          {state.recommendations.length > 0 && (
-            <div style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}>
-              <RecommendationFeed
-                recommendations={state.recommendations}
-                onApply={applyRecommendation}
-                onDismiss={dismissRecommendation}
-              />
-            </div>
-          )}
-          <div className="flex-1 min-h-[300px]">
-            <AIAgent getResourceSummary={getResourceSummary} />
+          <div className="flex-1 overflow-y-auto">
+            <RecommendationFeed
+              recommendations={state.recommendations}
+              onApply={applyRecommendation}
+              onDismiss={dismissRecommendation}
+            />
           </div>
         </div>
       </div>
@@ -357,6 +351,7 @@ const Index = () => {
         <RunwayCheckModal
           key={pendingRunwayCheck}
           aircraft={runwayAircraft}
+          maintenanceBays={selectedBase.maintenanceBays}
           onMission={(durationHours) => {
             sendMissionDrop(selectedBaseId, pendingRunwayCheck, "DCA", durationHours);
             setPendingRunwayCheck(null);

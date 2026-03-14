@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Aircraft } from "@/types/game";
 import { UTFALL_TABLE_A, WEAPON_LOSS_BY_ROLL, EXTRA_MAINTENANCE_TIME_BY_ROLL } from "@/data/config/probabilities";
 import { Dice6, CheckCircle, AlertTriangle, X, Plane } from "lucide-react";
+import { ContextualRecommendation } from "./ContextualRecommendation";
 
 type Phase = "roll1" | "missionTime" | "faultRolling" | "faultFound";
 
 interface Props {
   aircraft: Aircraft;
+  maintenanceBays: { occupied: number; total: number };
   onMission: (durationHours: number) => void;
   onMaintenance: (repairTime: number, typeKey: string, weaponLoss: number, label: string) => void;
   onIgnoreFault: (repairTime: number, typeKey: string, actionLabel: string) => void;
@@ -32,7 +34,25 @@ function animatedRoll(
   }, 70);
 }
 
-export function RunwayCheckModal({ aircraft, onMission, onMaintenance, onIgnoreFault, onClose }: Props) {
+function getMissionRec(aircraft: Aircraft): { text: string; type: "positive" | "warning" | "neutral" } {
+  const health = aircraft.health ?? 100;
+  const h2s = aircraft.hoursToService;
+  if (h2s < 10)
+    return { text: `Bara ${h2s}h kvar till 100h-service — planera underhåll snart istället för uppdrag.`, type: "warning" };
+  if (health < 50)
+    return { text: `Låg hälsa (${health}%) — överväg service istället för uppdrag.`, type: "warning" };
+  if (health >= 70 && h2s >= 20)
+    return { text: `Flygplanet är i gott skick (${health}% hälsa, ${h2s}h till service) — lämpligt att skicka på uppdrag.`, type: "positive" };
+  return { text: `Flygplanet är operativt. Kontrollera servicebehov inom kort (${h2s}h kvar).`, type: "neutral" };
+}
+
+function getFaultRec(bays: { occupied: number; total: number }, repairTime: number): { text: string; type: "positive" | "warning" | "neutral" } {
+  if (bays.occupied < bays.total)
+    return { text: `Underhållsbay ledig (${bays.occupied}/${bays.total}) — skicka till service direkt (${repairTime}h).`, type: "warning" };
+  return { text: `Alla underhållsplatser upptagna (${bays.occupied}/${bays.total}) — parkera som NMC tills bay frigörs.`, type: "neutral" };
+}
+
+export function RunwayCheckModal({ aircraft, maintenanceBays, onMission, onMaintenance, onIgnoreFault, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>("roll1");
   const [rolling, setRolling] = useState(false);
 
@@ -257,41 +277,47 @@ export function RunwayCheckModal({ aircraft, onMission, onMaintenance, onIgnoreF
             )}
 
             {phase === "missionTime" && (
-              <motion.div key="btn-mission" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
-                <button
-                  onClick={onClose}
-                  className="px-5 py-3 rounded-xl font-mono font-bold text-sm transition-all hover:brightness-110 active:scale-95"
-                  style={{ background: "#1a2a3a", border: "1px solid #3a4a5a", color: "#8899bb" }}
-                >
-                  ✕ Avbryt
-                </button>
-                <button
-                  onClick={() => onMission(missionDuration!)}
-                  className="flex-1 py-3 rounded-xl font-mono font-black text-sm transition-all hover:brightness-110 active:scale-95 flex items-center justify-center gap-2"
-                  style={{ background: "#1a5a2a", border: "1px solid #4aD7AA", color: "#4aD7AA" }}
-                >
-                  <Plane className="h-4 w-4" />
-                  KÖR! — Uppdrag {missionDuration}h
-                </button>
+              <motion.div key="btn-mission" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {(() => { const rec = getMissionRec(aircraft); return <ContextualRecommendation text={rec.text} type={rec.type} />; })()}
+                <div className="flex gap-3">
+                  <button
+                    onClick={onClose}
+                    className="px-5 py-3 rounded-xl font-mono font-bold text-sm transition-all hover:brightness-110 active:scale-95"
+                    style={{ background: "#1a2a3a", border: "1px solid #3a4a5a", color: "#8899bb" }}
+                  >
+                    ✕ Avbryt
+                  </button>
+                  <button
+                    onClick={() => onMission(missionDuration!)}
+                    className="flex-1 py-3 rounded-xl font-mono font-black text-sm transition-all hover:brightness-110 active:scale-95 flex items-center justify-center gap-2"
+                    style={{ background: "#1a5a2a", border: "1px solid #4aD7AA", color: "#4aD7AA" }}
+                  >
+                    <Plane className="h-4 w-4" />
+                    KÖR! — Uppdrag {missionDuration}h
+                  </button>
+                </div>
               </motion.div>
             )}
 
             {phase === "faultFound" && faultOutcome && (
-              <motion.div key="btn-fault-found" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
-                <button
-                  onClick={() => onIgnoreFault(faultEffectiveTime, faultOutcome.faultType, faultOutcome.description)}
-                  className="px-5 py-3 rounded-xl font-mono font-bold text-sm transition-all hover:brightness-110 active:scale-95"
-                  style={{ background: "#2a1a1a", border: "1px solid #5566aa", color: "#8899cc" }}
-                >
-                  Ignorera — NMC
-                </button>
-                <button
-                  onClick={handleSendToService}
-                  className="flex-1 py-3 rounded-xl font-mono font-black text-sm transition-all hover:brightness-110 active:scale-95 flex items-center justify-center gap-2"
-                  style={{ background: "#5a2a1a", border: "1px solid #D9192E", color: "#ff6655" }}
-                >
-                  ⛔ Bekräfta — skicka till service ({faultEffectiveTime}h)
-                </button>
+              <motion.div key="btn-fault-found" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+                {(() => { const rec = getFaultRec(maintenanceBays, faultEffectiveTime); return <ContextualRecommendation text={rec.text} type={rec.type} />; })()}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => onIgnoreFault(faultEffectiveTime, faultOutcome.faultType, faultOutcome.description)}
+                    className="px-5 py-3 rounded-xl font-mono font-bold text-sm transition-all hover:brightness-110 active:scale-95"
+                    style={{ background: "#2a1a1a", border: "1px solid #5566aa", color: "#8899cc" }}
+                  >
+                    Ignorera — NMC
+                  </button>
+                  <button
+                    onClick={handleSendToService}
+                    className="flex-1 py-3 rounded-xl font-mono font-black text-sm transition-all hover:brightness-110 active:scale-95 flex items-center justify-center gap-2"
+                    style={{ background: "#5a2a1a", border: "1px solid #D9192E", color: "#ff6655" }}
+                  >
+                    ⛔ Bekräfta — skicka till service ({faultEffectiveTime}h)
+                  </button>
+                </div>
               </motion.div>
             )}
 
