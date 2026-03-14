@@ -2,6 +2,7 @@ import type { GameState, GameAction, GameEvent, AircraftStatus, MissionType } fr
 import { isMissionCapable } from "@/types/game";
 import { initialGameState } from "@/data/initialGameState";
 import { PHASE_ORDER, getNextPhase, isLastPhase, getPhaseDefinition } from "@/data/config/phases";
+import { MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
 import { handlePhase } from "./phases";
 import { validateAction } from "./validators";
 
@@ -65,6 +66,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "MARK_FAULT_NMC":
       return handleMarkFaultNMC(state, action.baseId, action.aircraftId, action.repairTime, action.maintenanceTypeKey, action.actionLabel);
+
+    case "CONSUME_SPARE_PART":
+      return handleConsumeSparePart(state, action.baseId, action.sparePartId, action.quantity ?? 1);
 
     case "MOVE_AIRCRAFT":
       return state; // TODO: implement zone-based movement
@@ -306,9 +310,17 @@ function handleApplyUtfall(
       };
     });
     const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    // Deduct crew when aircraft enters maintenance (same as hangarDropConfirm)
+    const personnel = repairTime > 0
+      ? base.personnel.map((p) => ({
+          ...p,
+          available: Math.max(0, p.available - (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
+        }))
+      : base.personnel;
     return {
       ...base,
       aircraft,
+      personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
@@ -341,9 +353,15 @@ function handleHangarDropConfirm(
       };
     });
     const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    // Deduct crew from available personnel for this aircraft entering maintenance
+    const personnel = base.personnel.map((p) => ({
+      ...p,
+      available: Math.max(0, p.available - (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
+    }));
     return {
       ...base,
       aircraft,
+      personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
@@ -398,16 +416,42 @@ function handlePauseMaintenance(state: GameState, baseId: string, aircraftId: st
       return { ...ac, status: "unavailable" as AircraftStatus, health: 0 };
     });
     const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    // Restore crew when aircraft leaves maintenance bay
+    const personnel = base.personnel.map((p) => ({
+      ...p,
+      available: Math.min(p.total, p.available + (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
+    }));
     return {
       ...base,
       aircraft,
+      personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
 
   return addEvent({ ...state, bases: updatedBases }, {
     type: "warning",
-    message: `⏸ Underhåll pausat på ${aircraftId} — arbetet återupptas manuellt`,
+    message: `Underhåll pausat på ${aircraftId} — arbetet återupptas manuellt`,
+    base: baseId,
+  });
+}
+
+function handleConsumeSparePart(state: GameState, baseId: string, sparePartId: string, quantity: number): GameState {
+  const updatedBases = state.bases.map((base) => {
+    if (base.id !== baseId) return base;
+    return {
+      ...base,
+      spareParts: base.spareParts.map((p) =>
+        p.id === sparePartId
+          ? { ...p, quantity: Math.max(0, p.quantity - quantity) }
+          : p
+      ),
+    };
+  });
+  const part = state.bases.find((b) => b.id === baseId)?.spareParts.find((p) => p.id === sparePartId);
+  return addEvent({ ...state, bases: updatedBases }, {
+    type: "info",
+    message: `Reservdel använd: ${part?.name ?? sparePartId} (−${quantity}) vid ${baseId}`,
     base: baseId,
   });
 }

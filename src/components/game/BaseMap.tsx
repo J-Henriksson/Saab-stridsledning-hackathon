@@ -10,6 +10,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { UtfallModal } from "./UtfallModal";
+import { MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
 
 type BuildingId =
   | "apron"
@@ -26,6 +27,14 @@ interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
   onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string) => void;
+  /** Aircraft IDs whose ATO mission window is active NOW (pulsing orange) */
+  overdueAircraftIds?: string[];
+  /** Mission label per urgent aircraft ID */
+  overdueMissionLabels?: Record<string, string>;
+  /** Aircraft IDs assigned to a future ATO mission (steady blue) */
+  upcomingAircraftIds?: string[];
+  /** "MISSIONTYPE HH:00" label per upcoming aircraft ID */
+  upcomingMissionLabels?: Record<string, string>;
 }
 
 // Drop zones in SVG coordinate space (viewBox 900×500)
@@ -38,7 +47,7 @@ const SVG_ZONES: {
 }[] = [
   { id: "runway",     x: 60,  y: 148, w: 780, h: 62,  label: "STARTA UPPDRAG",    colorFill: "rgba(215,171,58,0.30)",  colorBorder: "#D7AB3A" },
   { id: "hangar",     x: 55,  y: 313, w: 343, h: 125, label: "UNDERHALL / SERVICE", colorFill: "rgba(12,35,76,0.30)",    colorBorder: "#0C234C" },
-  { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "SNABB LRU-REP",      colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
+  { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "BYTA KOMPONENT",      colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
   { id: "fuel",       x: 432, y: 372, w: 110, h: 72,  label: "TANKNING",            colorFill: "rgba(12,35,76,0.25)",    colorBorder: "#0C234C" },
   { id: "ammo",       x: 430, y: 318, w: 130, h: 40,  label: "BEVÄPNING",           colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
 ];
@@ -99,7 +108,7 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps) {
+export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
   const [selectedAcId, setSelectedAcId] = useState<string | null>(null);
@@ -203,7 +212,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           {/* Drag-drop instructions banner */}
           <rect x="20" y="8" width="860" height="22" rx="3" fill="#0C234C" opacity="0.92" />
           <text x="30" y="22" fontSize="9" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">
-            Dra flygplan → Bana (uppdrag) · Hangar (underhall) · Reservdel (LRU 2h) · Bränsle · Ammo
+            Dra flygplan → Bana (uppdrag) · Hangar (underhall) · Reservdel (byta komponent) · Bränsle · Ammo
           </text>
 
           {/* ── Perimeter fence */}
@@ -286,51 +295,49 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 {isSelAc && (
                   <ellipse cx={cx} cy={cy} rx="20" ry="15" fill="none" stroke="#D7AB3A" strokeWidth="1.5" strokeDasharray="3 2" />
                 )}
+                {/* Urgent: mission active NOW — pulsing orange ring + badge */}
+                {overdueAircraftIds.includes(ac.id) && (
+                  <g>
+                    <ellipse cx={cx} cy={cy} rx="22" ry="17" fill="none" stroke="#FF6B00" strokeWidth="2" strokeDasharray="4 2" opacity="0.9">
+                      <animate attributeName="stroke-opacity" values="0.9;0.2;0.9" dur="1s" repeatCount="indefinite" />
+                    </ellipse>
+                    {(() => {
+                      const label = overdueMissionLabels[ac.id] ?? "NU!";
+                      const bw = Math.max(28, label.length * 5 + 8);
+                      return (
+                        <>
+                          <rect x={cx - bw / 2} y={cy + 14} width={bw} height="11" rx="2.5" fill="#FF6B00" />
+                          <text x={cx} y={cy + 22} textAnchor="middle" fontSize="6" fill="white" fontFamily="monospace" fontWeight="bold">{label}</text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
+                {/* Upcoming: future ATO assignment — steady blue badge */}
+                {!overdueAircraftIds.includes(ac.id) && upcomingAircraftIds.includes(ac.id) && (
+                  <g>
+                    <ellipse cx={cx} cy={cy} rx="22" ry="17" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7" />
+                    {(() => {
+                      const label = upcomingMissionLabels[ac.id] ?? "SCHD";
+                      const bw = Math.max(32, label.length * 4.5 + 8);
+                      return (
+                        <>
+                          <rect x={cx - bw / 2} y={cy + 14} width={bw} height="11" rx="2.5" fill="#1D4ED8" opacity="0.9" />
+                          <text x={cx} y={cy + 22} textAnchor="middle" fontSize="5.5" fill="white" fontFamily="monospace" fontWeight="bold">{label}</text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
                 {/* Tail label */}
                 <rect x={cx - 22} y={cy - 35} width="44" height="13" rx="2"
                   fill={color === "#0C234C" ? "#0C234C" : "#fff"} fillOpacity="0.92"
-                  stroke={color} strokeWidth="0.8" />
+                  stroke={overdueAircraftIds.includes(ac.id) ? "#FF6B00" : color} strokeWidth={overdueAircraftIds.includes(ac.id) ? 1.5 : 0.8} />
                 <text x={cx} y={cy - 26} textAnchor="middle" fontSize="6.5"
                   fill={color === "#0C234C" ? "#D7AB3A" : color} fontFamily="monospace" fontWeight="bold">
                   {ac.tailNumber}
                 </text>
                 <AircraftImage cx={cx} cy={cy} color={color} />
-                {/* Hover info panel */}
-                {hoveredAc === ac.id && (() => {
-                  const hp = ac.health ?? 100;
-                  const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
-                  const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
-                  const panelW = 110, panelH = 68;
-                  const px = cx + 30 > 840 ? cx - panelW - 6 : cx + 6;
-                  const py = cy - panelH - 4;
-                  const statusText =
-                    ac.status === "ready" ? "Operativ" :
-                    ac.status === "unavailable" ? "Ej operativ (NMC)" :
-                    ac.status === "under_maintenance" ? `Service – ${ac.maintenanceTimeRemaining ?? "?"}h kvar` :
-                    ac.status === "on_mission" ? "På uppdrag" :
-                    ac.status === "returning" ? "Återvänder" : ac.status;
-                  return (
-                    <g style={{ pointerEvents: "none" }}>
-                      <rect x={px} y={py} width={panelW} height={panelH} rx="4"
-                        fill="#0C234C" opacity="0.96" stroke="#D7AB3A" strokeWidth="0.8" />
-                      {/* Row 1: Health bar */}
-                      <text x={px + 5} y={py + 11} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">HÄLSA</text>
-                      <rect x={px + 5} y={py + 14} width={panelW - 10} height={6} rx="1.5" fill="rgba(0,0,0,0.5)" />
-                      <rect x={px + 5} y={py + 14} width={Math.max(0, (panelW - 10) * (hp / 100))} height={6} rx="1.5" fill={hColor} />
-                      <text x={px + panelW - 5} y={py + 20} textAnchor="end" fontSize="6" fill={hpTextColor} fontFamily="monospace" fontWeight="bold">{hp}</text>
-                      {/* Row 2: Fuel */}
-                      <text x={px + 5} y={py + 33} fontSize="6.5" fill="#8899bb" fontFamily="monospace">BRÄNSLE: <tspan fill="#D7DEE1" fontWeight="bold">{Math.round(base.fuel)}%</tspan></text>
-                      {/* Row 3: Payload */}
-                      <text x={px + 5} y={py + 45} fontSize="6" fill="#8899bb" fontFamily="monospace">
-                        LAST: <tspan fill="#D7DEE1">{ac.payload ?? "–"}</tspan>
-                      </text>
-                      {/* Row 4: Status */}
-                      <text x={px + 5} y={py + 57} fontSize="6" fill="#8899bb" fontFamily="monospace">
-                        <tspan fill={color === "#D9192E" ? "#ff6655" : color === "#D7AB3A" ? "#D7AB3A" : "#aaccff"}>{statusText}</tspan>
-                      </text>
-                    </g>
-                  );
-                })()}
               </g>
             );
           })}
@@ -384,12 +391,6 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 onMouseEnter={() => setHoveredAc(ac.id)}
                 onMouseLeave={() => setHoveredAc(null)}>
                 <AircraftImage cx={mx} cy={my} color="#D7AB3A" opacity={0.75} />
-                {hoveredAc === ac.id && (
-                  <g>
-                    <rect x={mx-18} y={my-20} width="36" height="11" rx="2" fill="#0C234C" opacity="0.95" />
-                    <text x={mx} y={my-12} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
-                  </g>
-                )}
               </g>
             );
           })}
@@ -601,8 +602,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
               { color: "#6B7280", label: "Ej operativ" },
             ].map((item, i) => (
               <g key={i}>
-                <circle cx="697" cy={68 + i * 17} r="4.5" fill={item.color} />
-                <text x="710" y={72 + i * 17} fontSize="8" fill="#D7DEE1"
+                <circle cx="697" cy={62 + i * 17} r="4.5" fill={item.color} />
+                <text x="710" y={66 + i * 17} fontSize="8" fill="#D7DEE1"
                   fontFamily="monospace">{item.label}</text>
               </g>
             ))}
@@ -851,6 +852,99 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                     </div>
                   </div>
                 </foreignObject>
+              </g>
+            );
+          })()}
+
+          {/* ── Apron hover panel — rendered LAST so it floats above everything ── */}
+          {hoveredAc && (() => {
+            const acIdx = apronAircraft.findIndex((a) => a.id === hoveredAc);
+            if (acIdx < 0) return null;
+            const ac = apronAircraft[acIdx];
+            const col = acIdx % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
+            const cy = 270;
+            const color = getAircraftColor(ac);
+            const hp = ac.health ?? 100;
+            const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
+            const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
+            const panelW = 110, panelH = 68;
+            const px = cx + panelW + 6 > 870 ? cx - panelW - 6 : cx + 6;
+            const py = cy - panelH - 4;
+            const statusText =
+              ac.status === "ready" ? "Operativ" :
+              ac.status === "unavailable" ? "Ej operativ (NMC)" :
+              ac.status === "under_maintenance" ? `Service – ${ac.maintenanceTimeRemaining ?? "?"}h kvar` :
+              ac.status === "on_mission" ? "På uppdrag" :
+              ac.status === "returning" ? "Återvänder" : ac.status;
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <rect x={px} y={py} width={panelW} height={panelH} rx="4"
+                  fill="#0C234C" opacity="0.96" stroke="#D7AB3A" strokeWidth="0.8" />
+                <text x={px + 5} y={py + 11} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">HÄLSA</text>
+                <rect x={px + 5} y={py + 14} width={panelW - 10} height={6} rx="1.5" fill="rgba(0,0,0,0.5)" />
+                <rect x={px + 5} y={py + 14} width={Math.max(0, (panelW - 10) * (hp / 100))} height={6} rx="1.5" fill={hColor} />
+                <text x={px + panelW - 5} y={py + 20} textAnchor="end" fontSize="6" fill={hpTextColor} fontFamily="monospace" fontWeight="bold">{hp}</text>
+                <text x={px + 5} y={py + 33} fontSize="6.5" fill="#8899bb" fontFamily="monospace">BRÄNSLE: <tspan fill="#D7DEE1" fontWeight="bold">{Math.round(base.fuel)}%</tspan></text>
+                <text x={px + 5} y={py + 45} fontSize="6" fill="#8899bb" fontFamily="monospace">LAST: <tspan fill="#D7DEE1">{ac.payload ?? "–"}</tspan></text>
+                <text x={px + 5} y={py + 57} fontSize="6" fill="#8899bb" fontFamily="monospace">
+                  <tspan fill={color === "#D9192E" ? "#ff6655" : color === "#D7AB3A" ? "#D7AB3A" : "#aaccff"}>{statusText}</tspan>
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* ── Maintenance hover panel — rendered LAST so it floats above everything ── */}
+          {hoveredAc && (() => {
+            const ac = maint.find((a) => a.id === hoveredAc);
+            if (!ac) return null;
+            const idx = maint.findIndex((a) => a.id === hoveredAc);
+            const col = idx % 4;
+            const row = Math.floor(idx / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
+            const mx = hx + 39, my = hy + 38;
+            const pW = 138, pH = 110;
+            const px = mx + 14 + pW > 870 ? mx - pW - 6 : mx + 14;
+            const py = my - pH - 6;
+            const hp = ac.health ?? 0;
+            const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
+            const maintLabels: Record<string, string> = {
+              quick_lru:         "Snabb LRU-byte",
+              complex_lru:       "Komplex LRU-byte",
+              direct_repair:     "Direktreparation",
+              troubleshooting:   "Felsökning",
+              scheduled_service: "Periodisk service",
+            };
+            const faultLabel = ac.maintenanceType ? (maintLabels[ac.maintenanceType] ?? ac.maintenanceType) : "–";
+            const hoursLeft = ac.maintenanceTimeRemaining ?? "?";
+            const crew: { role: string; count: number }[] = [
+              { role: "Mekaniker",  count: MAINTENANCE_CREW_PER_AIRCRAFT["mech"] ?? 0 },
+              { role: "Tekniker",   count: MAINTENANCE_CREW_PER_AIRCRAFT["tech"] ?? 0 },
+              { role: "Vapensmed",  count: MAINTENANCE_CREW_PER_AIRCRAFT["arms"] ?? 0 },
+            ].filter((c) => c.count > 0);
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <rect x={px} y={py} width={pW} height={pH} rx="4"
+                  fill="#0C234C" opacity="0.97" stroke="#D7AB3A" strokeWidth="0.8" />
+                <text x={px + pW / 2} y={py + 10} textAnchor="middle" fontSize="7.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber} — SERVICE</text>
+                <line x1={px + 4} y1={py + 14} x2={px + pW - 4} y2={py + 14} stroke="#D7AB3A" strokeWidth="0.4" opacity="0.5" />
+                <text x={px + 5} y={py + 24} fontSize="6" fill="#8899bb" fontFamily="monospace">FELTYP:</text>
+                <text x={px + 38} y={py + 24} fontSize="6" fill="#D7DEE1" fontFamily="monospace" fontWeight="bold">{faultLabel}</text>
+                <text x={px + 5} y={py + 35} fontSize="6" fill="#8899bb" fontFamily="monospace">TIMMAR KVAR:</text>
+                <text x={px + 68} y={py + 35} fontSize="6" fill={typeof hoursLeft === "number" && hoursLeft <= 2 ? "#D9192E" : "#D7AB3A"} fontFamily="monospace" fontWeight="bold">{hoursLeft}h</text>
+                <text x={px + 5} y={py + 46} fontSize="6" fill="#8899bb" fontFamily="monospace">HÄLSA:</text>
+                <rect x={px + 36} y={py + 40} width={pW - 41} height={5} rx="1.5" fill="rgba(0,0,0,0.5)" />
+                <rect x={px + 36} y={py + 40} width={Math.max(0, (pW - 41) * (hp / 100))} height={5} rx="1.5" fill={hColor} />
+                <text x={px + pW - 4} y={py + 46} textAnchor="end" fontSize="5.5" fill="#aaa" fontFamily="monospace">{hp}</text>
+                <line x1={px + 4} y1={py + 52} x2={px + pW - 4} y2={py + 52} stroke="#D7AB3A" strokeWidth="0.3" opacity="0.4" />
+                <text x={px + 5} y={py + 62} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">PERSONAL I TJÄNST</text>
+                {crew.map((c, ci) => (
+                  <g key={c.role}>
+                    <text x={px + 10} y={py + 73 + ci * 12} fontSize="6" fill="#8899bb" fontFamily="monospace">• {c.role}:</text>
+                    <text x={px + pW - 5} y={py + 73 + ci * 12} textAnchor="end" fontSize="6" fill="#D7DEE1" fontFamily="monospace" fontWeight="bold">{c.count} st</text>
+                  </g>
+                ))}
               </g>
             );
           })()}

@@ -24,7 +24,7 @@ const createPersonnel = (scale: number): PersonnelGroup[] => [
 
 const createAircraft = (base: string, type: AircraftType, prefix: string, count: number): Aircraft[] =>
   Array.from({ length: count }, (_, i) => ({
-    id: `${prefix}${String(i + 1).padStart(2, "0")}`,
+    id: `${base}_${prefix}${String(i + 1).padStart(2, "0")}`,
     type,
     tailNumber: `${prefix}${String(i + 1).padStart(2, "0")}`,
     status: "ready" as const,

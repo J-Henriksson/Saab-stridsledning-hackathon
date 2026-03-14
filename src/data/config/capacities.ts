@@ -53,6 +53,19 @@ export const FACILITY_CAPABILITIES = {
   major_workshop: ["AU_steg_4", "AU_steg_2_3", "FK_steg_1_3", "kompositrep", "hjulbyte"] as const,
 } as const;
 
+/**
+ * Personnel tied up per aircraft in active maintenance (under_maintenance status).
+ * Keys match PersonnelGroup.id values from initialGameState.
+ * 8 + 3 + 2 = 13 crew per aircraft — fits the 10-20 realistic range.
+ */
+export const MAINTENANCE_CREW_PER_AIRCRAFT: Record<string, number> = {
+  mech:    8,   // Flygmekaniker
+  tech:    3,   // Tekniker Avionik
+  arms:    2,   // Vapensmed
+  fuel:    0,
+  command: 0,
+};
+
 /** Resource consumption rates per scenario phase (per hour) */
 export const FUEL_DRAIN_RATE: Record<string, number> = {
   FRED: 0.5,

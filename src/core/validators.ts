@@ -97,6 +97,7 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "HANGAR_DROP_CONFIRM":
     case "PAUSE_MAINTENANCE":
     case "MARK_FAULT_NMC":
+    case "CONSUME_SPARE_PART":
     case "ADVANCE_PHASE":
     case "RESET_GAME":
       return { valid: true };
