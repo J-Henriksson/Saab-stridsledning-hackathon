@@ -31,10 +31,10 @@ function rollReception(): LandingResult {
   const r2 = Math.floor(Math.random() * 6) + 1;
   const table: Record<number, Omit<LandingResult, "roll1" | "roll2" | "ok">> = {
     1: { repairTime: 2,  maintenanceTypeKey: "quick_lru",      weaponLoss: 10, actionLabel: "Hjulbyte (2h)",              description: "Hjulbyte krävs efter landning." },
-    2: { repairTime: 2,  maintenanceTypeKey: "quick_lru",      weaponLoss: 10, actionLabel: "Quick LRU replacement (2h)", description: "LRU-enhet kräver byte." },
-    3: { repairTime: 2,  maintenanceTypeKey: "quick_lru",      weaponLoss: 30, actionLabel: "Quick LRU replacement (2h)", description: "LRU-enhet kräver byte." },
-    4: { repairTime: 6,  maintenanceTypeKey: "complex_lru",    weaponLoss: 50, actionLabel: "Complex LRU replacement (6h)", description: "Komplex LRU-byte, workshoparbete." },
-    5: { repairTime: 16, maintenanceTypeKey: "direct_repair",  weaponLoss: 90, actionLabel: "Direct repair (16h)",         description: "Direkt reparation, störning i stridssystem." },
+    2: { repairTime: 2,  maintenanceTypeKey: "quick_lru",      weaponLoss: 10, actionLabel: "Snabb LRU-byte (2h)", description: "LRU-enhet kräver byte." },
+    3: { repairTime: 2,  maintenanceTypeKey: "quick_lru",      weaponLoss: 30, actionLabel: "Snabb LRU-byte (2h)", description: "LRU-enhet kräver byte." },
+    4: { repairTime: 6,  maintenanceTypeKey: "complex_lru",    weaponLoss: 50, actionLabel: "Komplex LRU-byte (6h)", description: "Komplex LRU-byte, workshoparbete." },
+    5: { repairTime: 16, maintenanceTypeKey: "direct_repair",  weaponLoss: 90, actionLabel: "Direktreparation (16h)",         description: "Direkt reparation, störning i stridssystem." },
     6: { repairTime: 4,  maintenanceTypeKey: "troubleshooting", weaponLoss: 50, actionLabel: "Felsökning (4h)",            description: "Felsökning inleds, fel ej omedelbart identifierat." },
   };
   return { roll1: r1, roll2: r2, ok: false, ...table[r2] };

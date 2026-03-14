@@ -75,8 +75,13 @@ const AC_LABEL: Record<string, string> = {
   unavailable: "NMC",
 };
 
-// Plane silhouette color — status only (health shown in hover panel, not icon)
+// Plane silhouette color — status + health for ready/allocated aircraft
 function getAircraftColor(ac: Aircraft): string {
+  const hp = ac.health ?? 100;
+  if (ac.status === "ready" || ac.status === "allocated") {
+    if (hp < 30) return "#CC2222";   // critical
+    if (hp < 60) return "#B06000";   // degraded
+  }
   return AC_COLOR[ac.status] ?? "#0C234C";
 }
 
@@ -186,7 +191,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0C234C" strokeWidth="0.3" opacity="0.15" />
             </pattern>
-            {["0C234C","D7AB3A","D9192E","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a"].map((hex) => (
+            {["0C234C","D7AB3A","D9192E","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222"].map((hex) => (
               <filter key={hex} id={`tint-${hex}`}>
                 <feFlood floodColor={`#${hex}`} result="c" />
                 <feComposite in="c" in2="SourceAlpha" operator="in" />
@@ -299,7 +304,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   const px = cx + 30 > 840 ? cx - panelW - 6 : cx + 6;
                   const py = cy - panelH - 4;
                   const statusText =
-                    ac.status === "ready" ? "Mission Capable" :
+                    ac.status === "ready" ? "Operativ" :
                     ac.status === "unavailable" ? "Ej operativ (NMC)" :
                     ac.status === "under_maintenance" ? `Service – ${ac.maintenanceTimeRemaining ?? "?"}h kvar` :
                     ac.status === "on_mission" ? "På uppdrag" :
@@ -394,8 +399,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             const isSel = selected === "fuel";
             const fuelPct = base.fuel / 100;
             const fuelColor = base.fuel > 60 ? "#0C234C" : base.fuel > 30 ? "#D7AB3A" : "#D9192E";
-            const fuelX = 430;
-            const fuelY = 356;
+            const fuelX = 432;
+            const fuelY = 372;
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("fuel"); }}>
                 <rect x={fuelX} y={fuelY} width="110" height="72" rx="3"
@@ -451,7 +456,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                     <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
-                <text x="494" y="354" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMO DEPOT</text>
+                <text x="494" y="354" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMUNITION DEPÅ</text>
               </g>
             );
           })()}
@@ -582,17 +587,18 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 
           {/* ── Legend (SAAB styled) ── */}
           <g>
-            <rect x="678" y="38" width="184" height="88" rx="4"
+            <rect x="678" y="38" width="184" height="105" rx="4"
               fill="#0C234C" opacity="0.92" />
             <rect x="678" y="38" width="184" height="5" rx="2"
               fill="#D7AB3A" />
             <text x="770" y="53" textAnchor="middle" fontSize="8" fill="#D7AB3A"
               fontFamily="monospace" fontWeight="bold" letterSpacing="2">LEGEND</text>
             {[
-              { color: "#0C234C", label: "Mission Capable" },
-              { color: "#1a4a8a", label: "På uppdrag" },
+              { color: "#0C234C", label: "Operativ" },
+              { color: "#B06000", label: "Degraderad (< 60%)" },
+              { color: "#CC2222", label: "Kritisk (< 30%)" },
               { color: "#D7AB3A", label: "Underhåll" },
-              { color: "#D9192E", label: "Ej operativ" },
+              { color: "#6B7280", label: "Ej operativ" },
             ].map((item, i) => (
               <g key={i}>
                 <circle cx="697" cy={68 + i * 17} r="4.5" fill={item.color} />
@@ -726,7 +732,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                       {/* Remaining life bar */}
                       <div>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                          <span style={{ color: "#64748b", fontWeight: "700", fontSize: "8px" }}>REMAINING LIFE</span>
+                          <span style={{ color: "#64748b", fontWeight: "700", fontSize: "8px" }}>ÅTERSTÅENDE LIVSLÄNGD</span>
                           <span style={{ color: barColor, fontWeight: "900", fontSize: "10px" }}>{pct}%</span>
                         </div>
                         <div style={{ height: "7px", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
@@ -891,7 +897,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   {selected === "apron" && "UPPSTÄLLNINGSPLATS — FLYGPLAN"}
                   {selected === "hangar" && "UNDERHÅLLSHALLAR"}
                   {selected === "fuel" && "BRÄNSLE DEPÅ"}
-                  {selected === "ammo" && "AMMUNITION DEPOT"}
+                  {selected === "ammo" && "AMMUNITION DEPÅ"}
                   {selected === "command" && "BASBEFÄL / KOMMANDO HQ"}
                   {selected === "spareparts" && "RESERVDELSFÖRRÅD"}
                 </h4>

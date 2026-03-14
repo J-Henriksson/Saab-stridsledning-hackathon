@@ -5,20 +5,20 @@ import { ContextualRecommendation } from "./ContextualRecommendation";
 
 // Fault table for red aircraft troubleshooting: roll d6 → repair time
 const RED_FAULT_TABLE: Record<number, { time: number; typeKey: string; label: string }> = {
-  1: { time: 2,  typeKey: "quick_lru",      label: "Quick LRU (2h)" },
-  2: { time: 2,  typeKey: "quick_lru",      label: "Quick LRU (2h)" },
-  3: { time: 6,  typeKey: "complex_lru",    label: "Complex LRU (6h)" },
-  4: { time: 16, typeKey: "direct_repair",  label: "Direct repair (16h)" },
+  1: { time: 2,  typeKey: "quick_lru",      label: "Snabb LRU (2h)" },
+  2: { time: 2,  typeKey: "quick_lru",      label: "Snabb LRU (2h)" },
+  3: { time: 6,  typeKey: "complex_lru",    label: "Komplex LRU (6h)" },
+  4: { time: 16, typeKey: "direct_repair",  label: "Direktreparation (16h)" },
   5: { time: 4,  typeKey: "troubleshooting", label: "Felsökning (4h) — rulla igen" },
   6: { time: 4,  typeKey: "troubleshooting", label: "Felsökning (4h) — rulla igen" },
 };
 
 // Preventive hidden-fault table: roll d6 → 1-4 = OK (2h), 5-6 = hidden fault (roll again)
 const HIDDEN_FAULT_TABLE: Record<number, { time: number; typeKey: string; label: string }> = {
-  1: { time: 2,  typeKey: "quick_lru",     label: "Quick LRU (2h)" },
-  2: { time: 2,  typeKey: "quick_lru",     label: "Quick LRU (2h)" },
-  3: { time: 6,  typeKey: "complex_lru",   label: "Complex LRU (6h)" },
-  4: { time: 16, typeKey: "direct_repair", label: "Direct repair (16h)" },
+  1: { time: 2,  typeKey: "quick_lru",     label: "Snabb LRU (2h)" },
+  2: { time: 2,  typeKey: "quick_lru",     label: "Snabb LRU (2h)" },
+  3: { time: 6,  typeKey: "complex_lru",   label: "Komplex LRU (6h)" },
+  4: { time: 16, typeKey: "direct_repair", label: "Direktreparation (16h)" },
 };
 
 function rollD6() { return Math.floor(Math.random() * 6) + 1; }
