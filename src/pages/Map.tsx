@@ -58,9 +58,9 @@ export default function MapPage() {
         <div className="flex-1 relative overflow-hidden">
           <MapGL
             initialViewState={{
-              longitude: SWEDEN_CENTER.lng,
-              latitude: SWEDEN_CENTER.lat,
-              zoom: INITIAL_ZOOM,
+              longitude: BASE_COORDS.MOB.lng,
+              latitude: BASE_COORDS.MOB.lat,
+              zoom: 9,
               pitch: 30,
             }}
             mapStyle={MAP_STYLE}
