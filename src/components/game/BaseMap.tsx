@@ -99,7 +99,7 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   const filterId = `tint-${color.replace('#', '')}`;
   return (
     <image
-      href="/Jase_transparent.png"
+      href={`${import.meta.env.BASE_URL}Jase_transparent.png`}
       x={cx - 26} y={cy - 20}
       width="52" height="40"
       opacity={opacity}
