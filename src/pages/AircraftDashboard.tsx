@@ -787,8 +787,9 @@ type DashTab = "oversikt" | "system" | "vapen" | "operationer" | "anmarkningar";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function AircraftDashboard() {
-  const { tailNumber } = useParams<{ tailNumber: string }>();
+export default function AircraftDashboard({ embedded = false, aircraftTailNumber }: { embedded?: boolean; aircraftTailNumber?: string } = {}) {
+  const { tailNumber: paramTailNumber } = useParams<{ tailNumber: string }>();
+  const tailNumber = aircraftTailNumber ?? paramTailNumber;
   const { state } = useGame();
   const navigate = useNavigate();
 
@@ -800,13 +801,15 @@ export default function AircraftDashboard() {
 
   if (!aircraft) {
     return (
-      <div className="min-h-screen flex items-center justify-center font-mono" style={{ background: "#0C234C" }}>
+      <div className="min-h-full flex items-center justify-center font-mono" style={{ background: "#0C234C" }}>
         <div className="text-center space-y-3">
           <div className="text-2xl font-black text-[#D7DEE1]">Flygplan ej hittat</div>
           <div className="text-[11px] text-[#D7DEE1]/50">Svansnummer "{tailNumber}" existerar inte i nuvarande speltillstånd.</div>
-          <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] text-[#D7DEE1]/50 hover:text-[#D7DEE1] mt-4">
-            <ArrowLeft className="h-3 w-3" /> Tillbaka till huvudbas
-          </Link>
+          {!embedded && (
+            <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] text-[#D7DEE1]/50 hover:text-[#D7DEE1] mt-4">
+              <ArrowLeft className="h-3 w-3" /> Tillbaka till huvudbas
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -859,9 +862,11 @@ export default function AircraftDashboard() {
           <div className="flex items-center justify-between gap-6">
             {/* Left: identity */}
             <div className="flex-1 space-y-2 min-w-0">
-              <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] font-mono text-[#D7DEE1]/40 hover:text-[#D7DEE1] transition-colors">
-                <ArrowLeft className="h-3 w-3" /> TILLBAKA TILL HUVUDBAS
-              </Link>
+              {!embedded && (
+                <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] font-mono text-[#D7DEE1]/40 hover:text-[#D7DEE1] transition-colors">
+                  <ArrowLeft className="h-3 w-3" /> TILLBAKA TILL HUVUDBAS
+                </Link>
+              )}
               <div className="flex items-end gap-4 flex-wrap">
                 <h1 className="text-5xl font-black tracking-tight text-white leading-none">
                   {ac.tailNumber}

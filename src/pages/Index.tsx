@@ -17,6 +17,7 @@ import { ResursPage } from "@/components/dashboard/ResursPage";
 import { ATOBody } from "./ATO";
 import FleetAnalyticsPage from "./FleetAnalyticsPage";
 import AARPage from "./AARPage";
+import AircraftDashboard from "./AircraftDashboard";
 import { IntelligenceSidebar } from "@/components/dashboard/IntelligenceSidebar";
 import { BaseMap, DropZone } from "@/components/game/BaseMap";
 import { LandingReceptionModal } from "@/components/game/LandingReceptionModal";
@@ -34,7 +35,7 @@ import {
 } from "lucide-react";
 
 // ─── Section type ─────────────────────────────────────────────────────────────
-type Section = "base" | "missions" | "maintenance" | "resources" | "ato" | "fleet" | "aar";
+type Section = "base" | "missions" | "maintenance" | "resources" | "ato" | "fleet" | "aar" | "flygplan";
 
 // ─── Section panel wrapper ────────────────────────────────────────────────────
 function Panel({ title, icon: Icon, children }: {
@@ -68,6 +69,7 @@ const Index = () => {
 
   const [selectedBaseId, setSelectedBaseId]           = useState<BaseType>("MOB");
   const [activeSection, setActiveSection]             = useState<Section>("base");
+  const [selectedAircraftTail, setSelectedAircraftTail] = useState<string>("");
   const [pendingRunwayCheck, setPendingRunwayCheck]   = useState<string | null>(null);
   const [pendingMaintenanceCheck, setPendingMaintenanceCheck] = useState<string | null>(null);
   const [redRunwayWarning, setRedRunwayWarning]       = useState<string | null>(null);
@@ -308,7 +310,7 @@ const Index = () => {
                     <motion.button
                       key={ac.id}
                       whileHover={{ x: 2, transition: { duration: 0.1 } }}
-                      onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
+                      onClick={() => { setSelectedAircraftTail(ac.tailNumber); setActiveSection("flygplan"); }}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-black/5"
                       style={{ border: `1px solid ${col}28` }}
                     >
@@ -337,7 +339,7 @@ const Index = () => {
         {activeSection === "ato" ? (
           <ATOBody embedded />
         ) : (
-        <div className="flex-1 overflow-y-auto" style={{ background: activeSection === "fleet" || activeSection === "aar" ? "#0C234C" : "hsl(0 0% 100%)" }}>
+        <div className="flex-1 overflow-y-auto" style={{ background: ["fleet","aar","flygplan"].includes(activeSection) ? "#0C234C" : "hsl(0 0% 100%)" }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -345,7 +347,7 @@ const Index = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.16 }}
-              className={activeSection === "fleet" || activeSection === "aar" ? "" : "p-5 space-y-5"}
+              className={["fleet","aar","flygplan"].includes(activeSection) ? "" : "p-5 space-y-5"}
             >
 
               {/* ──── BASÖVERSIKT ──── */}
@@ -426,7 +428,7 @@ const Index = () => {
                         <div className="flex flex-wrap gap-1.5">
                           {selectedBase.aircraft.map(ac => (
                             <button key={ac.id}
-                              onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
+                              onClick={() => { setSelectedAircraftTail(ac.tailNumber); setActiveSection("flygplan"); }}
                               className="flex items-center gap-1 px-2 py-1 rounded text-[8px] font-mono font-bold transition-all hover:brightness-125"
                               style={{
                                 background: `${statusDot(ac.status)}18`,
@@ -548,13 +550,18 @@ const Index = () => {
                 <AARPage embedded />
               )}
 
+              {/* ──── FLYGPLAN DETAIL ──── */}
+              {activeSection === "flygplan" && selectedAircraftTail && (
+                <AircraftDashboard embedded aircraftTailNumber={selectedAircraftTail} />
+              )}
+
             </motion.div>
           </AnimatePresence>
         </div>
         )}
 
         {/* ── RIGHT SIDEBAR — Intelligence Sidebar ── */}
-        {activeSection !== "ato" && (
+        {!["ato","fleet","aar","flygplan"].includes(activeSection) && (
           <IntelligenceSidebar base={selectedBase} phase={state.phase} />
         )}
 
