@@ -13,6 +13,8 @@ import { LarmPanel } from "@/components/dashboard/LarmPanel";
 import { DagensMissioner } from "@/components/dashboard/DagensMissioner";
 import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje";
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
+import { ResursPage } from "@/components/dashboard/ResursPage";
+import { IntelligenceSidebar } from "@/components/dashboard/IntelligenceSidebar";
 import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { BaseMap, DropZone } from "@/components/game/BaseMap";
 import { LandingReceptionModal } from "@/components/game/LandingReceptionModal";
@@ -24,8 +26,9 @@ import { SparePartsPickerModal } from "@/components/game/SparePartsPickerModal";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import {
-  ShieldCheck, Crosshair, Hammer, Users, Siren, Clock,
+  ShieldCheck, Crosshair, Hammer, Siren, Clock,
   MapPin, PlaneTakeoff, ChevronRight, BarChart3, BookOpen,
+  Activity, AlertOctagon, Plane, Wrench,
 } from "lucide-react";
 
 // ─── Section type ─────────────────────────────────────────────────────────────
@@ -254,29 +257,6 @@ const Index = () => {
         <nav className="w-52 flex-shrink-0 flex flex-col border-r"
           style={{ background: "hsl(0 0% 100%)", borderColor: "hsl(215 14% 86%)" }}>
 
-          {/* KPI mini-grid */}
-          <div className="px-3 pt-3 pb-3 border-b" style={{ borderColor: "hsl(215 14% 88%)" }}>
-            <div className="text-[8px] font-mono uppercase tracking-widest mb-2 px-1"
-              style={{ color: "hsl(218 15% 55%)" }}>
-              {selectedBase.name} — Snapshot
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { label: "MC",      value: mcTotal,          color: "#22a05a" },
-                { label: "Uppdrag", value: onMissionTotal,   color: "#3b82f6" },
-                { label: "UH/NMC",  value: inMaintTotal,     color: inMaintTotal > 0 ? "#d97706" : "rgba(215,222,225,0.4)" },
-                { label: "Personal",value: `${personnelAvail}/${personnelTotal}`, color: "rgba(215,222,225,0.55)" },
-              ].map((k) => (
-                <div key={k.label} className="rounded-lg px-2 py-1.5 text-center"
-                  style={{ background: "hsl(216 18% 96%)", border: "1px solid hsl(215 14% 88%)" }}>
-                  <div className="text-sm font-black font-mono leading-none" style={{ color: k.color }}>{k.value}</div>
-                  <div className="text-[7px] font-mono uppercase tracking-wider mt-0.5"
-                    style={{ color: "hsl(218 15% 55%)" }}>{k.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Nav items */}
           <div className="py-1.5">
             {navItems.map(({ id, label, Icon, badge, badgeColor }) => {
@@ -360,15 +340,135 @@ const Index = () => {
             >
 
               {/* ──── BASÖVERSIKT ──── */}
-              {activeSection === "base" && (
+              {activeSection === "base" && (() => {
+                const totalAc      = selectedBase.aircraft.length;
+                const mcPct        = totalAc > 0 ? Math.round((mcTotal / totalAc) * 100) : 0;
+                const r = 38, circ = 2 * Math.PI * r;
+                const filled = (mcPct / 100) * circ;
+                const readinessColor = mcPct >= 70 ? "#22a05a" : mcPct >= 40 ? "#d97706" : "#D9192E";
+                const statusDot = (status: string) =>
+                  status === "ready" ? "#22a05a" : status === "on_mission" ? "#3b82f6"
+                  : status === "under_maintenance" ? "#d97706" : status === "returning" ? "#a855f7" : "#D9192E";
+
+                return (
                 <>
-                  {/* KPI strip */}
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <StatusKort titel="Mission Capable" varde={mcTotal} subtitel={`av ${selectedBase.aircraft.length} totalt`} ikon={<ShieldCheck className="h-5 w-5" />} farg="green" max={selectedBase.aircraft.length} />
-                    <StatusKort titel="På uppdrag" varde={onMissionTotal} subtitel="aktiva flygningar" ikon={<Crosshair className="h-5 w-5" />} farg="blue" />
-                    <StatusKort titel="I underhåll" varde={inMaintTotal} subtitel="NMC + UH" ikon={<Hammer className="h-5 w-5" />} farg="yellow" />
-                    <StatusKort titel="Personal" varde={`${personnelAvail}/${personnelTotal}`} subtitel="tillgänglig" ikon={<Users className="h-5 w-5" />} farg="purple" />
-                    <StatusKort titel="Resurslarm" varde={kritiskaResurser} subtitel={kritiskaResurser > 0 ? "behöver åtgärd" : "alla nominella"} ikon={<Siren className="h-5 w-5" />} farg={kritiskaResurser > 0 ? "red" : "green"} />
+                  {/* ── Command readiness panel ── */}
+                  <div className="rounded-xl overflow-hidden"
+                    style={{ background: "#0C234C", border: "1px solid rgba(215,222,225,0.08)", boxShadow: "0 4px 24px rgba(12,35,76,0.18)" }}>
+
+                    {/* Top bar */}
+                    <div className="flex items-center justify-between px-5 py-2.5 border-b"
+                      style={{ borderColor: "rgba(215,222,225,0.08)", background: "rgba(217,25,46,0.04)" }}>
+                      <div className="flex items-center gap-2">
+                        <Activity className="h-3.5 w-3.5" style={{ color: "#D9192E" }} />
+                        <span className="text-[10px] font-mono font-bold tracking-widest uppercase" style={{ color: "#D7DEE1" }}>
+                          OPERATIONSLÄGE — {selectedBase.name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] font-mono" style={{ color: "rgba(215,222,225,0.4)" }}>
+                          T{state.turnNumber} · {String(state.hour).padStart(2,"0")}:00Z
+                        </span>
+                        <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded"
+                          style={{ background: "rgba(217,25,46,0.15)", color: "#D9192E", border: "1px solid rgba(217,25,46,0.3)" }}>
+                          {state.phase}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 divide-x" style={{ borderColor: "rgba(215,222,225,0.07)", divideColor: "rgba(215,222,225,0.07)" }}>
+
+                      {/* Col 1 — Readiness donut */}
+                      <div className="flex items-center gap-5 px-6 py-5">
+                        <svg width={92} height={92} viewBox="0 0 92 92" style={{ flexShrink: 0 }}>
+                          <circle cx={46} cy={46} r={r} fill="none" stroke="rgba(215,222,225,0.07)" strokeWidth={10} />
+                          <motion.circle cx={46} cy={46} r={r} fill="none"
+                            stroke={readinessColor} strokeWidth={10} strokeLinecap="round"
+                            transform="rotate(-90 46 46)"
+                            initial={{ strokeDasharray: `0 ${circ}` }}
+                            animate={{ strokeDasharray: `${filled} ${circ}` }}
+                            transition={{ duration: 1.2, ease: "easeOut" }}
+                          />
+                          <text x={46} y={42} textAnchor="middle" fontSize="18" fontFamily="monospace" fontWeight="700" fill={readinessColor}>{mcPct}%</text>
+                          <text x={46} y={56} textAnchor="middle" fontSize="8" fontFamily="monospace" fill="rgba(215,222,225,0.45)">BEREDSKAP</text>
+                        </svg>
+                        <div className="space-y-1">
+                          <div className="text-[9px] font-mono uppercase tracking-wider mb-2" style={{ color: "rgba(215,222,225,0.35)" }}>Flottajstatus</div>
+                          {[
+                            { label: "Mission Capable",   val: mcTotal,       color: "#22a05a" },
+                            { label: "På uppdrag",         val: onMissionTotal, color: "#3b82f6" },
+                            { label: "Underhåll / NMC",    val: inMaintTotal,   color: inMaintTotal > 0 ? "#d97706" : "rgba(215,222,225,0.3)" },
+                            { label: `Totalt`,             val: `${mcTotal}/${totalAc}`, color: "rgba(215,222,225,0.55)" },
+                          ].map(k => (
+                            <div key={k.label} className="flex items-center gap-2">
+                              <div className="w-1.5 h-1.5 rounded-full" style={{ background: k.color, flexShrink: 0 }} />
+                              <span className="text-[9px] font-mono" style={{ color: "rgba(215,222,225,0.5)", width: 110 }}>{k.label}</span>
+                              <span className="text-[10px] font-mono font-bold" style={{ color: k.color }}>{k.val}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Col 2 — Aircraft grid */}
+                      <div className="px-5 py-5">
+                        <div className="text-[9px] font-mono uppercase tracking-wider mb-3" style={{ color: "rgba(215,222,225,0.35)" }}>
+                          <Plane className="inline h-3 w-3 mr-1.5" />Flygplan — snabbstatus
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedBase.aircraft.map(ac => (
+                            <button key={ac.id}
+                              onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
+                              className="flex items-center gap-1 px-2 py-1 rounded text-[8px] font-mono font-bold transition-all hover:brightness-125"
+                              style={{
+                                background: `${statusDot(ac.status)}18`,
+                                border: `1px solid ${statusDot(ac.status)}40`,
+                                color: statusDot(ac.status),
+                              }}
+                              title={`${ac.tailNumber} — ${ac.status}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusDot(ac.status), flexShrink: 0 }} />
+                              {ac.tailNumber}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Col 3 — Alerts */}
+                      <div className="px-5 py-5">
+                        <div className="text-[9px] font-mono uppercase tracking-wider mb-3" style={{ color: "rgba(215,222,225,0.35)" }}>
+                          <AlertOctagon className="inline h-3 w-3 mr-1.5" />Larm & åtgärder
+                        </div>
+                        <div className="space-y-1.5">
+                          {kritiskaResurser > 0 && (
+                            <button onClick={() => setActiveSection("resources")}
+                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all hover:brightness-110"
+                              style={{ background: "rgba(217,25,46,0.12)", border: "1px solid rgba(217,25,46,0.3)" }}>
+                              <AlertOctagon className="h-3 w-3 animate-pulse" style={{ color: "#D9192E", flexShrink: 0 }} />
+                              <span className="text-[9px] font-mono font-bold" style={{ color: "#D9192E" }}>
+                                {kritiskaResurser} KRITISKA RESURSER →
+                              </span>
+                            </button>
+                          )}
+                          {inMaintTotal > 0 && (
+                            <button onClick={() => setActiveSection("maintenance")}
+                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left transition-all hover:brightness-110"
+                              style={{ background: "rgba(217,151,42,0.10)", border: "1px solid rgba(217,151,42,0.25)" }}>
+                              <Wrench className="h-3 w-3" style={{ color: "#d97706", flexShrink: 0 }} />
+                              <span className="text-[9px] font-mono font-bold" style={{ color: "#d97706" }}>
+                                {inMaintTotal} plan i UH/NMC →
+                              </span>
+                            </button>
+                          )}
+                          {kritiskaResurser === 0 && inMaintTotal === 0 && (
+                            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg"
+                              style={{ background: "rgba(34,160,90,0.10)", border: "1px solid rgba(34,160,90,0.22)" }}>
+                              <ShieldCheck className="h-3 w-3" style={{ color: "#22a05a" }} />
+                              <span className="text-[9px] font-mono font-bold" style={{ color: "#22a05a" }}>NOMINELLT — ALLA SYSTEM OK</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Base Map */}
@@ -396,7 +496,8 @@ const Index = () => {
                   />
                   <PhasePanel state={state} />
                 </>
-              )}
+                );
+              })()}
 
               {/* ──── UPPDRAG ──── */}
               {activeSection === "missions" && (
@@ -431,34 +532,15 @@ const Index = () => {
 
               {/* ──── RESURSER ──── */}
               {activeSection === "resources" && (
-                <>
-                  <Panel title="Resurser — Reservdelar, Bränsle & Ammunition" icon={BarChart3}>
-                    <ResursPanel base={selectedBase} phase={state.phase} />
-                  </Panel>
-                  <RecommendationFeed
-                    recommendations={state.recommendations}
-                    onApply={applyRecommendation}
-                    onDismiss={dismissRecommendation}
-                  />
-                </>
+                <ResursPage base={selectedBase} phase={state.phase} />
               )}
 
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {/* ── RIGHT SIDEBAR (xl screens) ── */}
-        <div className="w-72 hidden xl:flex flex-col border-l flex-shrink-0"
-          style={{ background: "hsl(0 0% 100%)", borderColor: "hsl(215 14% 86%)" }}>
-          <LarmPanel events={state.events} />
-          <div className="flex-1 overflow-y-auto border-t" style={{ borderColor: "hsl(215 14% 88%)" }}>
-            <RecommendationFeed
-              recommendations={state.recommendations}
-              onApply={applyRecommendation}
-              onDismiss={dismissRecommendation}
-            />
-          </div>
-        </div>
+        {/* ── RIGHT SIDEBAR — Intelligence Sidebar ── */}
+        <IntelligenceSidebar base={selectedBase} phase={state.phase} />
 
       </div>
 

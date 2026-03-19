@@ -194,7 +194,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           onPointerUp={handleSVGPointerUp}
           onPointerLeave={cancelDrag}
         >
-          {/* ── Silver terrain background */}
+          {/* ── Light silver background */}
           <rect width="900" height="500" fill="#D7DEE1" />
 
           {/* Subtle tactical grid */}
@@ -379,7 +379,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
               </g>
             );
           })}
-          <text x="228" y="314" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">UNDERHÅLLSHALLAR</text>
+          <text x="228" y="314" textAnchor="middle" fontSize="7" fill="#0C234C" opacity="0.7" fontFamily="monospace" fontWeight="bold">UNDERHÅLLSHALLAR</text>
 
           {/* ── Maintenance aircraft inside hangars ── */}
           {maint.slice(0, 8).map((ac, i) => {
@@ -422,9 +422,9 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                       <circle cx={tank1Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
                       <circle cx={tank2Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
                       <clipPath id="fuelClip1"><circle cx={tank1Cx} cy={tankCy} r="17" /></clipPath>
-                      <rect x={fillX(tank1Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip1)" />
+                      <rect x={fillX(tank1Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.6" clipPath="url(#fuelClip1)" />
                       <clipPath id="fuelClip2"><circle cx={tank2Cx} cy={tankCy} r="17" /></clipPath>
-                      <rect x={fillX(tank2Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.45" clipPath="url(#fuelClip2)" />
+                      <rect x={fillX(tank2Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.6" clipPath="url(#fuelClip2)" />
                     </>
                   );
                 })()}
@@ -447,7 +447,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                   <polygon key={j}
                     points={`${430 + j * 40},320 ${464 + j * 40},320 ${456 + j * 40},350 ${438 + j * 40},350`}
                     fill={isSel ? "#D9192E10" : "#0C234C08"}
-                    stroke={critical ? "#D9192E" : isSel ? "#D9192E" : "#0C234C55"}
+                    stroke={critical || isSel ? "#D9192E" : "#0C234C55"}
                     strokeWidth={isSel ? 2 : 1} />
                 ))}
                 {[0, 1, 2].map((j) => (
@@ -583,7 +583,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                   fill="#D7DEE1" stroke="#0C234C25" strokeWidth="0.5" />
               ))
             )}
-            <text x="425" y="120" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.7">FÖRLÄGGNING</text>
+            <text x="425" y="120" textAnchor="middle" fontSize="7" fill="#0C234C" opacity="0.7" fontFamily="monospace" fontWeight="bold">FÖRLÄGGNING</text>
           </g>
 
           {/* NO ROADS — only taxiway strip drawn above */}
