@@ -1,13 +1,15 @@
 import { Aircraft } from "@/types/game";
 import { Row } from "./StatBox";
-import { Plane } from "lucide-react";
+import { Plane, RotateCcw } from "lucide-react";
 
 export function AircraftDetailPanel({
   aircraft,
   onBack,
+  onRecall,
 }: {
   aircraft: Aircraft;
   onBack: () => void;
+  onRecall?: () => void;
 }) {
   const statusMap: Record<string, { label: string; cls: string }> = {
     ready: { label: "Mission Capable", cls: "text-status-green bg-status-green/10 border-status-green/40" },
@@ -22,8 +24,12 @@ export function AircraftDetailPanel({
   };
   const s = statusMap[aircraft.status] ?? statusMap.unavailable;
 
+  const health = aircraft.health ?? 100;
+  const healthColor = health < 30 ? "#ef4444" : health < 60 ? "#eab308" : "#22c55e";
+  const canRecall = aircraft.status === "on_mission";
+
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col">
       <button
         onClick={onBack}
         className="text-[10px] font-mono text-primary flex items-center gap-1 hover:underline"
@@ -37,6 +43,30 @@ export function AircraftDetailPanel({
         {s.label}
       </div>
 
+      {/* Current mission badge — always visible */}
+      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono ${
+        aircraft.currentMission
+          ? "border-blue-500/40 bg-blue-500/10 text-blue-400"
+          : "border-border bg-muted/20 text-muted-foreground"
+      }`}>
+        <span className="font-bold">UPPDRAG:</span>
+        <span className="font-bold tracking-wider">{aircraft.currentMission ?? "—"}</span>
+      </div>
+
+      {/* Health bar */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-mono text-muted-foreground">KVARVARANDE LIVSLÄNGD</span>
+          <span className="text-[10px] font-mono font-bold" style={{ color: healthColor }}>{health}%</span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${health}%`, backgroundColor: healthColor }}
+          />
+        </div>
+      </div>
+
       {/* Details grid */}
       <div className="space-y-2">
         <Row label="Typ" value={aircraft.type} />
@@ -44,9 +74,6 @@ export function AircraftDetailPanel({
         <Row label="Bas" value={aircraft.currentBase} />
         <Row label="Flygtid" value={`${aircraft.flightHours} h`} />
         <Row label="Till service" value={`${aircraft.hoursToService} h kvar`} highlight={aircraft.hoursToService < 20} />
-        {aircraft.currentMission && (
-          <Row label="Aktuellt uppdrag" value={aircraft.currentMission} />
-        )}
         {aircraft.payload && (
           <Row label="Lastning" value={aircraft.payload} />
         )}
@@ -77,6 +104,27 @@ export function AircraftDetailPanel({
             }}
           />
         </div>
+      </div>
+
+      {/* Återkalla button */}
+      <div className="mt-auto pt-2">
+        <button
+          onClick={canRecall ? onRecall : undefined}
+          disabled={!canRecall}
+          className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-xs font-bold font-mono transition-colors ${
+            canRecall
+              ? "border-amber-500/60 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 cursor-pointer"
+              : "border-border bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
+          }`}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          ÅTERKALLA
+        </button>
+        {!canRecall && (
+          <p className="text-[9px] font-mono text-muted-foreground text-center mt-1">
+            Återkalla tillgänglig när flygplanet är på uppdrag
+          </p>
+        )}
       </div>
     </div>
   );

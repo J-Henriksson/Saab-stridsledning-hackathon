@@ -20,6 +20,7 @@ type BuildingId =
   | "ammo"
   | "command"
   | "spareparts"
+  | "runway"
   | null;
 
 export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
@@ -256,29 +257,36 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           <line x1="60" y1="243" x2="840" y2="243" stroke="#D7AB3A" strokeWidth="0.8" strokeDasharray="12 10" opacity="0.45" />
 
           {/* ── Runway ── */}
-          {/* Asphalt base */}
-          <rect x="60" y="148" width="780" height="62" rx="3" fill="#5a6070" />
-          {/* Centre-line */}
-          <line x1="60" y1="179" x2="840" y2="179" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="22 12" opacity="0.9" />
-          {/* Threshold marks - left */}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <rect key={`tl-${i}`} x={72 + i * 14} y={152} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
-          ))}
-          {/* Threshold marks - right */}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <rect key={`tr-${i}`} x={810 - i * 14} y={192} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
-          ))}
-          {/* Runway designation text */}
-          <text x="100" y="178" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">09</text>
-          <text x="800" y="200" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">27</text>
-          <text x="450" y="183" textAnchor="middle" fontSize="9" fill="#ffffff" fontFamily="monospace" letterSpacing="4" opacity="0.85">
-            LANDNINGSBANA 09/27
-          </text>
-          {/* PAPI lights at both ends */}
-          {[0, 1, 2, 3].map((i) => (
-            <rect key={`papi-${i}`} x={62 + i * 6} y={210} width={4} height={5} rx="1"
-              fill={i < 2 ? "#D9192E" : "#ffffff"} opacity="0.9" />
-          ))}
+          <g
+            style={{ cursor: "pointer" }}
+            onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("runway"); } }}
+          >
+            {/* Asphalt base */}
+            <rect x="60" y="148" width="780" height="62" rx="3" fill="#5a6070"
+              stroke={selected === "runway" ? "#D7AB3A" : "none"}
+              strokeWidth={selected === "runway" ? 2.5 : 0} />
+            {/* Centre-line */}
+            <line x1="60" y1="179" x2="840" y2="179" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="22 12" opacity="0.9" />
+            {/* Threshold marks - left */}
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <rect key={`tl-${i}`} x={72 + i * 14} y={152} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
+            ))}
+            {/* Threshold marks - right */}
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <rect key={`tr-${i}`} x={810 - i * 14} y={192} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
+            ))}
+            {/* Runway designation text */}
+            <text x="100" y="178" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">09</text>
+            <text x="800" y="200" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">27</text>
+            <text x="450" y="183" textAnchor="middle" fontSize="9" fill="#ffffff" fontFamily="monospace" letterSpacing="4" opacity="0.85">
+              LANDNINGSBANA 09/27
+            </text>
+            {/* PAPI lights at both ends */}
+            {[0, 1, 2, 3].map((i) => (
+              <rect key={`papi-${i}`} x={62 + i * 6} y={210} width={4} height={5} rx="1"
+                fill={i < 2 ? "#D9192E" : "#ffffff"} opacity="0.9" />
+            ))}
+          </g>
 
           {/* (on-mission aircraft shown in PÅ UPPDRAG box below, not on runway) */}
 
@@ -1053,6 +1061,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                   {selected === "ammo" && "AMMUNITION DEPÅ"}
                   {selected === "command" && "BASBEFÄL / KOMMANDO HQ"}
                   {selected === "spareparts" && "RESERVDELSFÖRRÅD"}
+                  {selected === "runway" && "LANDNINGSBANA 09/27"}
                 </h4>
                 <button
                   onClick={() => setSelected(null)}
@@ -1068,6 +1077,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
               {selected === "ammo" && <AmmoDetail base={base} />}
               {selected === "command" && <CommandDetail base={base} />}
               {selected === "spareparts" && <SparePartsDetail base={base} />}
+              {selected === "runway" && <RunwayDetail base={base} />}
             </div>
           </motion.div>
         )}
@@ -1288,6 +1298,75 @@ function SparePartsDetail({ base }: { base: Base }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function RunwayDetail({ base }: { base: Base }) {
+  const zone = base.zones.find((z) => z.type === "runway");
+  const queue = zone?.currentQueue ?? [];
+  const capacity = zone?.capacity ?? 1;
+  const load = queue.length / capacity;
+  const isBlocked = queue.length >= capacity;
+  const statusColor = isBlocked ? "#ef4444" : load > 0.5 ? "#eab308" : "#22c55e";
+  const statusLabel = isBlocked ? "BLOCKERAD" : "AKTIV";
+
+  const queuedAircraft = queue.map(
+    (id) => base.aircraft.find((a) => a.id === id)
+  ).filter(Boolean);
+
+  return (
+    <div className="space-y-3">
+      {/* Status row */}
+      <div className="flex items-center gap-4">
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 rounded border text-[10px] font-mono font-bold"
+          style={{ color: statusColor, borderColor: `${statusColor}40`, backgroundColor: `${statusColor}10` }}
+        >
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
+          {statusLabel}
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          Beteckning: <span className="text-foreground font-bold">09/27</span>
+        </span>
+      </div>
+
+      {/* Capacity bar */}
+      <div>
+        <div className="flex justify-between text-[10px] font-mono mb-1">
+          <span className="text-muted-foreground">Kapacitet</span>
+          <span style={{ color: statusColor }}>{queue.length}/{capacity}</span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${Math.min(100, load * 100)}%`, backgroundColor: statusColor }}
+          />
+        </div>
+      </div>
+
+      {/* Aircraft in queue */}
+      {queuedAircraft.length > 0 ? (
+        <div>
+          <p className="text-[10px] font-mono text-muted-foreground mb-1.5">Flygplan på banan:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {queuedAircraft.map((ac) => ac && (
+              <span
+                key={ac.id}
+                className="text-[9px] font-mono px-2 py-1 rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 font-bold"
+              >
+                {ac.tailNumber}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[10px] font-mono text-muted-foreground">Inga flygplan på banan.</p>
+      )}
+
+      <p className="text-[9px] font-mono text-muted-foreground">
+        Dra ett flygplan till banan för att starta ett uppdrag.
+      </p>
     </div>
   );
 }

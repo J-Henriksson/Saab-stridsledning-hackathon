@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import MapGL, { NavigationControl } from "react-map-gl/maplibre";
+import { useState, useCallback, useRef, useEffect } from "react";
+import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
@@ -15,8 +15,11 @@ import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 
 export default function MapPage() {
-  const { state, advanceTurn, resetGame } = useGame();
+  const { state, advanceTurn, resetGame, dispatch } = useGame();
   const [selected, setSelected] = useState<SelectedEntity>(null);
+  const mapRef = useRef<MapRef>(null);
+  const isFollowing = useRef(false);
+  const followStartTime = useRef<number | null>(null);
 
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
@@ -27,6 +30,39 @@ export default function MapPage() {
     selected?.kind === "aircraft"
       ? selectedBase?.aircraft.find((a) => a.id === selected.aircraftId)
       : undefined;
+
+  const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
+
+  // Reset follow state when selection changes
+  useEffect(() => {
+    isFollowing.current = false;
+    followStartTime.current = null;
+  }, [selectedAircraftId]);
+
+  const handlePositionUpdate = useCallback((lng: number, lat: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const now = performance.now();
+    if (!followStartTime.current) {
+      followStartTime.current = now;
+      isFollowing.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 12, duration: 900, pitch: 30 });
+      return;
+    }
+    // Wait for initial flyTo to complete before smooth-following
+    if (now - followStartTime.current < 1000) return;
+    map.easeTo({ center: [lng, lat], duration: 150 });
+  }, []);
+
+  const handleRecall = useCallback(() => {
+    if (selected?.kind !== "aircraft") return;
+    dispatch({
+      type: "COMPLETE_LANDING_CHECK",
+      baseId: selected.baseId as import("@/types/game").BaseType,
+      aircraftId: selected.aircraftId,
+      sendToMaintenance: false,
+    });
+  }, [selected, dispatch]);
 
   const handleMapClick = useCallback(() => setSelected(null), []);
 
@@ -57,6 +93,7 @@ export default function MapPage() {
         {/* Map area */}
         <div className="flex-1 relative overflow-hidden">
           <MapGL
+            ref={mapRef}
             initialViewState={{
               longitude: BASE_COORDS.MOB.lng,
               latitude: BASE_COORDS.MOB.lat,
@@ -65,6 +102,7 @@ export default function MapPage() {
             }}
             mapStyle={MAP_STYLE}
             onClick={handleMapClick}
+            onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
             <NavigationControl position="top-right" />
@@ -75,6 +113,8 @@ export default function MapPage() {
               onSelectAircraft={(baseId, aircraftId) =>
                 setSelected({ kind: "aircraft", baseId, aircraftId })
               }
+              selectedAircraftId={selectedAircraftId}
+              onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
             />
 
             {Object.keys(BASE_COORDS).map((id) => (
@@ -136,6 +176,7 @@ export default function MapPage() {
                 <AircraftDetailPanel
                   aircraft={selectedAircraft}
                   onBack={() => setSelected({ kind: "base", baseId: selected.baseId })}
+                  onRecall={handleRecall}
                 />
               ) : selectedBase ? (
                 <BaseDetailPanel

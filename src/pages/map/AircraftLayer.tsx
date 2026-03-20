@@ -4,6 +4,7 @@ import { Base } from "@/types/game";
 import { BASE_COORDS } from "./constants";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
+
 interface AircraftPosition {
   id: string;
   baseId: string;
@@ -23,9 +24,13 @@ const TRAIL_SPAN = 8; // phase-seconds the trail covers
 export function AircraftLayer({
   bases,
   onSelectAircraft,
+  selectedAircraftId,
+  onPositionUpdate,
 }: {
   bases: Base[];
   onSelectAircraft?: (baseId: string, aircraftId: string) => void;
+  selectedAircraftId?: string;
+  onPositionUpdate?: (lng: number, lat: number) => void;
 }) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -92,6 +97,13 @@ export function AircraftLayer({
 
     return { aircraftPositions: positions, trails: allTrails };
   }, [bases, phase]);
+
+  // Notify parent of selected aircraft position for camera follow
+  useEffect(() => {
+    if (!selectedAircraftId || !onPositionUpdate) return;
+    const pos = aircraftPositions.find((p) => p.id === selectedAircraftId);
+    if (pos) onPositionUpdate(pos.lng, pos.lat);
+  }, [aircraftPositions, selectedAircraftId, onPositionUpdate]);
 
   // Draw trails on canvas
   useEffect(() => {
