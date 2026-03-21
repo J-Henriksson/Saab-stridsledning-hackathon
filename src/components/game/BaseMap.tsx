@@ -112,6 +112,7 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
 
 export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
+  const [hoveredAmmo, setHoveredAmmo] = useState<string | null>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
   const [selectedAcId, setSelectedAcId] = useState<string | null>(null);
   const [utfallAcId, setUtfallAcId] = useState<string | null>(null);
@@ -480,25 +481,86 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             const totalAmmo = base.ammunition.reduce((s, a) => s + a.quantity, 0);
             const maxAmmo   = base.ammunition.reduce((s, a) => s + a.max, 0);
             const critical  = totalAmmo / maxAmmo < 0.3;
+            // missile geometry — matches original trapezoid footprint (x=430–544, y=320–362)
+            const centers = [447, 487, 527];
+            const bW = 12;       // body width
+            const noseTop = 318; // nose tip y
+            const noseBot = 326; // nose base / body top y
+            const bodyBot = 348; // body bottom y
+            const bodyH = bodyBot - noseBot;
+            const finH = 7, finW = 5;
+            const strokeColor = critical || isSel ? "#D9192E" : "#0C234C55";
+            const strokeW = isSel ? 2 : 1;
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("ammo"); }}>
-                {[0, 1, 2].map((j) => (
-                  <polygon key={j}
-                    points={`${430 + j * 40},320 ${464 + j * 40},320 ${456 + j * 40},350 ${438 + j * 40},350`}
-                    fill={isSel ? "#D9192E10" : "#0C234C08"}
-                    stroke={critical || isSel ? "#D9192E" : "#0C234C55"}
-                    strokeWidth={isSel ? 2 : 1} />
-                ))}
-                {[0, 1, 2].map((j) => (
-                  <rect key={j} x={441 + j * 40} y={335} width="12" height="15" rx="1"
-                    fill="#D7DEE1" stroke="#0C234C55" strokeWidth="0.5" />
-                ))}
+                {base.ammunition.map((a, i) => {
+                  const pct = a.quantity / a.max;
+                  const color = pct <= 0.3 ? "#D9192E" : pct <= 0.7 ? "#D7AB3A" : "#22a05a";
+                  const colorDim = pct <= 0.3 ? "#D9192E30" : pct <= 0.7 ? "#D7AB3A30" : "#22a05a30";
+                  const cx = centers[i];
+                  const totalH = bodyBot - noseTop;
+                  const fillH = totalH * pct;         // how tall the colored zone is
+                  const fillTop = bodyBot - fillH;    // y where color starts
+                  const clipId = `ammo-clip-${i}`;
+                  const isHov = hoveredAmmo === a.type;
+                  const ttW = 64, ttH = 22;
+                  const ttX = cx - ttW / 2, ttY = noseTop - ttH - 4;
+                  // missile silhouette polygon (nose + body, no fins)
+                  const silhouette = `${cx},${noseTop} ${cx + bW / 2},${noseBot} ${cx + bW / 2},${bodyBot} ${cx - bW / 2},${bodyBot} ${cx - bW / 2},${noseBot}`;
+                  return (
+                    <g key={a.type}
+                      onMouseEnter={() => setHoveredAmmo(a.type)}
+                      onMouseLeave={() => setHoveredAmmo(null)}
+                      style={{ cursor: "pointer" }}>
+                      <defs>
+                        <clipPath id={clipId}>
+                          <polygon points={silhouette} />
+                        </clipPath>
+                      </defs>
+                      {/* dim full silhouette */}
+                      <polygon points={silhouette} fill={colorDim} />
+                      {/* colored fill rising from bottom, clipped to silhouette */}
+                      <rect x={cx - bW / 2} y={fillTop} width={bW} height={fillH}
+                        fill={color} clipPath={`url(#${clipId})`} />
+                      {/* fins — always solid */}
+                      <polygon
+                        points={`${cx - bW / 2},${bodyBot - finH} ${cx - bW / 2 - finW},${bodyBot} ${cx - bW / 2},${bodyBot}`}
+                        fill={color} />
+                      <polygon
+                        points={`${cx + bW / 2},${bodyBot - finH} ${cx + bW / 2 + finW},${bodyBot} ${cx + bW / 2},${bodyBot}`}
+                        fill={color} />
+                      {/* type label */}
+                      <text x={cx} y={bodyBot + 8} textAnchor="middle" fontSize="6"
+                        fontFamily="monospace" fontWeight="bold" fill="#0C234C">
+                        {a.type}
+                      </text>
+                      {/* hover tooltip */}
+                      {isHov && (
+                        <g>
+                          <rect x={ttX} y={ttY} width={ttW} height={ttH} rx="3"
+                            fill="#0C234C" stroke={color} strokeWidth="1" opacity="0.95" />
+                          <text x={cx} y={ttY + 9} textAnchor="middle" fontSize="6.5"
+                            fontFamily="monospace" fontWeight="bold" fill={color}>
+                            {a.type}
+                          </text>
+                          <text x={cx} y={ttY + 18} textAnchor="middle" fontSize="6"
+                            fontFamily="monospace" fill="#FFFFFF">
+                            {a.quantity}/{a.max} ({Math.round(pct * 100)}%)
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
                 {critical && (
-                  <circle cx="550" cy="325" r="5" fill="#D9192E">
+                  <circle cx="550" cy="321" r="4" fill="#D9192E">
                     <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
-                <text x="487" y="362" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">AMMUNITION DEPÅ</text>
+                <text x="487" y="364" textAnchor="middle" fontSize="7"
+                  fill={critical ? "#D9192E" : "#0C234C"} fontFamily="monospace" fontWeight="bold">
+                  AMMUNITION DEPÅ
+                </text>
               </g>
             );
           })()}
