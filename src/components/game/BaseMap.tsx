@@ -530,8 +530,10 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                   const color = isRet ? "#5a3a8a" : "#1a4a8a";
                   return (
                     <g key={`uppdrag-${ac.id}`}
+                      style={{ cursor: "pointer" }}
                       onMouseEnter={() => setHoveredAc(ac.id)}
                       onMouseLeave={() => setHoveredAc(null)}
+                      onClick={() => navigate("/map", { state: { aircraftId: ac.id, baseId: base.id } })}
                     >
                       <AircraftImage cx={cx} cy={cy} color={color} opacity={isRet ? 0.7 : 1} />
                       {/* Returning indicator */}

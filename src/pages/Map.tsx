@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
@@ -17,10 +18,19 @@ import { Base, AircraftStatus } from "@/types/game";
 
 export default function MapPage() {
   const { state, advanceTurn, resetGame, dispatch } = useGame();
+  const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
+
+  // Pre-select aircraft when navigated here from basöversikt
+  useEffect(() => {
+    const s = location.state as { aircraftId?: string; baseId?: string } | null;
+    if (s?.aircraftId && s?.baseId) {
+      setSelected({ kind: "aircraft", baseId: s.baseId, aircraftId: s.aircraftId });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
