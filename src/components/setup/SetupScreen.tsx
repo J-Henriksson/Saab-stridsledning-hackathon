@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { initialGameState } from "@/data/initialGameState";
@@ -116,6 +117,32 @@ const S = {
   },
 };
 
+// ── Hover-aware button ────────────────────────────────────────────────────
+
+function HoverButton({
+  base,
+  hovered,
+  onClick,
+  children,
+}: {
+  base: React.CSSProperties;
+  hovered: React.CSSProperties;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  return (
+    <button
+      style={{ ...base, ...(isHovered ? hovered : {}) }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
 // ── Choice view ───────────────────────────────────────────────────────────
 
 function ChoiceView({
@@ -128,17 +155,55 @@ function ChoiceView({
   return (
     <div style={S.root}>
       <div style={S.card}>
+        {/* Logo — matches TopBar brand icon */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+          <div style={{
+            width: 72, height: 72, borderRadius: 16, overflow: "hidden",
+            background: "hsl(42 64% 53% / 0.15)",
+            border: "1px solid hsl(42 64% 53% / 0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <img
+              src={gripenSilhouette}
+              alt="Gripen"
+              style={{
+                height: 44, width: "auto", objectFit: "contain",
+                filter: "brightness(0) invert(1) sepia(1) saturate(2) hue-rotate(3deg) brightness(1.1)",
+              }}
+            />
+          </div>
+        </div>
+
         <div style={S.label}>SMART AIRBASE — ROAD2AIR</div>
         <div style={S.title}>SPELKONFIGURATION</div>
         <div style={S.subtitle}>
           Välj om du vill starta med standardresurser eller konfigurera startresurserna manuellt innan spelet börjar.
         </div>
-        <button style={S.btnPrimary} onClick={onDefault}>
+
+        <HoverButton
+          base={S.btnPrimary}
+          hovered={{
+            background: "linear-gradient(90deg,#D7AB3A,#f0c84a,#D7AB3A)",
+            boxShadow: "0 0 16px rgba(215,171,58,0.45)",
+            transform: "translateY(-1px)",
+          }}
+          onClick={onDefault}
+        >
           STARTA MED STANDARDINSTÄLLNINGAR
-        </button>
-        <button style={S.btnSecondary} onClick={onCustomize}>
+        </HoverButton>
+
+        <HoverButton
+          base={S.btnSecondary}
+          hovered={{
+            background: "rgba(215,222,225,0.08)",
+            border: "1px solid rgba(215,222,225,0.55)",
+            color: "#D7DEE1",
+            transform: "translateY(-1px)",
+          }}
+          onClick={onCustomize}
+        >
           ANPASSA RESURSER
-        </button>
+        </HoverButton>
       </div>
     </div>
   );
