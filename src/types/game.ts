@@ -172,6 +172,7 @@ export type GameAction =
   | { type: "MARK_FAULT_NMC"; baseId: BaseType; aircraftId: string; repairTime: number; maintenanceTypeKey: string; actionLabel: string; requiredSparePart?: string }
   | { type: "CONSUME_SPARE_PART"; baseId: BaseType; sparePartId: string; quantity?: number }
   | { type: "RESET_GAME" }
+  | { type: "LOAD_STATE"; payload: GameState }
   | { type: "IMPORT_ATO_BATCH"; orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[]; sourceFile: string; riskCount: number }
   | { type: "REBASE_AIRCRAFT"; aircraftId: string; fromBase: BaseType; toBase: BaseType };
 

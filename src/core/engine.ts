@@ -30,10 +30,9 @@ function addEvent(state: GameState, event: Omit<GameEvent, "id" | "timestamp">):
 
 /** Pure reducer: gameReducer(state, action) => newState */
 export function gameReducer(state: GameState, action: GameAction): GameState {
-  // Reset is always valid
-  if (action.type === "RESET_GAME") {
-    return initialGameState;
-  }
+  // Reset / load are always valid
+  if (action.type === "RESET_GAME") return initialGameState;
+  if (action.type === "LOAD_STATE") return action.payload;
 
   // Validate action
   const validation = validateAction(state, action);
