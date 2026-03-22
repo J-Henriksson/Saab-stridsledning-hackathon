@@ -560,7 +560,7 @@ const Index = () => {
         )}
 
         {/* ── RIGHT SIDEBAR — Intelligence Sidebar ── */}
-        {!["ato","aar","flygplan"].includes(activeSection) && (
+        {!["flygplan"].includes(activeSection) && (
           <IntelligenceSidebar base={selectedBase} phase={state.phase} events={state.events} />
         )}
 
