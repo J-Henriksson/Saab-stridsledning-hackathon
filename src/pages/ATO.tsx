@@ -208,12 +208,12 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
 
         {/* LEFT: ATO order list + importer */}
         <div className="border-r border-border flex flex-col overflow-hidden">
-          {/* Filter tabs */}
+            {/* Filter tabs */}
           <div className="px-4 py-2 border-b border-border flex gap-1">
             {(["all", "pending", "dispatched", "completed"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilterStatus(f)}
+                <button
+                  key={f}
+                  onClick={() => setFilterStatus(f)}
                 className={`px-3 py-1 text-[10px] font-mono rounded transition-colors ${
                   filterStatus === f
                     ? "bg-primary/20 text-primary border border-primary/30"
@@ -253,16 +253,16 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                   } ${order.status === "pending" ? "border-l-4 border-l-status-yellow" : order.status === "assigned" || order.status === "dispatched" ? "border-l-4 border-l-status-green" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                       <span
                         className={`p-1 rounded border ${priorityColor[order.priority]}`}
                       >
                         {missionIcons[order.missionType] ?? <Plane className="h-4 w-4" />}
-                      </span>
-                      <div>
+                        </span>
+                        <div>
                         <div className="text-xs font-bold text-foreground">
                           {order.missionType} — {order.label}
-                        </div>
+                          </div>
                         <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
                           {formatHour(order.startHour)}–{formatHour(order.endHour)} · {order.requiredCount} fpl
                         </div>
@@ -273,7 +273,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${statusColor[order.status]}`}
                       >
                         {statusLabel[order.status]}
-                      </span>
+                          </span>
                       <span
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${priorityColor[order.priority]}`}
                       >
@@ -293,14 +293,14 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                           Ta bort
                         </button>
                       </div>
+                      </div>
                     </div>
-                  </div>
 
                   <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       {order.launchBase}
-                    </span>
+                      </span>
                     {order.payload && (
                       <span className="flex items-center gap-1">
                         <Package className="h-3 w-3" />
@@ -319,8 +319,8 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                   {order.assignedAircraft.length > 0 && (
                     <div className="mt-1.5 text-[9px] font-mono text-status-yellow">
                       Tilldelade: {order.assignedAircraft.join(", ")}
-                    </div>
-                  )}
+                      </div>
+                    )}
 
                   {isSelected && (
                     <div className="mt-1 flex items-center gap-1 text-[9px] text-primary font-mono">
@@ -413,7 +413,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
               editATOOrder(editingOrder.id, order);
               toast.success("Order uppdaterad");
             } else {
-              createATOOrder(order, selectedAircraft);
+              createATOOrder(order);
               toast.success(`Ny ATO-order skapad${selectedAircraft.length > 0 ? ` · ${selectedAircraft.length} fpl tilldelade` : ""}`);
             }
             setShowEditor(false);
