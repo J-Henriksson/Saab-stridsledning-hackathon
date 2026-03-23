@@ -107,7 +107,6 @@ interface ATOMissionPanelProps {
   onEdit: () => void;
   onDelete: () => void;
   currentHour: number;
-  currentDay: number;
   onSelectOrder: (id: string) => void;
   editATOOrder: (id: string, updates: Partial<ATOOrder>) => void;
 }
@@ -124,7 +123,6 @@ export function ATOMissionPanel({
   onEdit,
   onDelete,
   currentHour,
-  currentDay,
   onSelectOrder,
   editATOOrder,
 }: ATOMissionPanelProps) {
@@ -199,9 +197,6 @@ export function ATOMissionPanel({
   // Validation
   const warnings = validateATOOrder(order, state);
   const errorCount = warnings.filter((w) => w.severity === "error").length;
-
-  // Today's orders for Gantt
-  const todayOrders = allOrders.filter((o) => o.day === currentDay);
 
   const fieldCls = "w-full px-2 py-1.5 rounded text-xs font-mono bg-muted/30 border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40";
   const labelCls = "text-[10px] font-mono font-bold block mb-1 text-muted-foreground";
@@ -320,7 +315,7 @@ export function ATOMissionPanel({
 
       {/* ── Tab bar ────────────────────────────────────────────────────────── */}
       <div className="border-b border-border px-4 py-2 flex gap-1 shrink-0">
-        {(["details", "timeline", "assign"] as const).map((tab) => (
+        {(["details", "assign"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -330,7 +325,7 @@ export function ATOMissionPanel({
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {tab === "details" ? "DETALJER" : tab === "timeline" ? "TIDSLINJE" : "TILLDELA"}
+            {tab === "details" ? "DETALJER" : "TILLDELA"}
           </button>
         ))}
       </div>
@@ -533,20 +528,6 @@ export function ATOMissionPanel({
           </div>
         )}
 
-        {/* TIDSLINJE */}
-        {activeTab === "timeline" && (
-          <div className="h-full min-h-[320px]">
-            <ATOGanttView
-              orders={todayOrders}
-              currentHour={currentHour}
-              selectedOrderId={order.id}
-              onSelectOrder={onSelectOrder}
-              timelineStart={6}
-              timelineEnd={24}
-            />
-          </div>
-        )}
-
         {/* TILLDELA */}
         {activeTab === "assign" && (
           <div className="p-4 space-y-4">
@@ -667,19 +648,6 @@ export function ATOMissionPanel({
                   >
                     SPARA TILLDELNING
                   </button>
-                  <button
-                    onClick={onDispatch}
-                    disabled={selectedAircraft.length === 0 || availableAircraft.length === 0}
-                    className="flex items-center gap-2 px-6 py-2 text-sm font-mono font-bold rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Send className="h-4 w-4" />
-                    SKICKA UPPDRAG
-                  </button>
-                  {selectedAircraft.length < order.requiredCount && selectedAircraft.length > 0 && (
-                    <span className="text-[10px] text-status-yellow font-mono">
-                      ⚠ {order.requiredCount - selectedAircraft.length} fpl saknas
-                    </span>
-                  )}
                 </div>
               </>
             ) : (

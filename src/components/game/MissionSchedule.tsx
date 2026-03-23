@@ -6,6 +6,10 @@ interface MissionScheduleProps {
   atoOrders: ATOOrder[];
   day: number;
   hour: number;
+  timelineStart?: number;
+  timelineEnd?: number;
+  selectedOrderId?: string;
+  onSelectOrder?: (order: ATOOrder) => void;
 }
 
 const missionIcons: Partial<Record<MissionType, React.ReactNode>> = {
@@ -30,9 +34,10 @@ function getOrderDisplayStatus(order: ATOOrder, hour: number): "planned" | "acti
   return "planned";
 }
 
-export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) {
+export function MissionSchedule({ atoOrders, day, hour, timelineStart = 0, timelineEnd = 24, selectedOrderId, onSelectOrder }: MissionScheduleProps) {
   const todaysOrders = atoOrders.filter((o) => o.day === day);
-  const timeSlots = Array.from({ length: 18 }, (_, i) => i + 6); // 06:00 to 23:00
+  const totalSlots = timelineEnd - timelineStart;
+  const timeSlots = Array.from({ length: totalSlots }, (_, i) => i + timelineStart);
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -49,7 +54,7 @@ export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) 
             <span className="w-2 h-2 rounded-full bg-primary/30" /> Planerad
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-muted-foreground/30" /> Klar
+            <span className="w-2 h-2 rounded-full bg-blue-700" /> Klar
           </span>
         </div>
       </div>
@@ -58,29 +63,30 @@ export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) 
         {/* Timeline header */}
         <div className="flex mb-1">
           <div className="w-32 shrink-0" />
-          <div className="flex-1 flex">
-            {timeSlots.map((t) => (
-              <div
-                key={t}
-                className={`flex-1 text-center text-[9px] font-mono ${t === hour ? "text-primary font-bold" : "text-muted-foreground"}`}
-              >
-                {String(t).padStart(2, "0")}
-              </div>
-            ))}
+          <div className="flex-1 relative">
+            <div className="flex">
+              {timeSlots.map((t) => (
+                <div
+                  key={t}
+                  className={`flex-1 text-left text-[9px] font-mono py-0.5 ${
+                    t === hour ? "text-primary font-bold" : "text-muted-foreground"
+                  }`}
+                >
+                  {String(t).padStart(2, "0")}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="w-8 shrink-0 text-right text-[9px] font-mono text-status-yellow/80 font-bold py-0.5">
+            24
           </div>
         </div>
 
         {/* Current time indicator */}
         <div className="flex mb-2">
           <div className="w-32 shrink-0" />
-          <div className="flex-1 relative h-px bg-border">
-            {hour >= 6 && hour <= 23 && (
-              <div
-                className="absolute top-0 w-px h-3 bg-primary"
-                style={{ left: `${((hour - 6) / 18) * 100}%` }}
-              />
-            )}
-          </div>
+          <div className="flex-1 relative h-px bg-border" />
+          <div className="w-8 shrink-0" />
         </div>
 
         {/* Mission rows */}
@@ -92,9 +98,9 @@ export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) 
           ) : (
             todaysOrders.map((order) => {
               const displayStatus = getOrderDisplayStatus(order, hour);
-              const startOffset = Math.max(0, ((Math.max(order.startHour, 6) - 6) / 18) * 100);
-              const width = ((Math.min(order.endHour, 24) - Math.max(order.startHour, 6)) / 18) * 100;
-
+              const isSelected = order.id === selectedOrderId;
+              const startOffset = ((Math.max(order.startHour, timelineStart) - timelineStart) / totalSlots) * 100;
+              const width = ((Math.min(order.endHour, timelineEnd) - Math.max(order.startHour, timelineStart)) / totalSlots) * 100;
               return (
                 <motion.div
                   key={order.id}
@@ -117,16 +123,16 @@ export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) 
 
                   {/* Timeline bar */}
                   <div className="flex-1 relative h-8">
-                    <div className="absolute inset-0 bg-muted/30 rounded" />
                     <div
-                      className={`absolute top-0.5 bottom-0.5 rounded flex items-center px-2 text-[9px] font-mono ${
+                      className={`absolute top-0.5 bottom-0.5 rounded flex items-center px-2 text-[9px] font-mono cursor-pointer ${
                         displayStatus === "active"
                           ? "bg-status-green/20 border border-status-green/40 text-status-green"
                           : displayStatus === "completed"
-                          ? "bg-muted-foreground/10 border border-muted-foreground/20 text-muted-foreground"
+                          ? "bg-blue-900/60 border border-blue-700/50 text-blue-200"
                           : "bg-primary/10 border border-primary/30 text-primary/80"
-                      }`}
+                      } ${isSelected ? "ring-2 ring-primary/60" : ""}`}
                       style={{ left: `${startOffset}%`, width: `${Math.max(width, 2)}%` }}
+                      onClick={() => onSelectOrder?.(order)}
                     >
                       <span className="truncate">
                         {order.assignedAircraft.length > 0
@@ -143,7 +149,7 @@ export function MissionSchedule({ atoOrders, day, hour }: MissionScheduleProps) 
                     {order.status === "dispatched" && hour > order.endHour && (
                       <div
                         className="absolute top-0 w-2 h-2 rounded-full bg-status-red"
-                        style={{ left: `${((order.endHour - 6) / 18) * 100}%`, top: "-2px" }}
+                        style={{ left: `${((Math.min(order.endHour, timelineEnd) - timelineStart) / totalSlots) * 100}%`, top: "-2px" }}
                         title="Avvikelse — överskriden tid"
                       />
                     )}

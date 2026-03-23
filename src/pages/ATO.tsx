@@ -25,6 +25,7 @@ import {
   Upload,
 } from "lucide-react";
 import { ATOGanttView } from "@/components/game/ATOGanttView";
+import { MissionSchedule } from "@/components/game/MissionSchedule";
 
 const missionIcons: Partial<Record<MissionType, React.ReactNode>> = {
   DCA: <Shield className="h-4 w-4" />,
@@ -356,7 +357,6 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                   onEdit={handleOpenEdit}
                   onDelete={handleDelete}
                   currentHour={state.hour}
-                  currentDay={state.day}
                   onSelectOrder={(id) => {
                     const o = state.atoOrders.find((o) => o.id === id);
                     if (o) handleSelectOrder(o);
@@ -392,15 +392,12 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
           <span className="text-[9px] font-mono text-muted-foreground/60 italic">Klicka på tomt fält för att skapa ny order</span>
         </div>
         <div style={{ height: "264px" }}>
-          <ATOGanttView
-            orders={state.atoOrders.filter((o) => o.day === state.day)}
-            currentHour={state.hour}
+          <MissionSchedule
+            atoOrders={state.atoOrders}
+            day={state.day}
+            hour={state.hour}
             selectedOrderId={selectedOrderId ?? ""}
-            onSelectOrder={(id) => {
-              const o = state.atoOrders.find((o) => o.id === id);
-              if (o) handleSelectOrder(o);
-            }}
-            onClickEmpty={handleGanttClickEmpty}
+            onSelectOrder={(order) => handleSelectOrder(order)}
           />
         </div>
       </div>

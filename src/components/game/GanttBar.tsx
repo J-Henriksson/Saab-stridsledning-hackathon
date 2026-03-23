@@ -16,7 +16,7 @@ export function GanttBar({
   label,
   color,
   timelineStart = 6,
-  timelineEnd = 23,
+  timelineEnd = 24,
   isActive = false,
   hasDeviation = false,
   onClick,
