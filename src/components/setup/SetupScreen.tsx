@@ -175,9 +175,9 @@ function ChoiceView({
         </div>
 
         <div style={S.label}>SMART AIRBASE — ROAD2AIR</div>
-        <div style={S.title}>SPELKONFIGURATION</div>
+        <div style={S.title}>SIMULERINGSKONFIGURATION</div>
         <div style={S.subtitle}>
-          Välj om du vill starta med standardresurser eller konfigurera startresurserna manuellt innan spelet börjar.
+          Välj om du vill starta med standardresurser eller konfigurera startresurserna manuellt innan simuleringen börjar.
         </div>
 
         <HoverButton
