@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  base: mode === "production" ? "/SAAB-Smart-Airbase-with-Road2Air/" : "/",
+  base: mode === "production" ? "/smart-airbase-system/" : "/",
   server: {
     host: "::",
     port: 8080,
