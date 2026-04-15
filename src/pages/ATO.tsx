@@ -204,7 +204,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-0">
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(280px,400px)_1fr] gap-0">
 
         {/* LEFT: ATO order list + importer */}
         <div className="border-r border-border flex flex-col overflow-hidden">
@@ -383,7 +383,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       {/* Bottom Gantt panel */}
-      <div className="border-t border-border bg-card shrink-0" style={{ height: "300px" }}>
+      <div className="border-t border-border bg-card shrink-0 flex flex-col" style={{ minHeight: "200px", height: "300px" }}>
         <div className="px-4 py-1.5 flex items-center justify-between border-b border-border/50">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-mono font-bold text-muted-foreground tracking-widest">DAGLIG ATO-PLAN</span>
@@ -391,7 +391,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
           </div>
           <span className="text-[9px] font-mono text-muted-foreground/60 italic">Klicka på tomt fält för att skapa ny order</span>
         </div>
-        <div style={{ height: "264px" }}>
+        <div className="flex-1 min-h-0">
           <MissionSchedule
             atoOrders={state.atoOrders}
             day={state.day}

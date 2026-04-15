@@ -335,7 +335,7 @@ const Index = () => {
         {activeSection === "ato" ? (
           <ATOBody embedded />
         ) : (
-        <div className="flex-1 overflow-y-auto" style={{ background: ["aar"].includes(activeSection) ? "hsl(0 0% 100%)" : "hsl(0 0% 100%)" }}>
+        <div className="flex-1 min-w-0 overflow-y-auto" style={{ background: ["aar"].includes(activeSection) ? "hsl(0 0% 100%)" : "hsl(0 0% 100%)" }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeSection}
@@ -398,7 +398,7 @@ const Index = () => {
                     <div className="grid grid-cols-3 divide-x" style={{ borderColor: "rgba(215,222,225,0.07)", divideColor: "rgba(215,222,225,0.07)" }}>
 
                       {/* Col 1 — Readiness donut */}
-                      <div className="flex items-center gap-5 px-6 py-5">
+                      <div className="min-w-0 overflow-hidden flex items-center gap-5 px-6 py-5">
                         <svg width={92} height={92} viewBox="0 0 92 92" style={{ flexShrink: 0 }}>
                           <circle cx={46} cy={46} r={r} fill="none" stroke="rgba(215,222,225,0.07)" strokeWidth={10} />
                           <motion.circle cx={46} cy={46} r={r} fill="none"
@@ -429,7 +429,7 @@ const Index = () => {
                       </div>
 
                       {/* Col 2 — Aircraft grid */}
-                      <div className="px-5 py-5">
+                      <div className="min-w-0 overflow-hidden px-5 py-5">
                         <div className="text-[9px] font-mono uppercase tracking-wider mb-3" style={{ color: "rgba(215,222,225,0.35)" }}>
                           <Plane className="inline h-3 w-3 mr-1.5" />Flygplan — snabbstatus
                         </div>
@@ -453,7 +453,7 @@ const Index = () => {
                       </div>
 
                       {/* Col 3 — Alerts */}
-                      <div className="px-5 py-5">
+                      <div className="min-w-0 overflow-hidden px-5 py-5">
                         <div className="text-[9px] font-mono uppercase tracking-wider mb-3" style={{ color: "rgba(215,222,225,0.35)" }}>
                           <AlertOctagon className="inline h-3 w-3 mr-1.5" />Larm & åtgärder
                         </div>

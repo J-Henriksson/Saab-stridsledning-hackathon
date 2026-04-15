@@ -4,7 +4,8 @@
       "Bash(npm install:*)",
       "Bash(npm run:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(grep -n \"w-\\\\[.*px\\\\]\" /home/augustus/Projects/hackathons/saab/final-version/smart-airbase-system/src/components/game/*.tsx)"
     ]
   }
 }
