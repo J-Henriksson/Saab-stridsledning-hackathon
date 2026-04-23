@@ -10,7 +10,7 @@ import { uuid } from "./uuid";
 import type { Unit, AircraftUnit } from "@/types/units";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
-import { enforceAirborneInvariant, advanceMovement, perHourFuelDrain } from "@/core/units/movement";
+import { enforceAirborneInvariant, advanceMovement, perMinuteFuelDrain } from "@/core/units/movement";
 import { BASE_COORDS } from "@/pages/map/constants";
 import { getAircraft } from "@/core/units/helpers";
 
@@ -46,7 +46,7 @@ function addEvent(state: GameState, event: Omit<GameEvent, "id" | "timestamp">):
       {
         ...mirrored,
         id: uuid(),
-        timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:00`,
+        timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`,
       },
       ...state.events,
     ].slice(0, 200),
@@ -115,7 +115,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleTick(state, action.seconds);
 
     case "ADVANCE_HOUR":
-      return handleAdvanceHour(state);
+      return handleTick(state, 60 * 60);
 
     case "TOGGLE_PAUSE":
       return { ...state, isRunning: !state.isRunning };
@@ -421,58 +421,59 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 }
 
 function handleTick(state: GameState, seconds: number): GameState {
-  const totalSec = state.second + seconds;
-  const newSec = totalSec % 60;
-  const extraMin = Math.floor(totalSec / 60);
-  const totalMin = state.minute + extraMin;
-  const newMin = totalMin % 60;
-  const extraHour = Math.floor(totalMin / 60);
-
-  if (extraHour > 0) {
-    // Run full hour simulation then patch in sub-hour time
-    const afterHour = handleAdvanceHour({ ...state, minute: newMin, second: newSec });
-    return afterHour;
+  let cur = state;
+  let totalSec = cur.second + seconds;
+  while (totalSec >= 60) {
+    totalSec -= 60;
+    // One minute elapsed.
+    let newMin = cur.minute + 1;
+    if (newMin >= 60) {
+      newMin = 0;
+      // Hour rollover: advance hour/day and run the per-hour work first.
+      let newHour = cur.hour + 1;
+      let newDay = cur.day;
+      if (newHour >= 24) {
+        newHour = 6;
+        newDay = cur.day + 1;
+      }
+      cur = handleAdvanceHour({ ...cur, hour: newHour, day: newDay, minute: 0, second: totalSec });
+    }
+    cur = handleAdvanceMinute({ ...cur, minute: newMin, second: totalSec });
   }
-
-  return { ...state, second: newSec, minute: newMin };
+  return { ...cur, second: totalSec };
 }
 
-function handleAdvanceHour(state: GameState): GameState {
-  const newHour = state.hour + 1;
-  const dayRollover = newHour >= 24;
-  const nextDay = dayRollover ? state.day + 1 : state.day;
-  const nextHour = dayRollover ? 6 : newHour;
-  const nextPhase = getPhaseForDay(nextDay);
-
+/**
+ * Per-minute updates: base fuel drain (1/60 of hourly rate), aircraft health
+ * wear, service-hour countdown, maintenance-time countdown, unit movement +
+ * airborne invariant + unit fuel drain + fuel-low/destroyed events, and
+ * transfer-arrival detection.
+ */
+function handleAdvanceMinute(state: GameState): GameState {
+  const phase = state.phase;
+  const ts = `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
   const newEvents: GameEvent[] = [];
 
-  if (nextPhase !== state.phase) {
-    newEvents.push({
-      id: uuid(),
-      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
-      type: "critical",
-      message: `Fas ändrad till ${nextPhase}`,
-    });
-  }
-
-  // Fuel drain + per-aircraft health wear
-  const fuelDrain = FUEL_DRAIN_RATE[nextPhase] ?? 0.5;
+  // Base-level fuel drain (per-minute) + aircraft wear + service-hour countdown.
+  const fuelDrainPerMinute = (FUEL_DRAIN_RATE[phase] ?? 0.5) / 60;
   let updatedBases = state.bases.map((base) => {
     const anyOnMission = getAircraft(base).some((ac) => ac.status === "on_mission");
-    const drain = anyOnMission ? fuelDrain : 0;
+    const drain = anyOnMission ? fuelDrainPerMinute : 0;
     return {
       ...base,
       fuel: Math.max(0, base.fuel - drain),
       units: mapAircraftInUnits(base.units, (ac) => {
         let wear = 0;
         if (ac.status === "ready" || ac.status === "allocated") {
-          wear = Math.floor(Math.random() * 6) + 5;
+          // Mean 7.5/hour → ~0.125/min; allow jitter.
+          wear = Math.random() * 0.25;
         } else if (ac.status === "on_mission") {
-          wear = Math.floor(Math.random() * 11) + 20;
+          // Mean 25/hour → ~0.42/min.
+          wear = Math.random() * 0.83;
         }
         const consumesServiceHours = ["ready", "allocated", "in_preparation", "awaiting_launch", "on_mission", "returning"];
         const newHoursToService = consumesServiceHours.includes(ac.status)
-          ? Math.max(0, ac.hoursToService - 1)
+          ? Math.max(0, ac.hoursToService - 1 / 60)
           : ac.hoursToService;
         if (wear === 0) return { ...ac, hoursToService: newHoursToService };
         const newHealth = Math.max(0, (ac.health ?? 100) - wear);
@@ -484,17 +485,17 @@ function handleAdvanceHour(state: GameState): GameState {
     };
   });
 
-  // Tick maintenance timers
+  // Tick maintenance timers (per-minute fraction).
   updatedBases = updatedBases.map((base) => {
     let completedCount = 0;
     const updatedUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
-        const remaining = ac.maintenanceTimeRemaining - 1;
+        const remaining = ac.maintenanceTimeRemaining - 1 / 60;
         if (remaining <= 0) {
           completedCount++;
           newEvents.push({
             id: uuid(),
-            timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+            timestamp: ts,
             type: "success",
             message: `${ac.tailNumber} underhåll klart — nu operativ`,
             base: base.id,
@@ -530,136 +531,12 @@ function handleAdvanceHour(state: GameState): GameState {
     };
   });
 
-  // Generate new ATO on day rollover
-  const newATOOrders = dayRollover ? generateATOOrders(nextDay, nextPhase) : state.atoOrders;
-
-  // Mark completed orders and collect returning aircraft
-  const returningAircraft: { aircraftId: string; baseId: string }[] = [];
-  const updatedATOOrders = newATOOrders.map((o) => {
-    if (o.status === "dispatched" && nextHour >= o.endHour) {
-      if (o.missionType !== "REBASE") {
-        o.assignedAircraft.forEach((acId) =>
-          returningAircraft.push({ aircraftId: acId, baseId: o.launchBase })
-        );
-      }
-      return { ...o, status: "completed" as const };
-    }
-    return o;
-  });
-
-  // Handle REBASE completions
-  const rebaseTransfers: { aircraftId: string; fromBaseId: string; toBaseId: string }[] = [];
-  updatedBases.forEach((base) => {
-    getAircraft(base).forEach((ac) => {
-      if (
-        ac.status === "on_mission" &&
-        ac.currentMission === "REBASE" &&
-        ac.rebaseTarget &&
-        ac.missionEndHour !== undefined &&
-        nextHour >= ac.missionEndHour
-      ) {
-        rebaseTransfers.push({ aircraftId: ac.id, fromBaseId: base.id, toBaseId: ac.rebaseTarget });
-      }
-    });
-  });
-
-  let basesAfterRebases = updatedBases;
-  for (const transfer of rebaseTransfers) {
-    const srcBase = basesAfterRebases.find((b) => b.id === transfer.fromBaseId);
-    const srcAircraft = srcBase
-      ? getAircraft(srcBase).find((a) => a.id === transfer.aircraftId)
-      : undefined;
-    if (!srcAircraft) continue;
-    const arrivedAircraft: AircraftUnit = {
-      ...srcAircraft,
-      currentBase: transfer.toBaseId as BaseType,
-      status: "ready" as AircraftStatus,
-      currentMission: undefined,
-      missionEndHour: undefined,
-      rebaseTarget: undefined,
-    };
-    basesAfterRebases = basesAfterRebases.map((base) => {
-      if (base.id === transfer.fromBaseId) {
-        return { ...base, units: base.units.filter((u) => u.id !== transfer.aircraftId) };
-      }
-      if (base.id === transfer.toBaseId) {
-        return { ...base, units: [...base.units, arrivedAircraft] };
-      }
-      return base;
-    });
-  }
-
-  // Set returning aircraft
-  const basesAfterReturn = basesAfterRebases.map((base) => ({
-    ...base,
-    units: mapAircraftInUnits(base.units, (ac) => {
-      if (ac.status === "on_mission") {
-        const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
-        const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;
-        if (fromATO || fromDrop) {
-          if (fromDrop && !fromATO) {
-            returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
-          }
-          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
-        }
-      }
-      return ac;
-    }),
-  }));
-
-  if (returningAircraft.length > 0) {
-    newEvents.push({
-      id: uuid(),
-      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
-      type: "info" as const,
-      message: `${returningAircraft.length} flygplan återvänder — mottagningskontroll krävs`,
-    });
-  }
-
-  // Resource checks every hour
-  for (const base of basesAfterReturn) {
-    if (base.fuel < 20) {
-      newEvents.push({
-        id: uuid(),
-        timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
-        type: "critical",
-        message: `KRITISK bränslenivå vid ${base.id}: ${base.fuel.toFixed(0)}%`,
-        base: base.id,
-      });
-    }
-    for (const part of base.spareParts) {
-      if (part.quantity === 0) {
-        newEvents.push({
-          id: uuid(),
-          timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
-          type: "critical",
-          message: `SLUT PÅ ${part.name} vid ${base.id}`,
-          base: base.id,
-        });
-      }
-    }
-  }
-
-  if (dayRollover) {
-    newEvents.push({
-      id: uuid(),
-      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
-      type: "info",
-      message: `Dag ${nextDay} börjar — ATO uppdaterad`,
-    });
-  }
-
-  const newLandingChecks = returningAircraft.map((r) => ({
-    aircraftId: r.aircraftId,
-    baseId: r.baseId as BaseType,
-  }));
-
-  // ── Unit tick: movement + airborne invariant + per-category fuel drain ────
-  const ts = `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`;
+  // ── Unit tick: movement + airborne invariant + per-category fuel drain ───
+  const HOURS_ELAPSED = 1 / 60;
   const tickUnit = (u: Unit, isAtBase: boolean): Unit => {
     let updated = enforceAirborneInvariant(u, isAtBase);
-    updated = advanceMovement(updated);
-    const drain = perHourFuelDrain(updated, nextPhase);
+    updated = advanceMovement(updated, HOURS_ELAPSED);
+    const drain = perMinuteFuelDrain(updated, phase);
     if (drain > 0 && "fuel" in updated && typeof updated.fuel === "number") {
       const prevFuel = updated.fuel;
       const nextFuel = Math.max(0, prevFuel - drain);
@@ -690,11 +567,11 @@ function handleAdvanceHour(state: GameState): GameState {
     }
     return updated;
   };
-  const basesAfterUnitTick = basesAfterReturn.map((b) => ({
+
+  const basesAfterUnitTick = updatedBases.map((b) => ({
     ...b,
     units: b.units.map((u) => tickUnit(u, true)),
   }));
-  // Tick deployed units; then detect transfer arrivals and move into base.units.
   const tickedDeployed = state.deployedUnits.map((u) => tickUnit(u, false));
   const arrived: Unit[] = [];
   const stillDeployed: Unit[] = [];
@@ -728,21 +605,175 @@ function handleAdvanceHour(state: GameState): GameState {
     });
     return recomputeZoneOccupancy(withNew);
   });
-  const newDeployedUnits = stillDeployed;
+
+  return {
+    ...state,
+    bases: basesAfterArrival,
+    deployedUnits: stillDeployed,
+    events: newEvents.length > 0 ? [...newEvents, ...state.events].slice(0, 200) : state.events,
+  };
+}
+
+/**
+ * Per-hour updates: phase change detection, ATO completion, REBASE completion,
+ * returning-aircraft / landing-check emission, resource warnings, day rollover
+ * + ATO generation. Called AFTER state.hour/state.day have already been bumped
+ * to the new values.
+ */
+function handleAdvanceHour(state: GameState): GameState {
+  const nextDay = state.day;
+  const nextHour = state.hour;
+  // hour==6 only occurs immediately after a 23→6 wrap (initial state's 6 is
+  // never passed through handleAdvanceHour because it's never re-entered).
+  const dayRollover = nextHour === 6;
+  const nextPhase = getPhaseForDay(nextDay);
+  const ts = `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
+
+  const newEvents: GameEvent[] = [];
+
+  if (nextPhase !== state.phase) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: ts,
+      type: "critical",
+      message: `Fas ändrad till ${nextPhase}`,
+    });
+  }
+
+  // Generate new ATO on day rollover.
+  const newATOOrders = dayRollover ? generateATOOrders(nextDay, nextPhase) : state.atoOrders;
+
+  // Mark completed ATO orders and collect returning aircraft.
+  const returningAircraft: { aircraftId: string; baseId: string }[] = [];
+  const updatedATOOrders = newATOOrders.map((o) => {
+    if (o.status === "dispatched" && nextHour >= o.endHour) {
+      if (o.missionType !== "REBASE") {
+        o.assignedAircraft.forEach((acId) =>
+          returningAircraft.push({ aircraftId: acId, baseId: o.launchBase })
+        );
+      }
+      return { ...o, status: "completed" as const };
+    }
+    return o;
+  });
+
+  // Handle REBASE completions.
+  const rebaseTransfers: { aircraftId: string; fromBaseId: string; toBaseId: string }[] = [];
+  state.bases.forEach((base) => {
+    getAircraft(base).forEach((ac) => {
+      if (
+        ac.status === "on_mission" &&
+        ac.currentMission === "REBASE" &&
+        ac.rebaseTarget &&
+        ac.missionEndHour !== undefined &&
+        nextHour >= ac.missionEndHour
+      ) {
+        rebaseTransfers.push({ aircraftId: ac.id, fromBaseId: base.id, toBaseId: ac.rebaseTarget });
+      }
+    });
+  });
+
+  let basesAfterRebases = state.bases;
+  for (const transfer of rebaseTransfers) {
+    const srcBase = basesAfterRebases.find((b) => b.id === transfer.fromBaseId);
+    const srcAircraft = srcBase
+      ? getAircraft(srcBase).find((a) => a.id === transfer.aircraftId)
+      : undefined;
+    if (!srcAircraft) continue;
+    const arrivedAircraft: AircraftUnit = {
+      ...srcAircraft,
+      currentBase: transfer.toBaseId as BaseType,
+      status: "ready" as AircraftStatus,
+      currentMission: undefined,
+      missionEndHour: undefined,
+      rebaseTarget: undefined,
+    };
+    basesAfterRebases = basesAfterRebases.map((base) => {
+      if (base.id === transfer.fromBaseId) {
+        return { ...base, units: base.units.filter((u) => u.id !== transfer.aircraftId) };
+      }
+      if (base.id === transfer.toBaseId) {
+        return { ...base, units: [...base.units, arrivedAircraft] };
+      }
+      return base;
+    });
+  }
+
+  // Flip finished on_mission aircraft to returning.
+  const basesAfterReturn = basesAfterRebases.map((base) => ({
+    ...base,
+    units: mapAircraftInUnits(base.units, (ac) => {
+      if (ac.status === "on_mission") {
+        const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
+        const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;
+        if (fromATO || fromDrop) {
+          if (fromDrop && !fromATO) {
+            returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
+          }
+          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
+        }
+      }
+      return ac;
+    }),
+  }));
+
+  if (returningAircraft.length > 0) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: ts,
+      type: "info" as const,
+      message: `${returningAircraft.length} flygplan återvänder — mottagningskontroll krävs`,
+    });
+  }
+
+  // Hourly resource warnings.
+  for (const base of basesAfterReturn) {
+    if (base.fuel < 20) {
+      newEvents.push({
+        id: uuid(),
+        timestamp: ts,
+        type: "critical",
+        message: `KRITISK bränslenivå vid ${base.id}: ${base.fuel.toFixed(0)}%`,
+        base: base.id,
+      });
+    }
+    for (const part of base.spareParts) {
+      if (part.quantity === 0) {
+        newEvents.push({
+          id: uuid(),
+          timestamp: ts,
+          type: "critical",
+          message: `SLUT PÅ ${part.name} vid ${base.id}`,
+          base: base.id,
+        });
+      }
+    }
+  }
+
+  if (dayRollover) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: ts,
+      type: "info",
+      message: `Dag ${nextDay} börjar — ATO uppdaterad`,
+    });
+  }
+
+  const newLandingChecks = returningAircraft.map((r) => ({
+    aircraftId: r.aircraftId,
+    baseId: r.baseId as BaseType,
+  }));
 
   const nextStatePreRec: GameState = {
     ...state,
-    day: nextDay,
-    hour: nextHour,
     phase: nextPhase,
-    bases: basesAfterArrival,
-    deployedUnits: newDeployedUnits,
+    bases: basesAfterReturn,
     atoOrders: updatedATOOrders,
     pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],
     events: [...newEvents, ...state.events].slice(0, 200),
   };
 
-  // Refresh recommendations every 3 game-hours
+  // Refresh recommendations every 3 game-hours.
   if (nextHour % 3 === 0) {
     return { ...nextStatePreRec, recommendations: generateRecommendations(nextStatePreRec) };
   }
@@ -846,7 +877,7 @@ function handleDispatchOrder(state: GameState, orderId: string): GameState {
 
   const newEvent: GameEvent = {
     id: uuid(),
-    timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:00`,
+    timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`,
     type: "success",
     message: `ATO-order ${order.missionType} (${order.label}): ${order.assignedAircraft.length} fpl skickade från ${order.launchBase}`,
     base: order.launchBase,
