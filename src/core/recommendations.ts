@@ -2,6 +2,7 @@ import type { GameState, Recommendation, GameAction } from "@/types/game";
 import { isMissionCapable, isInMaintenance } from "@/types/game";
 import { SERVICE_INTERVAL_HOURS } from "@/data/config/durations";
 import { canCannibalize } from "@/data/config/scenario";
+import { getAircraft } from "@/core/units/helpers";
 
 let recIdCounter = 0;
 
@@ -60,7 +61,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
     }
 
     // Aircraft near service interval
-    for (const ac of base.aircraft) {
+    for (const ac of getAircraft(base)) {
       if (isMissionCapable(ac.status) && ac.hoursToService <= 10) {
         recs.push(makeRec(
           `Schemalagt underhåll snart: ${ac.tailNumber}`,
@@ -74,7 +75,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
     }
 
     // Maintenance bay utilization
-    const maintenanceAircraft = base.aircraft.filter((a) => isInMaintenance(a.status));
+    const maintenanceAircraft = getAircraft(base).filter((a) => isInMaintenance(a.status));
     const waitingForBay = maintenanceAircraft.filter((a) => a.status === "unavailable");
     if (waitingForBay.length > 0 && base.maintenanceBays.occupied >= base.maintenanceBays.total) {
       recs.push(makeRec(
@@ -92,9 +93,9 @@ export function generateRecommendations(state: GameState): Recommendation[] {
   const pendingOrders = state.atoOrders.filter((o) => o.status === "pending");
   for (const order of pendingOrders) {
     const base = state.bases.find((b) => b.id === order.launchBase);
-    const availableAc = base?.aircraft.filter(
+    const availableAc = base ? getAircraft(base).filter(
       (ac) => isMissionCapable(ac.status) && (!order.aircraftType || ac.type === order.aircraftType)
-    ).length ?? 0;
+    ).length : 0;
 
     if (availableAc < order.requiredCount) {
       recs.push(makeRec(
@@ -130,7 +131,7 @@ function generateFleetOptimizationRecs(state: GameState): Recommendation[] {
   const recs: Recommendation[] = [];
 
   for (const base of state.bases) {
-    const readyAircraft = base.aircraft
+    const readyAircraft = getAircraft(base)
       .filter((ac) => ac.status === "ready")
       .sort((a, b) => {
         const hDiff = (b.health ?? 100) - (a.health ?? 100);
@@ -191,7 +192,7 @@ function generateBayBalanceRecs(state: GameState): Recommendation[] {
         { expectedBenefit: "Frigör hangarkapacitet", tradeoff: "Skjut upp icke-kritiska jobb" },
       ));
     } else if (pct < 0.2 && total > 1) {
-      const nearService = base.aircraft.filter(
+      const nearService = getAircraft(base).filter(
         (ac) => ac.status === "ready" && ac.hoursToService < 20
       );
       if (nearService.length > 0) {

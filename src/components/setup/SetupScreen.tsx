@@ -6,6 +6,7 @@ import { initialGameState } from "@/data/initialGameState";
 import { deriveDefaultOverrides } from "@/utils/applySetupOverrides";
 import type { SetupOverrides, BaseOverride } from "@/types/setup";
 import type { Base } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 
 interface SetupScreenProps {
   onStartDefault: () => void;
@@ -395,7 +396,7 @@ function CustomizerView({
   onBack: () => void;
 }) {
   const defaultCounts = initialGameState.bases.reduce<Record<string, number>>(
-    (acc, b) => ({ ...acc, [b.id]: b.aircraft.length }),
+    (acc, b) => ({ ...acc, [b.id]: getAircraft(b).length }),
     {}
   );
 

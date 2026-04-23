@@ -16,6 +16,7 @@ import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
 import { Base, AircraftStatus } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -51,7 +52,7 @@ export default function MapPage() {
 
   const selectedAircraft =
     selected?.kind === "aircraft"
-      ? selectedBase?.aircraft.find((a) => a.id === selected.aircraftId)
+      ? (selectedBase ? getAircraft(selectedBase).find((a) => a.id === selected.aircraftId) : undefined)
       : undefined;
 
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
@@ -283,7 +284,7 @@ function ActiveAircraftBar({
   onSelect: (baseId: string, aircraftId: string) => void;
 }) {
   const activeAircraft = bases.flatMap((base) =>
-    base.aircraft
+    getAircraft(base)
       .filter((ac) => ACTIVE_STATUSES.includes(ac.status))
       .map((ac) => ({ ac, baseId: base.id, baseName: base.name }))
   );

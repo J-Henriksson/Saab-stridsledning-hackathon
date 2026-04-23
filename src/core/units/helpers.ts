@@ -3,9 +3,9 @@ import type { AircraftUnit, Unit } from "@/types/units";
 import { isAircraft } from "@/types/units";
 
 /**
- * Migration helper. Returns the aircraft-variant units at a base. Intended as
- * the single read path once `Base.aircraft` is removed. Until then, existing
- * callers continue to use `base.aircraft` and this helper coexists.
+ * Returns the aircraft-variant units at a base. This is the single read path
+ * for aircraft, since the legacy `Base.aircraft` field has been removed and
+ * aircraft now live in `base.units` alongside other unit categories.
  */
 export function getAircraft(base: Base): AircraftUnit[] {
   return base.units.filter(isAircraft);

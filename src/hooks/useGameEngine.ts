@@ -3,6 +3,7 @@ import type { GameState, GameAction, BaseType, MissionType, ATOOrder } from "@/t
 import { isMissionCapable } from "@/types/game";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
+import { getAircraft } from "@/core/units/helpers";
 
 export interface GameEngine {
   state: GameState;
@@ -143,20 +144,21 @@ export function useGameEngine(): GameEngine {
     lines.push(`=== RESURSLÄGE DAG ${state.day} ${String(state.hour).padStart(2, "0")}:00 - FAS: ${state.phase} ===\n`);
 
     state.bases.forEach((base) => {
-      const mc = base.aircraft.filter((a) => isMissionCapable(a.status)).length;
-      const nmc = base.aircraft.filter((a) => a.status === "unavailable").length;
-      const maint = base.aircraft.filter((a) => a.status === "under_maintenance").length;
-      const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
+      const acs = getAircraft(base);
+      const mc = acs.filter((a) => isMissionCapable(a.status)).length;
+      const nmc = acs.filter((a) => a.status === "unavailable").length;
+      const maint = acs.filter((a) => a.status === "under_maintenance").length;
+      const onMission = acs.filter((a) => a.status === "on_mission").length;
 
       lines.push(`\n--- ${base.name} (${base.id}) ---`);
-      lines.push(`Flygplan: ${base.aircraft.length} totalt | ${mc} MC | ${nmc} NMC | ${maint} i UH | ${onMission} på uppdrag`);
+      lines.push(`Flygplan: ${acs.length} totalt | ${mc} MC | ${nmc} NMC | ${maint} i UH | ${onMission} på uppdrag`);
       lines.push(`Bränsle: ${base.fuel.toFixed(0)}%`);
       lines.push(`Underhållsplatser: ${base.maintenanceBays.occupied}/${base.maintenanceBays.total} upptagna`);
       lines.push(`Personal tillgänglig: ${base.personnel.map((p) => `${p.role}: ${p.available}/${p.total}`).join(", ")}`);
       lines.push(`Reservdelar: ${base.spareParts.map((p) => `${p.name}: ${p.quantity}/${p.maxQuantity}`).join(", ")}`);
       lines.push(`Ammunition: ${base.ammunition.map((a) => `${a.type}: ${a.quantity}/${a.max}`).join(", ")}`);
 
-      const nmcAircraft = base.aircraft.filter((a) => a.status === "unavailable" || a.status === "under_maintenance");
+      const nmcAircraft = acs.filter((a) => a.status === "unavailable" || a.status === "under_maintenance");
       if (nmcAircraft.length > 0) {
         lines.push(`\nFlygplan med problem:`);
         nmcAircraft.forEach((ac) => {

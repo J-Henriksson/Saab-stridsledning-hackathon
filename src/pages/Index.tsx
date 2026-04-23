@@ -25,6 +25,7 @@ import { LastBayWarningModal } from "@/components/game/LastBayWarningModal";
 import { SparePartsPickerModal } from "@/components/game/SparePartsPickerModal";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import {
   ShieldCheck, Crosshair, Hammer, Siren, Clock,
   MapPin, PlaneTakeoff, ChevronRight, BarChart3, BookOpen,
@@ -78,16 +79,17 @@ const Index = () => {
   } | null>(null);
 
   const selectedBase     = state.bases.find((b) => b.id === selectedBaseId)!;
-  const mcTotal          = selectedBase.aircraft.filter((a) => a.status === "ready").length;
-  const onMissionTotal   = selectedBase.aircraft.filter((a) => a.status === "on_mission").length;
-  const inMaintTotal     = selectedBase.aircraft.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length;
+  const selectedAircraftList = getAircraft(selectedBase);
+  const mcTotal          = selectedAircraftList.filter((a) => a.status === "ready").length;
+  const onMissionTotal   = selectedAircraftList.filter((a) => a.status === "on_mission").length;
+  const inMaintTotal     = selectedAircraftList.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length;
   const personnelAvail   = selectedBase.personnel.reduce((s, p) => s + p.available, 0);
   const personnelTotal   = selectedBase.personnel.reduce((s, p) => s + p.total, 0);
   const kritiskaResurser = selectedBase.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3).length +
     selectedBase.ammunition.filter((a) => a.quantity / a.max < 0.3).length;
 
   const handleDropAircraft = (aircraftId: string, zone: DropZone) => {
-    const aircraft = selectedBase.aircraft.find((a) => a.id === aircraftId);
+    const aircraft = selectedAircraftList.find((a) => a.id === aircraftId);
     if (!aircraft) return;
     const tail = aircraft.tailNumber || aircraftId;
 
@@ -122,7 +124,7 @@ const Index = () => {
   const urgentMap: Record<string, string>   = {};
   const upcomingMap: Record<string, string> = {};
 
-  selectedBase.aircraft.forEach((ac) => {
+  selectedAircraftList.forEach((ac) => {
     if (ac.status !== "ready" && ac.status !== "allocated") return;
     const myOrders = state.atoOrders.filter(
       (o) => o.launchBase === selectedBaseId && o.assignedAircraft.includes(ac.id) &&
@@ -144,9 +146,9 @@ const Index = () => {
   const overdueAircraftIds   = Object.keys(urgentMap);
   const overdueMissionLabels = urgentMap;
 
-  let firstReturning: { aircraft: (typeof state.bases)[0]["aircraft"][0]; baseId: BaseType } | null = null;
+  let firstReturning: { aircraft: import("@/types/units").AircraftUnit; baseId: BaseType } | null = null;
   for (const base of state.bases) {
-    const ac = base.aircraft.find((a) => a.status === "returning");
+    const ac = getAircraft(base).find((a) => a.status === "returning");
     if (ac) { firstReturning = { aircraft: ac, baseId: base.id }; break; }
   }
 
@@ -154,7 +156,7 @@ const Index = () => {
   const dateStr = now.toLocaleDateString("sv-SE", { weekday: "short", month: "short", day: "numeric" });
 
   const runwayAircraft = pendingRunwayCheck
-    ? selectedBase.aircraft.find((a) => a.id === pendingRunwayCheck)
+    ? selectedAircraftList.find((a) => a.id === pendingRunwayCheck)
     : null;
 
   // ─── Nav items ─────────────────────────────────────────────────────────────
@@ -206,8 +208,9 @@ const Index = () => {
         {/* Base selector */}
         <div className="flex items-center gap-1">
           {state.bases.map((base) => {
-            const mc    = base.aircraft.filter((a) => a.status === "ready").length;
-            const total = base.aircraft.length;
+            const baseAcs = getAircraft(base);
+            const mc    = baseAcs.filter((a) => a.status === "ready").length;
+            const total = baseAcs.length;
             const isSelected = base.id === selectedBaseId;
             return (
               <button key={base.id}
@@ -298,7 +301,7 @@ const Index = () => {
                 </span>
               </div>
               <div className="space-y-0.5">
-                {selectedBase.aircraft.map((ac) => {
+                {selectedAircraftList.map((ac) => {
                   const col = acColor(ac.status);
                   const lbl = acLabel(ac.status);
                   return (
@@ -347,7 +350,7 @@ const Index = () => {
 
               {/* ──── BASÖVERSIKT ──── */}
               {activeSection === "base" && (() => {
-                const totalAc      = selectedBase.aircraft.length;
+                const totalAc      = selectedAircraftList.length;
                 const mcPct        = totalAc > 0 ? Math.round((mcTotal / totalAc) * 100) : 0;
                 const r = 38, circ = 2 * Math.PI * r;
                 const filled = (mcPct / 100) * circ;
@@ -433,7 +436,7 @@ const Index = () => {
                           <Plane className="inline h-3 w-3 mr-1.5" />Flygplan — snabbstatus
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {selectedBase.aircraft.map(ac => (
+                          {selectedAircraftList.map(ac => (
                             <button key={ac.id}
                               onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
                               className="flex items-center gap-1 px-2 py-1 rounded text-[8px] font-mono font-bold transition-all hover:brightness-125"
@@ -590,7 +593,7 @@ const Index = () => {
       )}
 
       {redRunwayWarning && (() => {
-        const ac = selectedBase.aircraft.find((a) => a.id === redRunwayWarning);
+        const ac = selectedAircraftList.find((a) => a.id === redRunwayWarning);
         if (!ac) return null;
         return (
           <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "rgba(0,0,0,0.75)" }}>
@@ -639,7 +642,7 @@ const Index = () => {
       })()}
 
       {lastBayWarning && (() => {
-        const ac = selectedBase.aircraft.find((a) => a.id === lastBayWarning);
+        const ac = selectedAircraftList.find((a) => a.id === lastBayWarning);
         if (!ac) return null;
         const proceedWithHangar = () => {
           setLastBayWarning(null);
@@ -661,8 +664,8 @@ const Index = () => {
       })()}
 
       {hangarFullWarning && (() => {
-        const incoming = selectedBase.aircraft.find((a) => a.id === hangarFullWarning);
-        const inMaint  = selectedBase.aircraft.filter((a) => a.status === "under_maintenance");
+        const incoming = selectedAircraftList.find((a) => a.id === hangarFullWarning);
+        const inMaint  = selectedAircraftList.filter((a) => a.status === "under_maintenance");
         if (!incoming) return null;
         return (
           <HangarFullModal
@@ -687,8 +690,8 @@ const Index = () => {
       })()}
 
       {sparePartsFullWarning && (() => {
-        const incoming = selectedBase.aircraft.find((a) => a.id === sparePartsFullWarning);
-        const inMaint  = selectedBase.aircraft.filter((a) => a.status === "under_maintenance");
+        const incoming = selectedAircraftList.find((a) => a.id === sparePartsFullWarning);
+        const inMaint  = selectedAircraftList.filter((a) => a.status === "under_maintenance");
         if (!incoming) return null;
         return (
           <HangarFullModal
@@ -713,7 +716,7 @@ const Index = () => {
       })()}
 
       {sparePartsPickerAircraftId && (() => {
-        const ac = selectedBase.aircraft.find((a) => a.id === sparePartsPickerAircraftId);
+        const ac = selectedAircraftList.find((a) => a.id === sparePartsPickerAircraftId);
         if (!ac) return null;
         return (
           <SparePartsPickerModal
@@ -733,8 +736,8 @@ const Index = () => {
       })()}
 
       {pendingUtfallFull && (() => {
-        const incoming = selectedBase.aircraft.find((a) => a.id === pendingUtfallFull.aircraftId);
-        const inMaint  = selectedBase.aircraft.filter((a) => a.status === "under_maintenance");
+        const incoming = selectedAircraftList.find((a) => a.id === pendingUtfallFull.aircraftId);
+        const inMaint  = selectedAircraftList.filter((a) => a.status === "under_maintenance");
         if (!incoming) return null;
         return (
           <HangarFullModal
@@ -759,7 +762,7 @@ const Index = () => {
       })()}
 
       {pendingMaintenanceCheck && (() => {
-        const ac = selectedBase.aircraft.find((a) => a.id === pendingMaintenanceCheck);
+        const ac = selectedAircraftList.find((a) => a.id === pendingMaintenanceCheck);
         if (!ac) return null;
         return (
           <MaintenanceConfirmModal
@@ -781,7 +784,7 @@ const Index = () => {
           key={firstReturning.aircraft.id}
           aircraft={firstReturning.aircraft}
           baseId={firstReturning.baseId}
-          remaining={state.bases.flatMap((b) => b.aircraft).filter((a) => a.status === "returning").length - 1}
+          remaining={state.bases.flatMap((b) => getAircraft(b)).filter((a) => a.status === "returning").length - 1}
           onComplete={(aircraftId, baseId, sendToMaintenance, repairTime, maintenanceTypeKey, weaponLoss, actionLabel) => {
             completeLandingCheck(baseId, aircraftId, sendToMaintenance, repairTime, maintenanceTypeKey, weaponLoss, actionLabel);
             if (sendToMaintenance) {

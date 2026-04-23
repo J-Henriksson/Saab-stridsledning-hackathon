@@ -1,9 +1,11 @@
 import type { GameState, GameEvent, AircraftStatus, BaseType } from "@/types/game";
+import type { AircraftUnit } from "@/types/units";
 import { isMissionCapable } from "@/types/game";
 import { getPhaseForDay } from "@/data/config/scenario";
 import { generateATOOrders } from "@/data/initialGameState";
 import { FUEL_DRAIN_RATE, MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
 import { generateRecommendations } from "./recommendations";
+import { getAircraft } from "@/core/units/helpers";
 import { uuid } from "./uuid";
 
 /** Handle a specific phase, returning the updated state */
@@ -64,9 +66,9 @@ function handleInterpretATO(state: GameState): GameState {
   const unmetOrders = state.atoOrders.filter((o) => {
     if (o.status !== "pending") return false;
     const base = state.bases.find((b) => b.id === o.launchBase);
-    const available = base?.aircraft.filter(
+    const available = base ? getAircraft(base).filter(
       (ac) => isMissionCapable(ac.status) && (!o.aircraftType || ac.type === o.aircraftType)
-    ).length ?? 0;
+    ).length : 0;
     return available < o.requiredCount;
   });
 
@@ -125,10 +127,10 @@ function handleExecutePreparation(state: GameState): GameState {
 
 function handleReportOutcome(state: GameState): GameState {
   const totalMC = state.bases.reduce(
-    (s, b) => s + b.aircraft.filter((a) => isMissionCapable(a.status)).length,
+    (s, b) => s + getAircraft(b).filter((a) => isMissionCapable(a.status)).length,
     0
   );
-  const totalAc = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
+  const totalAc = state.bases.reduce((s, b) => s + getAircraft(b).length, 0);
 
   return addEvent(state, {
     type: "info",
@@ -141,7 +143,9 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
 
   const updatedBases = state.bases.map((base) => {
     let completedCount = 0;
-    const updatedAircraft = base.aircraft.map((ac) => {
+    const updatedUnits = base.units.map((u) => {
+      if (u.category !== "aircraft") return u;
+      const ac = u as AircraftUnit;
       if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
         const remaining = ac.maintenanceTimeRemaining - 1;
         if (remaining <= 0) {
@@ -168,7 +172,9 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
       return ac;
     });
 
-    const maintenanceCount = updatedAircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintenanceCount = updatedUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     // Restore crew for each aircraft that finished maintenance this tick
     const personnel = completedCount > 0
       ? base.personnel.map((p) => ({
@@ -178,7 +184,7 @@ function handleUpdateMaintenancePlan(state: GameState): GameState {
       : base.personnel;
     return {
       ...base,
-      aircraft: updatedAircraft,
+      units: updatedUnits,
       personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintenanceCount, base.maintenanceBays.total) },
     };
@@ -212,12 +218,14 @@ function handleIncrementTime(state: GameState): GameState {
   // Fuel drain + per-aircraft health wear
   const fuelDrain = FUEL_DRAIN_RATE[nextPhase] ?? 0.5;
   const updatedBases = state.bases.map((base) => {
-    const anyOnMission = base.aircraft.some((ac) => ac.status === "on_mission");
+    const anyOnMission = getAircraft(base).some((ac) => ac.status === "on_mission");
     const drain = anyOnMission ? fuelDrain : 0;
     return ({
     ...base,
     fuel: Math.max(0, base.fuel - drain),
-    aircraft: base.aircraft.map((ac) => {
+    units: base.units.map((u) => {
+      if (u.category !== "aircraft") return u;
+      const ac = u as AircraftUnit;
       let wear = 0;
       if (ac.status === "ready" || ac.status === "allocated") {
         wear = Math.floor(Math.random() * 6) + 5;  // 5–10% passive
@@ -261,7 +269,7 @@ function handleIncrementTime(state: GameState): GameState {
   // Handle REBASE completions — move aircraft to their target base
   const rebaseTransfers: { aircraftId: string; fromBaseId: string; toBaseId: string }[] = [];
   updatedBases.forEach((base) => {
-    base.aircraft.forEach((ac) => {
+    getAircraft(base).forEach((ac) => {
       if (
         ac.status === "on_mission" &&
         ac.currentMission === "REBASE" &&
@@ -276,11 +284,12 @@ function handleIncrementTime(state: GameState): GameState {
 
   let basesAfterRebases = updatedBases;
   for (const transfer of rebaseTransfers) {
-    const srcAircraft = basesAfterRebases
-      .find((b) => b.id === transfer.fromBaseId)
-      ?.aircraft.find((a) => a.id === transfer.aircraftId);
+    const srcBase = basesAfterRebases.find((b) => b.id === transfer.fromBaseId);
+    const srcAircraft = srcBase
+      ? getAircraft(srcBase).find((a) => a.id === transfer.aircraftId)
+      : undefined;
     if (!srcAircraft) continue;
-    const arrivedAircraft = {
+    const arrivedAircraft: AircraftUnit = {
       ...srcAircraft,
       currentBase: transfer.toBaseId as BaseType,
       status: "ready" as AircraftStatus,
@@ -290,10 +299,10 @@ function handleIncrementTime(state: GameState): GameState {
     };
     basesAfterRebases = basesAfterRebases.map((base) => {
       if (base.id === transfer.fromBaseId) {
-        return { ...base, aircraft: base.aircraft.filter((a) => a.id !== transfer.aircraftId) };
+        return { ...base, units: base.units.filter((u) => u.id !== transfer.aircraftId) };
       }
       if (base.id === transfer.toBaseId) {
-        return { ...base, aircraft: [...base.aircraft, arrivedAircraft] };
+        return { ...base, units: [...base.units, arrivedAircraft] };
       }
       return base;
     });
@@ -302,7 +311,9 @@ function handleIncrementTime(state: GameState): GameState {
   // Set remaining on_mission aircraft to "returning" — LandingReceptionModal handles resolution
   const basesAfterReturn = basesAfterRebases.map((base) => ({
     ...base,
-    aircraft: base.aircraft.map((ac) => {
+    units: base.units.map((u) => {
+      if (u.category !== "aircraft") return u;
+      const ac = u as AircraftUnit;
       if (ac.status === "on_mission") {
         const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
         const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;

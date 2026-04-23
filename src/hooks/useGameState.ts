@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
-import { GameState, GameEvent, ScenarioPhase, Aircraft } from "@/types/game";
+import { GameState, GameEvent, ScenarioPhase } from "@/types/game";
+import type { AircraftUnit } from "@/types/units";
 import { initialGameState, generateATOOrders } from "@/data/initialGameState";
+import { getAircraft } from "@/core/units/helpers";
 
 const phaseForDay = (day: number): ScenarioPhase => {
   if (day <= 1) return "FRED";
@@ -9,6 +11,17 @@ const phaseForDay = (day: number): ScenarioPhase => {
 };
 
 const rollDice = (sides = 6) => Math.floor(Math.random() * sides) + 1;
+
+/** Map a transform over every aircraft unit in a base, preserving non-aircraft units. */
+function mapAircraft(
+  base: GameState["bases"][number],
+  fn: (ac: AircraftUnit) => AircraftUnit,
+): GameState["bases"][number] {
+  return {
+    ...base,
+    units: base.units.map((u) => (u.category === "aircraft" ? fn(u as AircraftUnit) : u)),
+  };
+}
 
 export function useGameState() {
   const [state, setState] = useState<GameState>(initialGameState);
@@ -39,8 +52,8 @@ export function useGameState() {
 
       // Process maintenance progress
       const updatedBases = prev.bases.map((base) => {
-        const updatedAircraft = base.aircraft.map((ac) => {
-          if (ac.status === "maintenance" && ac.maintenanceTimeRemaining) {
+        const updated = mapAircraft(base, (ac) => {
+          if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
             const remaining = ac.maintenanceTimeRemaining - 1;
             if (remaining <= 0) {
               newEvents.push({
@@ -50,12 +63,12 @@ export function useGameState() {
                 message: `${ac.tailNumber} underhåll klart - nu operativ`,
                 base: base.id,
               });
-              return { ...ac, status: "mission_capable" as const, maintenanceTimeRemaining: undefined, maintenanceType: undefined };
+              return { ...ac, status: "ready" as const, maintenanceTimeRemaining: undefined, maintenanceType: undefined };
             }
             return { ...ac, maintenanceTimeRemaining: remaining };
           }
           // Random failure on mission-capable aircraft
-          if (ac.status === "mission_capable" && rollDice(20) === 1) {
+          if (ac.status === "ready" && rollDice(20) === 1) {
             const failTypes = ["quick_lru", "complex_lru", "direct_repair", "troubleshooting"] as const;
             const failTimes = [2, 6, 16, 4];
             const idx = rollDice(4) - 1;
@@ -68,7 +81,7 @@ export function useGameState() {
             });
             return {
               ...ac,
-              status: "not_mission_capable" as const,
+              status: "unavailable" as const,
               maintenanceType: failTypes[idx],
               maintenanceTimeRemaining: failTimes[idx],
             };
@@ -78,10 +91,9 @@ export function useGameState() {
 
         // Fuel consumption
         const fuelDrain = nextPhase === "KRIG" ? 3 : nextPhase === "KRIS" ? 1.5 : 0.5;
-        
+
         return {
-          ...base,
-          aircraft: updatedAircraft,
+          ...updated,
           fuel: Math.max(0, base.fuel - fuelDrain),
         };
       });
@@ -123,11 +135,11 @@ export function useGameState() {
     setState((prev) => {
       const bases = prev.bases.map((base) => {
         if (base.id !== baseId) return base;
-        const aircraft = base.aircraft.map((ac) => {
-          if (ac.id !== aircraftId || ac.status !== "not_mission_capable") return ac;
-          return { ...ac, status: "maintenance" as const };
+        const updated = mapAircraft(base, (ac) => {
+          if (ac.id !== aircraftId || ac.status !== "unavailable") return ac;
+          return { ...ac, status: "under_maintenance" as const };
         });
-        return { ...base, aircraft, maintenanceBays: { ...base.maintenanceBays, occupied: base.maintenanceBays.occupied + 1 } };
+        return { ...updated, maintenanceBays: { ...base.maintenanceBays, occupied: base.maintenanceBays.occupied + 1 } };
       });
       return { ...prev, bases };
     });
@@ -138,11 +150,10 @@ export function useGameState() {
     setState((prev) => {
       const bases = prev.bases.map((base) => {
         if (base.id !== baseId) return base;
-        const aircraft = base.aircraft.map((ac) => {
-          if (ac.id !== aircraftId || ac.status !== "mission_capable") return ac;
+        return mapAircraft(base, (ac) => {
+          if (ac.id !== aircraftId || ac.status !== "ready") return ac;
           return { ...ac, status: "on_mission" as const, currentMission: mission as any };
         });
-        return { ...base, aircraft };
       });
       return { ...prev, bases };
     });
@@ -167,14 +178,11 @@ export function useGameState() {
 
       const updatedBases = prev.bases.map((base) => {
         if (base.id !== order.launchBase) return base;
-        return {
-          ...base,
-          aircraft: base.aircraft.map((ac) =>
-            order.assignedAircraft.includes(ac.id) && ac.status === "mission_capable"
-              ? { ...ac, status: "on_mission" as const, currentMission: order.missionType }
-              : ac
-          ),
-        };
+        return mapAircraft(base, (ac) =>
+          order.assignedAircraft.includes(ac.id) && ac.status === "ready"
+            ? { ...ac, status: "on_mission" as const, currentMission: order.missionType }
+            : ac
+        );
       });
 
       const newEvent: GameEvent = {
@@ -201,24 +209,23 @@ export function useGameState() {
     setState((prev) => {
       const updatedBases = prev.bases.map((base) => {
         if (base.id !== baseId) return base;
-        
-        const aircraft = base.aircraft.map((ac) => {
+
+        const updated = mapAircraft(base, (ac) => {
           if (ac.id !== aircraftId) return ac;
           // Aircraft can only go to maintenance if it's NMC
-          if (ac.status === "not_mission_capable") {
-            return { ...ac, status: "maintenance" as const };
+          if (ac.status === "unavailable") {
+            return { ...ac, status: "under_maintenance" as const };
           }
           return ac;
         });
 
         // Check if we exceeded maintenance bays
-        const maintenanceCount = aircraft.filter((a) => a.status === "maintenance").length;
+        const maintenanceCount = getAircraft(updated).filter((a) => a.status === "under_maintenance").length;
         const nextOccupied = Math.min(maintenanceCount, base.maintenanceBays.total);
 
-        return { 
-          ...base, 
-          aircraft,
-          maintenanceBays: { ...base.maintenanceBays, occupied: nextOccupied }
+        return {
+          ...updated,
+          maintenanceBays: { ...base.maintenanceBays, occupied: nextOccupied },
         };
       });
 
@@ -230,11 +237,10 @@ export function useGameState() {
     setState((prev) => {
       const updatedBases = prev.bases.map((base) => {
         if (base.id !== baseId) return base;
-        const aircraft = base.aircraft.map((ac) => {
-          if (ac.id !== aircraftId || ac.status !== "mission_capable") return ac;
+        return mapAircraft(base, (ac) => {
+          if (ac.id !== aircraftId || ac.status !== "ready") return ac;
           return { ...ac, status: "on_mission" as const, currentMission: missionType as any };
         });
-        return { ...base, aircraft };
       });
       return { ...prev, bases: updatedBases };
     });
@@ -244,22 +250,23 @@ export function useGameState() {
   const getResourceSummary = useCallback((): string => {
     const lines: string[] = [];
     lines.push(`=== RESURSLÄGE DAG ${state.day} ${String(state.hour).padStart(2, "0")}:00 - FAS: ${state.phase} ===\n`);
-    
+
     state.bases.forEach((base) => {
-      const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
-      const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable").length;
-      const maint = base.aircraft.filter((a) => a.status === "maintenance").length;
-      const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
-      
+      const acs = getAircraft(base);
+      const mc = acs.filter((a) => a.status === "ready").length;
+      const nmc = acs.filter((a) => a.status === "unavailable").length;
+      const maint = acs.filter((a) => a.status === "under_maintenance").length;
+      const onMission = acs.filter((a) => a.status === "on_mission").length;
+
       lines.push(`\n--- ${base.name} (${base.id}) ---`);
-      lines.push(`Flygplan: ${base.aircraft.length} totalt | ${mc} MC | ${nmc} NMC | ${maint} i UH | ${onMission} på uppdrag`);
+      lines.push(`Flygplan: ${acs.length} totalt | ${mc} MC | ${nmc} NMC | ${maint} i UH | ${onMission} på uppdrag`);
       lines.push(`Bränsle: ${base.fuel.toFixed(0)}%`);
       lines.push(`Underhållsplatser: ${base.maintenanceBays.occupied}/${base.maintenanceBays.total} upptagna`);
       lines.push(`Personal tillgänglig: ${base.personnel.map((p) => `${p.role}: ${p.available}/${p.total}`).join(", ")}`);
       lines.push(`Reservdelar: ${base.spareParts.map((p) => `${p.name}: ${p.quantity}/${p.maxQuantity}`).join(", ")}`);
       lines.push(`Ammunition: ${base.ammunition.map((a) => `${a.type}: ${a.quantity}/${a.max}`).join(", ")}`);
-      
-      const nmcAircraft = base.aircraft.filter((a) => a.status === "not_mission_capable" || a.status === "maintenance");
+
+      const nmcAircraft = acs.filter((a) => a.status === "unavailable" || a.status === "under_maintenance");
       if (nmcAircraft.length > 0) {
         lines.push(`\nFlygplan med problem:`);
         nmcAircraft.forEach((ac) => {
@@ -288,22 +295,21 @@ export function useGameState() {
     setState((prev) => {
       const bases = prev.bases.map((base) => {
         if (base.id !== baseId) return base;
-        const aircraft = base.aircraft.map((ac) => {
+        const updated = mapAircraft(base, (ac) => {
           if (ac.id !== aircraftId) return ac;
           if (repairTime === 0) {
-            return { ...ac, status: "not_mission_capable" as const };
+            return { ...ac, status: "unavailable" as const };
           }
           return {
             ...ac,
-            status: "maintenance" as const,
+            status: "under_maintenance" as const,
             maintenanceType: maintenanceTypeKey as any,
             maintenanceTimeRemaining: repairTime,
           };
         });
-        const maintCount = aircraft.filter((a) => a.status === "maintenance").length;
+        const maintCount = getAircraft(updated).filter((a) => a.status === "under_maintenance").length;
         return {
-          ...base,
-          aircraft,
+          ...updated,
           maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
         };
       });

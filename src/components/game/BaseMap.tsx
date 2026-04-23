@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Base, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -127,10 +128,11 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const dragThresholdMet = useRef(false);
   const pendingDragAcId = useRef<string | null>(null);
 
-  const mc = base.aircraft.filter((a) => a.status === "ready");
-  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
-  const maint = base.aircraft.filter((a) => a.status === "under_maintenance");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready");
+  const nmc = aircraft.filter((a) => a.status === "unavailable");
+  const maint = aircraft.filter((a) => a.status === "under_maintenance");
+  const onMission = aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
 
   function toggle(id: BuildingId) {
     setSelected((prev) => (prev === id ? null : id));
@@ -188,7 +190,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
       if (zone) onDropAircraft(acId, zone);
     } else {
       // It was a click — navigate to aircraft dashboard
-      const ac = base.aircraft.find((a) => a.id === acId);
+      const ac = aircraft.find((a) => a.id === acId);
       if (ac) navigate(`/aircraft/${ac.tailNumber}`);
     }
   }
@@ -207,7 +209,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const apronWidth = 780;
   const apronCols = 12;
   const apronColWidth = apronWidth / apronCols;
-  const apronAircraft = base.aircraft
+  const apronAircraft = aircraft
     .filter((a) => a.status === "ready" || a.status === "unavailable")
     .slice(0, apronCols);
 
@@ -745,7 +747,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
 
           {/* ── Ghost aircraft follows cursor during drag ── */}
           {draggingAcId && dragPos && (() => {
-            const dragAc = base.aircraft.find((a) => a.id === draggingAcId);
+            const dragAc = aircraft.find((a) => a.id === draggingAcId);
             if (!dragAc) return null;
             const gc = getAircraftColor(dragAc);
             const gx = dragPos.x, gy = dragPos.y;
@@ -1068,7 +1070,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
 
       {/* ── UTFALL MODAL ─────────────────────────────────────────── */}
       {utfallAcId && (() => {
-        const utfallAc = base.aircraft.find((a) => a.id === utfallAcId);
+        const utfallAc = aircraft.find((a) => a.id === utfallAcId);
         if (!utfallAc) return null;
         return (
           <UtfallModal
@@ -1139,7 +1141,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
 
 function ApronDetail({ base }: { base: Base }) {
   const groups: Record<string, Aircraft[]> = {};
-  base.aircraft.forEach((ac) => {
+  getAircraft(base).forEach((ac) => {
     if (!groups[ac.status]) groups[ac.status] = [];
     groups[ac.status].push(ac);
   });
@@ -1183,7 +1185,7 @@ function ApronDetail({ base }: { base: Base }) {
 }
 
 function HangarDetail({ base }: { base: Base }) {
-  const inMaint = base.aircraft.filter(
+  const inMaint = getAircraft(base).filter(
     (a) => a.status === "under_maintenance" || a.status === "unavailable"
   );
   const { total, occupied } = base.maintenanceBays;
@@ -1361,7 +1363,7 @@ function RunwayDetail({ base }: { base: Base }) {
   const statusLabel = isBlocked ? "BLOCKERAD" : "AKTIV";
 
   const queuedAircraft = queue.map(
-    (id) => base.aircraft.find((a) => a.id === id)
+    (id) => getAircraft(base).find((a) => a.id === id)
   ).filter(Boolean);
 
   return (

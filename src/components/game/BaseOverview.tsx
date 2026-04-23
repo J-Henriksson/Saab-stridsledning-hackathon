@@ -1,4 +1,5 @@
 import { Base } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { AircraftStatusBadge } from "./StatusBadge";
 import { Fuel, Users, Wrench, Package } from "lucide-react";
 import { useState } from "react";
@@ -14,10 +15,11 @@ interface BaseOverviewProps {
 export function BaseOverview({ base, onSelectAircraft, onStartMaintenance, onSendMission }: BaseOverviewProps) {
   const [draggedAircraft, setDraggedAircraft] = useState<string | null>(null);
   
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const nmc = base.aircraft.filter((a) => a.status === "unavailable").length;
-  const maint = base.aircraft.filter((a) => a.status === "under_maintenance").length;
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready").length;
+  const nmc = aircraft.filter((a) => a.status === "unavailable").length;
+  const maint = aircraft.filter((a) => a.status === "under_maintenance").length;
+  const onMission = aircraft.filter((a) => a.status === "on_mission").length;
 
   const typeColor = base.type === "huvudbas" ? "border-status-green" : base.type === "sidobas" ? "border-status-amber" : "border-status-red";
 
@@ -89,7 +91,7 @@ export function BaseOverview({ base, onSelectAircraft, onStartMaintenance, onSen
       <div className="px-4 py-4">
         <p className="text-[11px] text-muted-foreground mb-3 font-semibold">💡 Drag aircraft to maintenance bay to send for service</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-3">
-          {base.aircraft.map((ac) => (
+          {aircraft.map((ac) => (
             <button
               key={ac.id}
               draggable

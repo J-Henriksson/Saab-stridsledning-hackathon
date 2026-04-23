@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Base, ScenarioPhase, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   PlaneTakeoff, Wrench, Target, Shield, Clock,
@@ -106,7 +107,7 @@ export function RemainingLifeGraf({ bases, phase, hideBars }: RemainingLifeGrafP
 
   // Enrich aircraft with base reference and scores
   const all = bases.flatMap(base =>
-    base.aircraft.map(ac => ({ ...ac, base, baseName: base.id, scores: calcScores(ac, base) }))
+    getAircraft(base).map(ac => ({ ...ac, base, baseName: base.id, scores: calcScores(ac, base) }))
   );
   const total = all.length;
 
@@ -165,10 +166,11 @@ export function RemainingLifeGraf({ bases, phase, hideBars }: RemainingLifeGrafP
         style={{ borderBottom: "1px solid hsl(215 14% 88%)" }}
       >
         {bases.map(base => {
-          const cnt   = base.aircraft.length;
-          const ready = base.aircraft.filter(ac => ac.status === "ready" || ac.status === "allocated").length;
-          const maint = base.aircraft.filter(ac => ac.status === "under_maintenance").length;
-          const nmc   = base.aircraft.filter(ac => ac.status === "unavailable").length;
+          const acs   = getAircraft(base);
+          const cnt   = acs.length;
+          const ready = acs.filter(ac => ac.status === "ready" || ac.status === "allocated").length;
+          const maint = acs.filter(ac => ac.status === "under_maintenance").length;
+          const nmc   = acs.filter(ac => ac.status === "unavailable").length;
           return (
             <span key={base.id} className="flex items-center gap-1.5">
               <span className="font-bold" style={{ color: NAVY }}>{base.id}</span>

@@ -171,25 +171,9 @@ export type GameAction =
   | { type: "SET_RADAR_EMITTING"; unitId: string; emitting: boolean };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
-export interface Aircraft {
-  id: string;
-  type: AircraftType;
-  tailNumber: string;
-  status: AircraftStatus;
-  currentBase: BaseType;
-  flightHours: number;
-  hoursToService: number;
-  health: number; // 0–100%; 0 = NMC (red), >30 = flyable (blue)
-  currentMission?: MissionType;
-  missionEndHour?: number; // hour at which drag-drop mission completes
-  rebaseTarget?: BaseType; // destination base for REBASE missions
-  payload?: string;
-  maintenanceTimeRemaining?: number;
-  maintenanceType?: MaintenanceType;
-  maintenanceTask?: MaintenanceTask;
-  /** Spare part ID that must be consumed when this aircraft enters the maintenance bay */
-  requiredSparePart?: string;
-}
+// `Aircraft` is now an alias for the unit-model variant. Kept as an alias
+// during migration so existing imports don't need simultaneous changes.
+export type Aircraft = import("./units").AircraftUnit;
 
 export interface SparePartStock {
   id: string;
@@ -218,7 +202,6 @@ export interface Base {
   id: BaseType;
   name: string;
   type: "huvudbas" | "sidobas" | "reservbas";
-  aircraft: Aircraft[];
   units: import("./units").Unit[];
   spareParts: SparePartStock[];
   personnel: PersonnelGroup[];

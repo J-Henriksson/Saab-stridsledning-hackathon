@@ -2,6 +2,7 @@ import { useRef, useState, useImperativeHandle } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGame } from "@/context/GameContext";
 import type { ATOOrder, AircraftType, BaseType, MissionType } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import {
   FileText, AlertTriangle, CheckCircle2, X,
   ChevronRight, Plane, Target, Eye, Shield, Radio, Zap,
@@ -171,7 +172,7 @@ export function ATOImporter({ onImportComplete, triggerRef }: { onImportComplete
 
   // Flat aircraft list for digital twin lookup
   const allAircraft = state.bases.flatMap(b =>
-    b.aircraft.map(ac => ({ tailNumber: ac.tailNumber, health: ac.health ?? 100, base: b.id }))
+    getAircraft(b).map(ac => ({ tailNumber: ac.tailNumber, health: ac.health ?? 100, base: b.id }))
   );
 
   function handleFile(file: File) {

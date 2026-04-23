@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ATOOrder, Base, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
@@ -194,7 +195,7 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
 
   const freeSlots = base.maintenanceBays.total - base.maintenanceBays.occupied;
 
-  const flygschema: FlygschemaEntry[] = base.aircraft.map((ac) => {
+  const flygschema: FlygschemaEntry[] = getAircraft(base).map((ac) => {
     const blocks = buildWeekBlocks(ac, hour, atoOrders);
     return {
       aircraftId: ac.tailNumber,
@@ -289,7 +290,7 @@ export function FlygschemaTidslinje({ base, hour, atoOrders }: FlygschemaTidslin
 
       {/* Aircraft rows */}
       <div className="space-y-0.5">
-        {base.aircraft.map((ac, i) => {
+        {getAircraft(base).map((ac, i) => {
           const slots = getSlots(ac, hour, atoOrders);
           const isCritical = ac.hoursToService < 20;
           const isLow = ac.hoursToService < 40;

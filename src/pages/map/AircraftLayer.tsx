@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { Base } from "@/types/game";
 import { BASE_COORDS } from "./constants";
+import { getAircraft } from "@/core/units/helpers";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
 const REBASE_TRANSIT_HOURS = 2;
@@ -62,7 +63,7 @@ export function AircraftLayer({
       const coords = BASE_COORDS[base.id];
       if (!coords) continue;
 
-      const onMission = base.aircraft.filter((ac) => ac.status === "on_mission");
+      const onMission = getAircraft(base).filter((ac) => ac.status === "on_mission");
 
       let orbitIdx = 0;
       for (const ac of onMission) {

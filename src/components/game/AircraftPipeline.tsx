@@ -1,4 +1,5 @@
 import { Base, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { AircraftStatusBadge } from "./StatusBadge";
 import { motion } from "framer-motion";
 import { ArrowRight, Wrench, Plane, CheckCircle, AlertTriangle, RotateCcw } from "lucide-react";
@@ -98,17 +99,18 @@ function StageCard({
 }
 
 export function AircraftPipeline({ base, onStartMaintenance, onSendMission }: AircraftPipelineProps) {
-  const mc = base.aircraft.filter((a) => a.status === "ready");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission");
-  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
-  const inMaint = base.aircraft.filter((a) => a.status === "under_maintenance");
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready");
+  const onMission = aircraft.filter((a) => a.status === "on_mission");
+  const nmc = aircraft.filter((a) => a.status === "unavailable");
+  const inMaint = aircraft.filter((a) => a.status === "under_maintenance");
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="font-sans font-bold text-sm text-foreground">FLYGPLANSFLÖDE</h3>
         <div className="text-[10px] font-mono text-muted-foreground">
-          Totalt: {base.aircraft.length} fpl
+          Totalt: {aircraft.length} fpl
         </div>
       </div>
 
