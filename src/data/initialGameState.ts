@@ -316,12 +316,15 @@ export const generateATOOrders = (day: number, phase: string): ATOOrder[] => {
 export const initialGameState: GameState = {
   day: 1,
   hour: new Date().getHours(),
+  minute: new Date().getMinutes(),
+  second: new Date().getSeconds(),
   phase: "FRED",
   bases: [MOB, FOB_N, FOB_S],
   successfulMissions: 0,
   failedMissions: 0,
   atoOrders: initialATOOrders,
   isRunning: true,
+  gameSpeed: 1,
   events: [
     { id: "init", timestamp: "Dag 1 06:00", type: "info", message: "Systemet initierat. ATO mottagen. Fredstillstånd." },
   ] as GameEvent[],
