@@ -17,9 +17,7 @@ const LAYER_ITEMS: { key: keyof OverlayLayerVisibility; label: string }[] = [
   { key: "militaryAssets",         label: "Militära tillgångar" },
   { key: "civilianInfrastructure", label: "Civil infrastruktur" },
   { key: "activeZones",            label: "Aktiva zoner" },
-  { key: "coverageRings",          label: "Ansvarsringar" },
-  { key: "showOverlaps",           label: "Visa överlapp" },
-  { key: "showGaps",               label: "Visa täckningsgap" },
+  { key: "coverageRings",          label: "Täckningsområden" },
 ];
 
 interface ZoneToolbarProps {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -19,16 +19,12 @@ import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
 import { ZoneToolbar } from "./map/ZoneToolbar";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
-import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { CoverageRingsLayer } from "./map/CoverageRingsLayer";
-import { GapMarkers } from "./map/GapMarkers";
-import { CoverageScorePanel } from "./map/CoverageScorePanel";
+import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
-import { PROTECTED_ASSETS } from "@/data/protectedAssets";
-import { runCoverageAnalysis } from "@/utils/coverageAnalysis";
 
 export default function MapPage() {
   const { state, togglePause, resetGame, dispatch } = useGame();
@@ -138,16 +134,6 @@ export default function MapPage() {
 
   const userZoneCount = state.tacticalZones.filter((z) => z.category === "user").length;
 
-  const allAssets = useMemo(
-    () => [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS],
-    []
-  );
-
-  const coverageResult = useMemo(
-    () => runCoverageAnalysis(allAssets, PROTECTED_ASSETS),
-    [allAssets]
-  );
-
   // Derive panel title info
   const panelTitle = (() => {
     if (selectedAircraft)
@@ -214,11 +200,11 @@ export default function MapPage() {
               visible={state.overlayVisibility.activeZones}
             />
 
-            {/* Coverage rings — rendered below supply lines and markers */}
+            {/* Coverage rings — base area (inner) + area of responsibility (outer) */}
             <CoverageRingsLayer
-              assets={allAssets}
-              showRings={state.overlayVisibility.coverageRings}
-              showOverlaps={state.overlayVisibility.showOverlaps}
+              visible={state.overlayVisibility.coverageRings}
+              showMilitary={state.overlayVisibility.militaryAssets}
+              showCivilian={state.overlayVisibility.civilianInfrastructure}
             />
 
             <SupplyLinesLayer bases={state.bases} />
@@ -255,12 +241,6 @@ export default function MapPage() {
               />
             ))}
 
-            {/* Gap markers — pulsing red rings for uncovered assets */}
-            <GapMarkers
-              uncoveredAssets={coverageResult.uncoveredAssets}
-              visible={state.overlayVisibility.showGaps}
-            />
-
             {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
             <DrawingPreviewOverlay drawState={drawState} />
           </MapGL>
@@ -272,15 +252,6 @@ export default function MapPage() {
               background:
                 "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.01) 2px, rgba(0,255,100,0.01) 4px)",
             }}
-          />
-
-          {/* Coverage score widget — top right */}
-          <CoverageScorePanel
-            score={coverageResult.coverageScore}
-            coveredCount={coverageResult.coveredCount}
-            totalCritical={coverageResult.totalCritical}
-            uncoveredAssets={coverageResult.uncoveredAssets}
-            visible={state.overlayVisibility.showGaps}
           />
 
           {/* Zone toolbar — left edge */}
