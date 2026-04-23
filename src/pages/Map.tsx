@@ -1,93 +1,36 @@
-import { useState } from "react";
-import { useGameState } from "@/hooks/useGameState";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
+import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
-import { Base, BaseType, Aircraft } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Plane,
-  Fuel,
-  Package,
-  Users,
-  Wrench,
-  Shield,
-  X,
-  AlertTriangle,
-  CheckCircle2,
-  Radio,
-  Zap,
-  MapPin,
-  ChevronRight,
-} from "lucide-react";
+import { X, MapPin } from "lucide-react";
 
-// ── Geographic positions (% of map container) ──────────────────────────────
-// Derived from approximate lat/lon, scaled to fit a 70% horizontal band
-const BASE_POSITIONS: Record<string, { x: number; y: number }> = {
-  MOB:   { x: 42, y: 56 },
-  FOB_N: { x: 63, y: 22 },
-  FOB_S: { x: 31, y: 81 },
-  ROB_N: { x: 74, y: 16 },
-  ROB_S: { x: 26, y: 87 },
-  ROB_E: { x: 53, y: 69 },
-};
+import { BASE_COORDS, SWEDEN_CENTER, INITIAL_ZOOM, MAP_STYLE } from "./map/constants";
+import { SelectedEntity } from "./map/helpers";
+import { BaseMarker } from "./map/BaseMarker";
+import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
+import { AircraftLayer } from "./map/AircraftLayer";
+import { BaseDetailPanel } from "./map/BaseDetailPanel";
+import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
+import { Base, AircraftStatus } from "@/types/game";
 
-const SUPPLY_LINES: [string, string][] = [
-  ["MOB", "FOB_N"],
-  ["MOB", "FOB_S"],
-  ["MOB", "ROB_E"],
-  ["FOB_N", "ROB_N"],
-  ["FOB_S", "ROB_S"],
-];
-
-// ── Sweden outline (1000×900 SVG viewBox) ──────────────────────────────────
-const SWEDEN_PATH =
-  "M 648,82 L 760,148 L 795,205 L 812,268 L 820,335 " +
-  "L 800,400 L 785,455 L 800,510 L 790,560 " +
-  "L 760,598 L 720,625 L 680,645 L 645,660 " +
-  "L 600,672 L 555,675 L 510,668 L 468,655 " +
-  "L 428,638 L 395,615 L 372,585 L 358,552 " +
-  "L 348,515 L 345,475 L 350,438 L 342,395 " +
-  "L 330,352 L 322,308 L 328,265 L 335,228 " +
-  "L 350,188 L 368,152 L 388,120 L 415,92 " +
-  "L 450,72 L 500,60 L 560,62 L 610,70 Z";
-
-// Gotland island
-const GOTLAND_PATH = "M 730,490 L 748,485 L 758,498 L 752,518 L 738,525 L 725,512 Z";
-
-// ── Helpers ─────────────────────────────────────────────────────────────────
-function statusColor(base: Base | undefined) {
-  if (!base) return "#4a5568";
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
-  const ratio = mc / base.aircraft.length;
-  if (ratio >= 0.7) return "#22c55e";
-  if (ratio >= 0.4) return "#eab308";
-  return "#ef4444";
-}
-
-function fuelColor(pct: number) {
-  if (pct >= 60) return "#22c55e";
-  if (pct >= 30) return "#eab308";
-  return "#ef4444";
-}
-
-function getReadiness(base: Base) {
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable").length;
-  const total = base.aircraft.length;
-  const ratio = mc / total;
-  if (ratio >= 0.7) return { label: "GRÖN", cls: "text-status-green bg-status-green/10 border-status-green/40" };
-  if (ratio >= 0.4) return { label: "GULT", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" };
-  return { label: "RÖTT", cls: "text-status-red bg-status-red/10 border-status-red/40" };
-}
-
-// ── Types ────────────────────────────────────────────────────────────────────
-type SelectedEntity =
-  | { kind: "base"; baseId: string }
-  | { kind: "aircraft"; baseId: string; aircraftId: string }
-  | null;
-
-// ── Component ────────────────────────────────────────────────────────────────
 export default function MapPage() {
-  const { state, advanceTurn, resetGame } = useGameState();
+  const { state, advanceTurn, resetGame, dispatch } = useGame();
+  const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
+  const mapRef = useRef<MapRef>(null);
+  const isFollowing = useRef(false);
+  const followStartTime = useRef<number | null>(null);
+
+  // Pre-select aircraft when navigated here from basöversikt
+  useEffect(() => {
+    const s = location.state as { aircraftId?: string; baseId?: string } | null;
+    if (s?.aircraftId && s?.baseId) {
+      setSelected({ kind: "aircraft", baseId: s.baseId, aircraftId: s.aircraftId });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
@@ -99,10 +42,40 @@ export default function MapPage() {
       ? selectedBase?.aircraft.find((a) => a.id === selected.aircraftId)
       : undefined;
 
-  // Convert % positions to SVG coords (viewBox 1000×900)
-  function toSVG(px: number, py: number) {
-    return { x: px * 10, y: py * 9 };
-  }
+  const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
+
+  // Reset follow state when selection changes
+  useEffect(() => {
+    isFollowing.current = false;
+    followStartTime.current = null;
+  }, [selectedAircraftId]);
+
+  const handlePositionUpdate = useCallback((lng: number, lat: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const now = performance.now();
+    if (!followStartTime.current) {
+      followStartTime.current = now;
+      isFollowing.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 12, duration: 900, pitch: 30 });
+      return;
+    }
+    // Wait for initial flyTo to complete before smooth-following
+    if (now - followStartTime.current < 1000) return;
+    map.easeTo({ center: [lng, lat], duration: 150 });
+  }, []);
+
+  const handleRecall = useCallback(() => {
+    if (selected?.kind !== "aircraft") return;
+    dispatch({
+      type: "COMPLETE_LANDING_CHECK",
+      baseId: selected.baseId as import("@/types/game").BaseType,
+      aircraftId: selected.aircraftId,
+      sendToMaintenance: false,
+    });
+  }, [selected, dispatch]);
+
+  const handleMapClick = useCallback(() => setSelected(null), []);
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
@@ -128,23 +101,46 @@ export default function MapPage() {
       {/* Map + panel */}
       <div className="flex-1 overflow-hidden flex">
 
-        {/* ── MAP AREA ─────────────────────────────────────────────────── */}
-        <div
-          className="flex-1 relative overflow-hidden"
-          style={{ background: "radial-gradient(ellipse at 50% 40%, #0a1628 0%, #060d1a 100%)" }}
-          onClick={() => setSelected(null)}
-        >
-          {/* Grid overlay */}
-          <svg className="absolute inset-0 w-full h-full opacity-10" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#4a9eff" strokeWidth="0.5" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-          </svg>
+        {/* Map area */}
+        <div className="flex-1 relative overflow-hidden">
+          <MapGL
+            ref={mapRef}
+            initialViewState={{
+              longitude: BASE_COORDS.MOB.lng,
+              latitude: BASE_COORDS.MOB.lat,
+              zoom: 9,
+              pitch: 30,
+            }}
+            mapStyle={MAP_STYLE}
+            onClick={handleMapClick}
+            onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <NavigationControl position="top-right" />
 
-          {/* Scan-line effect */}
+            <SupplyLinesLayer bases={state.bases} />
+            <AircraftLayer
+              bases={state.bases}
+              currentHour={state.hour}
+              onSelectAircraft={(baseId, aircraftId) =>
+                setSelected({ kind: "aircraft", baseId, aircraftId })
+              }
+              selectedAircraftId={selectedAircraftId}
+              onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
+            />
+
+            {Object.keys(BASE_COORDS).map((id) => (
+              <BaseMarker
+                key={id}
+                id={id}
+                base={state.bases.find((b) => b.id === id)}
+                isSelected={selected?.baseId === id}
+                onClick={() => setSelected({ kind: "base", baseId: id })}
+              />
+            ))}
+          </MapGL>
+
+          {/* Scanline CRT overlay */}
           <div
             className="absolute inset-0 pointer-events-none"
             style={{
@@ -153,224 +149,15 @@ export default function MapPage() {
             }}
           />
 
-          {/* Main SVG: terrain + connections + bases */}
-          <svg
-            viewBox="0 0 1000 900"
-            preserveAspectRatio="xMidYMid meet"
-            className="absolute inset-0 w-full h-full"
-          >
-            {/* Water background */}
-            <rect width="1000" height="900" fill="#061020" />
-
-            {/* Topographic contour decorations */}
-            {[80, 160, 240].map((r, i) => (
-              <ellipse
-                key={i}
-                cx="500" cy="380"
-                rx={r * 3.5} ry={r * 2.8}
-                fill="none"
-                stroke="#1a3a5c"
-                strokeWidth="0.5"
-                opacity="0.4"
-              />
-            ))}
-
-            {/* Sweden landmass */}
-            <path
-              d={SWEDEN_PATH}
-              fill="#0d2218"
-              stroke="#1a4030"
-              strokeWidth="1.5"
-            />
-            {/* Gotland */}
-            <path d={GOTLAND_PATH} fill="#0d2218" stroke="#1a4030" strokeWidth="1" />
-
-            {/* Subtle terrain texture */}
-            <path
-              d={SWEDEN_PATH}
-              fill="url(#terrainGrad)"
-              opacity="0.3"
-            />
-            <defs>
-              <radialGradient id="terrainGrad" cx="50%" cy="50%">
-                <stop offset="0%" stopColor="#1a4030" />
-                <stop offset="100%" stopColor="#0d2218" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-
-            {/* Supply lines */}
-            {SUPPLY_LINES.map(([a, b]) => {
-              const pa = toSVG(BASE_POSITIONS[a].x, BASE_POSITIONS[a].y);
-              const pb = toSVG(BASE_POSITIONS[b].x, BASE_POSITIONS[b].y);
-              const aBase = state.bases.find((bs) => bs.id === a);
-              const bBase = state.bases.find((bs) => bs.id === b);
-              const active = aBase && bBase;
-              return (
-                <line
-                  key={`${a}-${b}`}
-                  x1={pa.x} y1={pa.y}
-                  x2={pb.x} y2={pb.y}
-                  stroke={active ? "#2563eb" : "#1e293b"}
-                  strokeWidth={active ? 1.5 : 1}
-                  strokeDasharray={active ? "8 4" : "4 6"}
-                  opacity={active ? 0.6 : 0.25}
-                />
-              );
-            })}
-
-            {/* Base markers */}
-            {Object.entries(BASE_POSITIONS).map(([id, pos]) => {
-              const base = state.bases.find((b) => b.id === id);
-              const { x, y } = toSVG(pos.x, pos.y);
-              const isSelected = selected?.baseId === id;
-              const mc = base ? base.aircraft.filter((a) => a.status === "mission_capable").length : 0;
-              const onMission = base ? base.aircraft.filter((a) => a.status === "on_mission").length : 0;
-              const color = statusColor(base);
-              const isMainBase = id === "MOB";
-              const radius = isMainBase ? 22 : 16;
-
-              return (
-                <g
-                  key={id}
-                  style={{ cursor: base ? "pointer" : "default" }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (base) setSelected({ kind: "base", baseId: id });
-                  }}
-                >
-                  {/* Pulse ring for active bases */}
-                  {base && (
-                    <circle
-                      cx={x} cy={y}
-                      r={radius + 8}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth="1"
-                      opacity="0.3"
-                    >
-                      <animate attributeName="r" values={`${radius + 6};${radius + 16};${radius + 6}`} dur="3s" repeatCount="indefinite" />
-                      <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite" />
-                    </circle>
-                  )}
-
-                  {/* Selection ring */}
-                  {isSelected && (
-                    <circle
-                      cx={x} cy={y}
-                      r={radius + 10}
-                      fill="none"
-                      stroke="#60a5fa"
-                      strokeWidth="2"
-                      strokeDasharray="6 3"
-                      opacity="0.9"
-                    />
-                  )}
-
-                  {/* Base body */}
-                  <circle
-                    cx={x} cy={y} r={radius}
-                    fill={base ? "#0f172a" : "#0a0f1a"}
-                    stroke={base ? color : "#1e293b"}
-                    strokeWidth={isMainBase ? 2.5 : 1.8}
-                    opacity={base ? 1 : 0.4}
-                  />
-
-                  {/* Inner icon */}
-                  {isMainBase ? (
-                    <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize="12" fill={color} fontFamily="monospace" fontWeight="bold">
-                      MOB
-                    </text>
-                  ) : (
-                    <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize="9" fill={base ? color : "#334155"} fontFamily="monospace" fontWeight="bold">
-                      {id.replace("_", "\n")}
-                    </text>
-                  )}
-
-                  {/* Aircraft count bubble */}
-                  {base && mc > 0 && (
-                    <g>
-                      <circle cx={x + radius - 2} cy={y - radius + 2} r="9" fill="#1e3a5f" stroke="#2563eb" strokeWidth="1" />
-                      <text x={x + radius - 2} y={y - radius + 3} textAnchor="middle" dominantBaseline="middle" fontSize="8" fill="#60a5fa" fontWeight="bold">
-                        {mc}
-                      </text>
-                    </g>
-                  )}
-
-                  {/* On-mission indicator */}
-                  {base && onMission > 0 && (
-                    <g>
-                      <circle cx={x - radius + 2} cy={y - radius + 2} r="8" fill="#0f2e1a" stroke="#22c55e" strokeWidth="1" />
-                      <text x={x - radius + 2} y={y - radius + 3} textAnchor="middle" dominantBaseline="middle" fontSize="7" fill="#22c55e" fontWeight="bold">
-                        {onMission}↗
-                      </text>
-                    </g>
-                  )}
-
-                  {/* Base label */}
-                  <text
-                    x={x} y={y + radius + 12}
-                    textAnchor="middle"
-                    fontSize={base ? "10" : "8"}
-                    fill={base ? "#94a3b8" : "#334155"}
-                    fontFamily="monospace"
-                  >
-                    {id}
-                  </text>
-
-                  {/* Fuel bar below label */}
-                  {base && (
-                    <>
-                      <rect x={x - 18} y={y + radius + 18} width="36" height="3" rx="1.5" fill="#1e293b" />
-                      <rect
-                        x={x - 18} y={y + radius + 18}
-                        width={36 * (base.fuel / 100)}
-                        height="3" rx="1.5"
-                        fill={fuelColor(base.fuel)}
-                      />
-                    </>
-                  )}
-                </g>
-              );
-            })}
-
-            {/* Flying aircraft dots between base and notional mission area */}
-            {state.bases.flatMap((base) =>
-              base.aircraft
-                .filter((ac) => ac.status === "on_mission")
-                .map((ac, idx) => {
-                  const pos = BASE_POSITIONS[base.id];
-                  if (!pos) return null;
-                  const { x, y } = toSVG(pos.x, pos.y);
-                  const angle = (idx * 55) % 360;
-                  const dist = 60 + (idx % 3) * 20;
-                  const tx = x + Math.cos((angle * Math.PI) / 180) * dist;
-                  const ty = y + Math.sin((angle * Math.PI) / 180) * dist;
-                  return (
-                    <g key={ac.id}>
-                      <line x1={x} y1={y} x2={tx} y2={ty} stroke="#22c55e" strokeWidth="0.6" strokeDasharray="3 3" opacity="0.4" />
-                      <circle cx={tx} cy={ty} r="4" fill="#22c55e" opacity="0.8">
-                        <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2s" repeatCount="indefinite" />
-                      </circle>
-                    </g>
-                  );
-                })
-            )}
-          </svg>
-
-          {/* Corner compass */}
-          <div className="absolute top-4 right-4 opacity-30 text-[10px] font-mono text-primary">
-            <div className="text-center">N</div>
-            <div className="text-center">↑</div>
-          </div>
-
-          {/* Corner scale */}
-          <div className="absolute bottom-4 left-4 text-[9px] font-mono text-muted-foreground/40 flex items-center gap-2">
-            <div className="w-16 h-px bg-muted-foreground/40" />
-            <span>~200 km</span>
-          </div>
+          {/* Active aircraft bar */}
+          <ActiveAircraftBar
+            bases={state.bases}
+            selectedAircraftId={selectedAircraftId}
+            onSelect={(baseId, aircraftId) => setSelected({ kind: "aircraft", baseId, aircraftId })}
+          />
         </div>
 
-        {/* ── DETAIL PANEL ──────────────────────────────────────────────── */}
+        {/* Detail panel */}
         <AnimatePresence>
           {selected && (
             <motion.div
@@ -379,7 +166,7 @@ export default function MapPage() {
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: 340, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[340px] border-l border-border bg-card overflow-y-auto flex flex-col"
+              className="w-[340px] flex-shrink-0 border-l border-border bg-card overflow-y-auto flex flex-col"
             >
               {/* Panel header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
@@ -405,12 +192,14 @@ export default function MapPage() {
               </div>
 
               {selectedAircraft ? (
-                <AircraftDetail
+                <AircraftDetailPanel
                   aircraft={selectedAircraft}
                   onBack={() => setSelected({ kind: "base", baseId: selected.baseId })}
+                  onRecall={handleRecall}
+                  currentHour={state.hour}
                 />
               ) : selectedBase ? (
-                <BaseDetail
+                <BaseDetailPanel
                   base={selectedBase}
                   onSelectAircraft={(id) => setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })}
                 />
@@ -427,293 +216,128 @@ export default function MapPage() {
   );
 }
 
-// ── Base detail panel ─────────────────────────────────────────────────────
-function BaseDetail({
-  base,
-  onSelectAircraft,
+// ── Active aircraft bar ────────────────────────────────────────────────────
+
+const ACTIVE_STATUSES: AircraftStatus[] = ["on_mission", "returning", "in_preparation", "awaiting_launch", "allocated"];
+
+const STATUS_LABEL: Record<string, string> = {
+  on_mission:      "UPP",
+  returning:       "RET",
+  in_preparation:  "KLAR",
+  awaiting_launch: "VÄNT",
+  allocated:       "TILL",
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  on_mission:      "#22c55e",
+  returning:       "#a78bfa",
+  in_preparation:  "#eab308",
+  awaiting_launch: "#22d3ee",
+  allocated:       "#3b82f6",
+};
+
+function ActiveAircraftBar({
+  bases,
+  selectedAircraftId,
+  onSelect,
 }: {
-  base: Base;
-  onSelectAircraft: (id: string) => void;
+  bases: Base[];
+  selectedAircraftId: string | undefined;
+  onSelect: (baseId: string, aircraftId: string) => void;
 }) {
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable");
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
-  const maintenance = base.aircraft.filter((a) => a.status === "maintenance");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission");
-  const readiness = getReadiness(base);
-  const totalPersonnel = base.personnel.reduce((s, p) => s + p.total, 0);
-  const availPersonnel = base.personnel.reduce((s, p) => s + p.available, 0);
-
-  return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-
-      {/* Beredskap */}
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono ${readiness.cls}`}>
-        <Shield className="h-4 w-4" />
-        BEREDSKAP: {readiness.label}
-      </div>
-
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 gap-2">
-        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="Mission Capable" value={mc.length} total={base.aircraft.length} color="green" />
-        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="På uppdrag" value={onMission.length} total={base.aircraft.length} color="blue" />
-        <StatBox icon={<Wrench className="h-3.5 w-3.5" />} label="I underhåll" value={maintenance.length + nmc.length} total={base.aircraft.length} color="yellow" />
-        <StatBox icon={<Users className="h-3.5 w-3.5" />} label="Personal" value={availPersonnel} total={totalPersonnel} color="purple" />
-      </div>
-
-      {/* Fuel */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-mono text-muted-foreground flex items-center gap-1">
-            <Fuel className="h-3 w-3" /> BRÄNSLE
-          </span>
-          <span className="text-[10px] font-mono" style={{ color: fuelColor(base.fuel) }}>
-            {base.fuel.toFixed(0)}%
-          </span>
-        </div>
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${base.fuel}%`, backgroundColor: fuelColor(base.fuel) }}
-          />
-        </div>
-      </div>
-
-      {/* Ammunition */}
-      <div>
-        <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Package className="h-3 w-3" /> AMMUNITION
-        </div>
-        <div className="space-y-1.5">
-          {base.ammunition.map((a) => {
-            const pct = (a.quantity / a.max) * 100;
-            return (
-              <div key={a.type}>
-                <div className="flex justify-between text-[9px] font-mono mb-0.5">
-                  <span className="text-foreground">{a.type}</span>
-                  <span className={pct < 30 ? "text-status-red" : "text-muted-foreground"}>
-                    {a.quantity}/{a.max}
-                  </span>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${pct}%`, backgroundColor: pct < 30 ? "#ef4444" : pct < 60 ? "#eab308" : "#22c55e" }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Spare parts */}
-      <div>
-        <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Wrench className="h-3 w-3" /> RESERVDELAR
-        </div>
-        <div className="space-y-1">
-          {base.spareParts.map((p) => {
-            const pct = (p.quantity / p.maxQuantity) * 100;
-            const critical = pct < 30;
-            return (
-              <div key={p.id} className="flex items-center gap-2">
-                {critical && <AlertTriangle className="h-3 w-3 text-status-red shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between text-[9px] font-mono">
-                    <span className={critical ? "text-status-red" : "text-foreground truncate"}>{p.name}</span>
-                    <span className="text-muted-foreground shrink-0 ml-1">{p.quantity}/{p.maxQuantity}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Maintenance bays */}
-      <div>
-        <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Wrench className="h-3 w-3" /> UNDERHÅLLSPLATSER
-        </div>
-        <div className="flex gap-1.5">
-          {Array.from({ length: base.maintenanceBays.total }).map((_, i) => (
-            <div
-              key={i}
-              className={`flex-1 h-6 rounded border text-[9px] font-mono flex items-center justify-center ${
-                i < base.maintenanceBays.occupied
-                  ? "bg-status-yellow/10 border-status-yellow/40 text-status-yellow"
-                  : "bg-muted border-border text-muted-foreground"
-              }`}
-            >
-              {i < base.maintenanceBays.occupied ? "UH" : "FRI"}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Personnel */}
-      <div>
-        <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Users className="h-3 w-3" /> PERSONAL
-        </div>
-        <div className="space-y-1">
-          {base.personnel.map((p) => (
-            <div key={p.id} className="flex items-center justify-between text-[10px]">
-              <span className="text-foreground">{p.role}</span>
-              <span className={`font-mono ${p.available / p.total < 0.5 ? "text-status-red" : "text-muted-foreground"}`}>
-                {p.available}/{p.total}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Aircraft list */}
-      <div>
-        <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Plane className="h-3 w-3" /> FLYGPLAN ({base.aircraft.length} st)
-        </div>
-        <div className="space-y-1">
-          {base.aircraft.map((ac) => (
-            <button
-              key={ac.id}
-              onClick={() => onSelectAircraft(ac.id)}
-              className="w-full flex items-center gap-2 p-2 rounded border border-border bg-card hover:border-primary/40 hover:bg-muted/30 transition-colors text-left"
-            >
-              <span
-                className={`w-2 h-2 rounded-full shrink-0 ${
-                  ac.status === "mission_capable"
-                    ? "bg-status-green"
-                    : ac.status === "on_mission"
-                    ? "bg-status-blue"
-                    : ac.status === "maintenance"
-                    ? "bg-status-yellow"
-                    : "bg-status-red"
-                }`}
-              />
-              <span className="text-[10px] font-mono font-bold text-foreground">{ac.tailNumber}</span>
-              <span className="text-[9px] text-muted-foreground flex-1">{ac.type}</span>
-              <span className="text-[9px] font-mono text-muted-foreground">{ac.flightHours}h</span>
-              <ChevronRight className="h-3 w-3 text-muted-foreground" />
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+  const activeAircraft = bases.flatMap((base) =>
+    base.aircraft
+      .filter((ac) => ACTIVE_STATUSES.includes(ac.status))
+      .map((ac) => ({ ac, baseId: base.id, baseName: base.name }))
   );
-}
 
-// ── Aircraft detail panel ─────────────────────────────────────────────────
-function AircraftDetail({
-  aircraft,
-  onBack,
-}: {
-  aircraft: Aircraft;
-  onBack: () => void;
-}) {
-  const statusMap = {
-    mission_capable: { label: "Mission Capable", cls: "text-status-green bg-status-green/10 border-status-green/40" },
-    not_mission_capable: { label: "Ej operativ (NMC)", cls: "text-status-red bg-status-red/10 border-status-red/40" },
-    on_mission: { label: "På uppdrag", cls: "text-status-blue bg-status-blue/10 border-status-blue/40" },
-    maintenance: { label: "Underhåll pågår", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" },
-  };
-  const s = statusMap[aircraft.status];
+  if (activeAircraft.length === 0) return null;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      <button
-        onClick={onBack}
-        className="text-[10px] font-mono text-primary flex items-center gap-1 hover:underline"
+    <div
+      className="absolute bottom-0 left-0 right-0 z-10"
+      style={{ pointerEvents: "auto" }}
+    >
+      {/* Fade-up gradient so the bar blends into the map */}
+      <div
+        className="h-6 pointer-events-none"
+        style={{ background: "linear-gradient(to bottom, transparent, rgba(5,10,20,0.85))" }}
+      />
+
+      <div
+        className="flex items-center gap-0 overflow-x-auto"
+        style={{
+          background: "rgba(5,10,20,0.92)",
+          borderTop: "1px solid rgba(215,171,58,0.25)",
+          backdropFilter: "blur(6px)",
+          scrollbarWidth: "none",
+        }}
       >
-        ← Tillbaka till basen
-      </button>
-
-      {/* Status */}
-      <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono ${s.cls}`}>
-        <Plane className="h-4 w-4" />
-        {s.label}
-      </div>
-
-      {/* Details grid */}
-      <div className="space-y-2">
-        <Row label="Typ" value={aircraft.type} />
-        <Row label="Svans #" value={aircraft.tailNumber} />
-        <Row label="Bas" value={aircraft.currentBase} />
-        <Row label="Flygtid" value={`${aircraft.flightHours} h`} />
-        <Row label="Till service" value={`${aircraft.hoursToService} h kvar`} highlight={aircraft.hoursToService < 20} />
-        {aircraft.currentMission && (
-          <Row label="Aktuellt uppdrag" value={aircraft.currentMission} />
-        )}
-        {aircraft.payload && (
-          <Row label="Lastning" value={aircraft.payload} />
-        )}
-        {aircraft.maintenanceType && (
-          <Row label="Underhållstyp" value={aircraft.maintenanceType.replace(/_/g, " ")} />
-        )}
-        {aircraft.maintenanceTimeRemaining && (
-          <Row
-            label="Kvar i underhåll"
-            value={`${aircraft.maintenanceTimeRemaining} h`}
-            highlight
+        {/* Label */}
+        <div
+          className="shrink-0 px-3 py-2 border-r flex items-center gap-1.5"
+          style={{ borderColor: "rgba(215,171,58,0.2)" }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full animate-pulse"
+            style={{ backgroundColor: "#22c55e" }}
           />
-        )}
-      </div>
-
-      {/* Service bar */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[10px] font-mono text-muted-foreground">Service-intervall</span>
-          <span className="text-[10px] font-mono text-foreground">{aircraft.hoursToService}h kvar</span>
+          <span className="text-[9px] font-mono font-bold tracking-widest" style={{ color: "#D7AB3A" }}>
+            AKTIVA
+          </span>
         </div>
-        <div className="h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${Math.min(100, (aircraft.hoursToService / 100) * 100)}%`,
-              backgroundColor: aircraft.hoursToService < 20 ? "#ef4444" : aircraft.hoursToService < 40 ? "#eab308" : "#22c55e",
-            }}
-          />
+
+        {/* Aircraft chips */}
+        <div className="flex items-center gap-1.5 px-2 py-1.5 flex-nowrap">
+          {activeAircraft.map(({ ac, baseId, baseName }) => {
+            const isSelected = ac.id === selectedAircraftId;
+            const color = STATUS_COLOR[ac.status] ?? "#94a3b8";
+            const label = STATUS_LABEL[ac.status] ?? ac.status;
+
+            return (
+              <button
+                key={ac.id}
+                onClick={(e) => { e.stopPropagation(); onSelect(baseId, ac.id); }}
+                className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded font-mono text-[10px] transition-all"
+                style={{
+                  background: isSelected ? `${color}22` : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${isSelected ? color : "rgba(255,255,255,0.08)"}`,
+                  boxShadow: isSelected ? `0 0 8px ${color}55` : "none",
+                  color: isSelected ? color : "#94a3b8",
+                  transform: isSelected ? "scale(1.05)" : "scale(1)",
+                }}
+              >
+                {/* Status dot */}
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}` }}
+                />
+                {/* Tail number */}
+                <span className="font-bold" style={{ color: isSelected ? color : "#e2e8f0" }}>
+                  {ac.tailNumber}
+                </span>
+                {/* Mission */}
+                {ac.currentMission && (
+                  <span style={{ color, opacity: 0.85 }}>{ac.currentMission}</span>
+                )}
+                {/* Status badge */}
+                <span
+                  className="text-[8px] px-1 py-0.5 rounded"
+                  style={{
+                    background: `${color}20`,
+                    color,
+                    border: `1px solid ${color}40`,
+                  }}
+                >
+                  {label}
+                </span>
+                {/* Base */}
+                <span className="text-[8px] opacity-50">{baseName}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── Small helpers ─────────────────────────────────────────────────────────
-function StatBox({
-  icon,
-  label,
-  value,
-  total,
-  color,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  total: number;
-  color: "green" | "blue" | "yellow" | "purple";
-}) {
-  const colorMap = {
-    green: "text-status-green border-status-green/20 bg-status-green/5",
-    blue: "text-status-blue border-status-blue/20 bg-status-blue/5",
-    yellow: "text-status-yellow border-status-yellow/20 bg-status-yellow/5",
-    purple: "text-purple-400 border-purple-400/20 bg-purple-400/5",
-  };
-  return (
-    <div className={`rounded-lg border p-2.5 ${colorMap[color]}`}>
-      <div className="flex items-center gap-1.5 mb-1 opacity-70">{icon}<span className="text-[9px] font-mono">{label}</span></div>
-      <div className="text-lg font-bold font-mono leading-none">
-        {value}<span className="text-[10px] font-normal opacity-60">/{total}</span>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="flex items-center justify-between py-1 border-b border-border/40">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <span className={`text-[10px] font-mono ${highlight ? "text-status-red font-bold" : "text-foreground"}`}>{value}</span>
     </div>
   );
 }

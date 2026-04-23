@@ -1,70 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
-
 @layer base {
   :root {
-    /* SAAB Brand Light Theme */
-    --background: 0 0% 100%;
-    --foreground: 214 50% 14%;
+    /* SAAB Official Brand Palette
+       Navy:  #0C234C  hsl(220 63% 18%)
+       Red:   #D9192E  hsl(353 74% 47%)
+       Silver:#D7DEE1  hsl(200 12% 86%)
+       Gold:  #D7AB3A  hsl(42  64% 53%)
+    */
+    --background: 216 18% 95%;
+    --foreground: 220 63% 14%;
 
-    --card: 210 30% 97%;
-    --card-foreground: 214 50% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 63% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 214 50% 14%;
+    --popover-foreground: 220 63% 14%;
 
-    /* SAAB Blue #005AA0 */
-    --primary: 209 100% 31%;
+    --primary: 220 63% 18%;          /* #0C234C SAAB Navy */
     --primary-foreground: 0 0% 100%;
 
-    /* SAAB Yellow #FFB81C */
-    --secondary: 43 100% 56%;
-    --secondary-foreground: 214 50% 14%;
+    --secondary: 353 74% 47%;        /* #D9192E SAAB Red */
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 25% 94%;
-    --muted-foreground: 215 15% 46%;
+    --accent: 42 64% 53%;            /* #D7AB3A SAAB Gold */
+    --accent-foreground: 220 63% 14%;
 
-    --accent: 209 60% 92%;
-    --accent-foreground: 209 100% 31%;
+    --muted: 200 12% 90%;
+    --muted-foreground: 218 15% 50%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 353 74% 47%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 215 20% 88%;
-    --input: 215 20% 88%;
-    --ring: 209 100% 31%;
+    --border: 215 14% 84%;
+    --input: 215 14% 84%;
+    --ring: 220 63% 18%;
 
-    --radius: 0.375rem;
+    --radius: 0.5rem;
 
-    --sidebar-background: 210 30% 95%;
-    --sidebar-foreground: 214 50% 14%;
-    --sidebar-primary: 209 100% 31%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 25% 90%;
-    --sidebar-accent-foreground: 214 50% 14%;
-    --sidebar-border: 215 20% 88%;
-    --sidebar-ring: 209 100% 31%;
+    --sidebar-background: 220 63% 14%;
+    --sidebar-foreground: 200 12% 86%;
+    --sidebar-primary: 42 64% 53%;
+    --sidebar-primary-foreground: 220 63% 14%;
+    --sidebar-accent: 220 40% 22%;
+    --sidebar-accent-foreground: 200 12% 86%;
+    --sidebar-border: 220 40% 26%;
+    --sidebar-ring: 42 64% 53%;
 
-    /* Custom tokens */
-    --warning: 43 100% 56%;
-    --warning-foreground: 214 50% 14%;
-    --success: 142 60% 35%;
+    /* Status / semantic tokens */
+    --warning: 42 64% 53%;
+    --warning-foreground: 220 63% 14%;
+    --success: 152 60% 32%;
     --success-foreground: 0 0% 98%;
-    --info: 209 100% 40%;
+    --info: 220 63% 40%;
     --info-foreground: 0 0% 98%;
-    --danger: 0 72% 51%;
+    --danger: 353 74% 47%;
     --danger-foreground: 0 0% 98%;
 
-    --status-green: 142 60% 35%;
-    --status-amber: 43 95% 50%;
-    --status-red: 0 72% 51%;
-    --status-blue: 209 100% 40%;
+    --status-green: 152 60% 32%;
+    --status-amber: 42 64% 53%;
+    --status-red: 353 74% 47%;
+    --status-blue: 220 63% 38%;
 
-    --glow-blue: 0 0 20px hsl(209 100% 40% / 0.3);
-    --glow-amber: 0 0 20px hsl(43 100% 56% / 0.3);
+    /* Glow tokens */
+    --glow-navy:  0 4px 24px hsl(220 63% 18% / 0.25);
+    --glow-red:   0 4px 24px hsl(353 74% 47% / 0.30);
+    --glow-gold:  0 4px 24px hsl(42  64% 53% / 0.35);
+    --glow-green: 0 4px 24px hsl(152 60% 32% / 0.30);
+
+    /* Gradient tokens */
+    --gradient-navy: linear-gradient(135deg, hsl(220 63% 18%), hsl(220 63% 26%));
+    --gradient-card: linear-gradient(160deg, hsl(0 0% 100%), hsl(216 18% 97%));
+    --gradient-gold:  linear-gradient(135deg, hsl(42 64% 53%), hsl(42 80% 62%));
   }
 }
 
@@ -74,8 +85,11 @@
   }
 
   body {
-    @apply bg-background text-foreground font-mono;
+    @apply bg-background text-foreground;
     font-family: 'JetBrains Mono', monospace;
+    background-image:
+      radial-gradient(ellipse at 0% 0%, hsl(220 63% 18% / 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 100% 100%, hsl(42 64% 53% / 0.04) 0%, transparent 60%);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -85,52 +99,76 @@
 }
 
 @layer utilities {
-  .glow-blue {
-    box-shadow: var(--glow-blue);
+  /* Glow utilities */
+  .glow-navy  { box-shadow: var(--glow-navy); }
+  .glow-red   { box-shadow: var(--glow-red); }
+  .glow-gold  { box-shadow: var(--glow-gold); }
+  .glow-green { box-shadow: var(--glow-green); }
+
+  /* Status colors */
+  .text-status-green  { color: hsl(var(--status-green)); }
+  .text-status-amber  { color: hsl(var(--status-amber)); }
+  .text-status-red    { color: hsl(var(--status-red)); }
+  .text-status-blue   { color: hsl(var(--status-blue)); }
+
+  .bg-status-green    { background-color: hsl(var(--status-green)); }
+  .bg-status-amber    { background-color: hsl(var(--status-amber)); }
+  .bg-status-red      { background-color: hsl(var(--status-red)); }
+  .bg-status-blue     { background-color: hsl(var(--status-blue)); }
+
+  .border-status-green { border-color: hsl(var(--status-green)); }
+  .border-status-amber { border-color: hsl(var(--status-amber)); }
+  .border-status-red   { border-color: hsl(var(--status-red)); }
+
+  /* Premium card style */
+  .card-premium {
+    background: var(--gradient-card);
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 1px 3px hsl(220 63% 18% / 0.06), 0 4px 12px hsl(220 63% 18% / 0.04);
   }
-  .glow-amber {
-    box-shadow: var(--glow-amber);
+
+  /* Navy header strip for cards */
+  .card-navy-header {
+    background: var(--gradient-navy);
+    border-bottom: 2px solid hsl(42 64% 53% / 0.5);
   }
-  .text-status-green {
-    color: hsl(var(--status-green));
+
+  /* Status indicator pulse */
+  .pulse-red {
+    animation: pulse-red 2s ease-in-out infinite;
   }
-  .text-status-amber {
-    color: hsl(var(--status-amber));
-  }
-  .text-status-red {
-    color: hsl(var(--status-red));
-  }
-  .text-status-blue {
-    color: hsl(var(--status-blue));
-  }
-  .bg-status-green {
-    background-color: hsl(var(--status-green));
-  }
-  .bg-status-amber {
-    background-color: hsl(var(--status-amber));
-  }
-  .bg-status-red {
-    background-color: hsl(var(--status-red));
-  }
-  .bg-status-blue {
-    background-color: hsl(var(--status-blue));
-  }
-  .border-status-green {
-    border-color: hsl(var(--status-green));
-  }
-  .border-status-amber {
-    border-color: hsl(var(--status-amber));
-  }
-  .border-status-red {
-    border-color: hsl(var(--status-red));
-  }
+
+  /* Scan line subtle overlay */
   .scanline {
     background: repeating-linear-gradient(
       0deg,
       transparent,
       transparent 2px,
-      hsl(209 100% 31% / 0.03) 2px,
-      hsl(209 100% 31% / 0.03) 4px
+      hsl(220 63% 18% / 0.025) 2px,
+      hsl(220 63% 18% / 0.025) 4px
     );
   }
+
+  /* Tactical grid background */
+  .tactical-grid {
+    background-image:
+      linear-gradient(hsl(220 63% 18% / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(220 63% 18% / 0.04) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}
+
+@keyframes pulse-red {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 hsl(353 74% 47% / 0.4); }
+  50% { opacity: 0.85; box-shadow: 0 0 0 6px hsl(353 74% 47% / 0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
 }

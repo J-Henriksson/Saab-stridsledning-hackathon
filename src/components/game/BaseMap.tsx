@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Base, Aircraft } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -8,10 +9,9 @@ import {
   Users,
   Wrench,
   AlertTriangle,
-  Plane,
-  Dice6,
 } from "lucide-react";
-import { UtfallModal, UtfallOutcome } from "./UtfallModal";
+import { UtfallModal } from "./UtfallModal";
+import { MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
 
 type BuildingId =
   | "apron"
@@ -20,6 +20,7 @@ type BuildingId =
   | "ammo"
   | "command"
   | "spareparts"
+  | "runway"
   | null;
 
 export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
@@ -27,7 +28,15 @@ export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
 interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
-  onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string) => void;
+  onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string, requiredSparePart?: string) => void;
+  /** Aircraft IDs whose ATO mission window is active NOW (pulsing orange) */
+  overdueAircraftIds?: string[];
+  /** Mission label per urgent aircraft ID */
+  overdueMissionLabels?: Record<string, string>;
+  /** Aircraft IDs assigned to a future ATO mission (steady blue) */
+  upcomingAircraftIds?: string[];
+  /** "MISSIONTYPE HH:00" label per upcoming aircraft ID */
+  upcomingMissionLabels?: Record<string, string>;
 }
 
 // Drop zones in SVG coordinate space (viewBox 900×500)
@@ -38,11 +47,11 @@ const SVG_ZONES: {
   colorFill: string;
   colorBorder: string;
 }[] = [
-  { id: "runway",     x: 60,  y: 150, w: 780, h: 60,  label: "✈️  STARTA UPPDRAG",    colorFill: "rgba(22,163,74,0.35)",  colorBorder: "#16a34a" },
-  { id: "hangar",     x: 60,  y: 318, w: 195, h: 128, label: "🔧  UNDERHÅLL / SERVICE", colorFill: "rgba(217,119,6,0.35)",  colorBorder: "#d97706" },
-  { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "📦  SNABB LRU-REP",      colorFill: "rgba(234,88,12,0.35)",  colorBorder: "#ea580c" },
-  { id: "fuel",       x: 280, y: 318, w: 110, h: 72,  label: "⛽  TANKNING",            colorFill: "rgba(5,150,105,0.35)",  colorBorder: "#059669" },
-  { id: "ammo",       x: 430, y: 318, w: 130, h: 40,  label: "💣  BEVÄPNING",           colorFill: "rgba(220,38,38,0.35)",  colorBorder: "#dc2626" },
+  { id: "runway",     x: 60,  y: 148, w: 780, h: 62,  label: "STARTA UPPDRAG",    colorFill: "rgba(215,171,58,0.30)",  colorBorder: "#D7AB3A" },
+  { id: "hangar",     x: 55,  y: 313, w: 343, h: 125, label: "UNDERHALL / SERVICE", colorFill: "rgba(12,35,76,0.30)",    colorBorder: "#0C234C" },
+  { id: "spareparts", x: 200, y: 40,  w: 130, h: 70,  label: "BYTA KOMPONENT",      colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
+  { id: "fuel",       x: 432, y: 372, w: 110, h: 72,  label: "TANKNING",            colorFill: "rgba(12,35,76,0.25)",    colorBorder: "#0C234C" },
+  { id: "ammo",       x: 430, y: 318, w: 130, h: 40,  label: "BEVÄPNING",           colorFill: "rgba(217,25,46,0.25)",   colorBorder: "#D9192E" },
 ];
 
 function getZoneAt(x: number, y: number): DropZone | null {
@@ -52,95 +61,76 @@ function getZoneAt(x: number, y: number): DropZone | null {
   return null;
 }
 
-// Aircraft status colours — MC = SAAB Blue
-const AC_COLOR: Record<Aircraft["status"], string> = {
-  mission_capable: "#005AA0",
-  on_mission: "#2563eb",
-  maintenance: "#d97706",
-  not_mission_capable: "#dc2626",
+// Aircraft status colours — SAAB palette
+const AC_COLOR: Record<string, string> = {
+  ready: "#0C234C",
+  allocated: "#1a5a7a",
+  in_preparation: "#8a6a1a",
+  awaiting_launch: "#2a7a5a",
+  on_mission: "#1a4a8a",
+  returning: "#5a3a8a",
+  recovering: "#8a5a2a",
+  under_maintenance: "#D7AB3A",
+  unavailable: "#6B7280",
 };
 
-const AC_LABEL: Record<Aircraft["status"], string> = {
-  mission_capable: "MC",
+const AC_LABEL: Record<string, string> = {
+  ready: "MC",
+  allocated: "TILL",
+  in_preparation: "KLAR",
+  awaiting_launch: "VÄNT",
   on_mission: "UPP",
-  maintenance: "UH",
-  not_mission_capable: "NMC",
+  returning: "RET",
+  recovering: "MOTT",
+  under_maintenance: "UH",
+  unavailable: "NMC",
 };
 
-// Plane silhouette color = remaining-life battery indicator
+// Plane silhouette color — status + health for ready/allocated aircraft
 function getAircraftColor(ac: Aircraft): string {
-  if (ac.status === "maintenance") return "#d97706";
-  if (ac.status === "not_mission_capable") return "#dc2626";
-  // MC and on_mission: colour encodes hoursToService
-  if (ac.hoursToService <= 20) return "#dc2626";
-  if (ac.hoursToService < 50) return "#d97706";
-  return "#16a34a";
+  const hp = ac.health ?? 100;
+  if (ac.status === "ready" || ac.status === "allocated") {
+    if (hp < 30) return "#CC2222";   // critical
+    if (hp < 60) return "#B06000";   // degraded
+  }
+  return AC_COLOR[ac.status] ?? "#0C234C";
 }
 
-// Converts hex color to [r, g, b] floats in [0, 1]
-function hexToRgb(hex: string): [number, number, number] {
-  return [
-    parseInt(hex.slice(1, 3), 16) / 255,
-    parseInt(hex.slice(3, 5), 16) / 255,
-    parseInt(hex.slice(5, 7), 16) / 255,
-  ];
-}
-
-const JAS_COLORS = ["#16a34a", "#d97706", "#dc2626", "#2563eb", "#005AA0"];
-
-/** SVG filter defs — colorizes the JAS-E PNG silhouette regardless of background */
-function JasFilterDefs() {
+// Aircraft image using Jase_transparent.png, tinted by status color, centered at (cx,cy)
+function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number; cy: number; color?: string; opacity?: number }) {
+  const filterId = `tint-${color.replace('#', '')}`;
   return (
-    <defs>
-      {JAS_COLORS.map((hex) => {
-        // suppress unused warning; value is used inside the values string
-        void hexToRgb(hex);
-        return (
-          <filter key={hex} id={`jas-${hex.slice(1)}`} colorInterpolationFilters="sRGB">
-            {/* Luminance → alpha: black pixels become opaque, white pixels become transparent */}
-            <feColorMatrix
-              type="matrix"
-              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -0.2126 -0.7152 -0.0722 0 1"
-              result="mask"
-            />
-            <feFlood floodColor={hex} floodOpacity="1" result="col" />
-            <feComposite in="col" in2="mask" operator="in" />
-          </filter>
-        );
-      })}
-    </defs>
-  );
-}
-
-/** JAS 39E top-down icon, facing LEFT (nose at cx − half-width), centered at (cx, cy) */
-function JasEToken({ cx, cy, color, opacity = 1 }: { cx: number; cy: number; color: string; opacity?: number }) {
-  return (
-    <g
-      transform={`translate(${cx}, ${cy}) scale(-1, 1)`}
+    <image
+      href={`${import.meta.env.BASE_URL}Jase_transparent.png`}
+      x={cx - 26} y={cy - 20}
+      width="52" height="40"
       opacity={opacity}
-      filter={`url(#jas-${color.slice(1)})`}
-    >
-      <image href="/jas_e.png" x="-15" y="-14" width="30" height="28" />
-    </g>
+      filter={`url(#${filterId})`}
+    />
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps) {
+export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
+  const [hoveredAmmo, setHoveredAmmo] = useState<string | null>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
   const [selectedAcId, setSelectedAcId] = useState<string | null>(null);
   const [utfallAcId, setUtfallAcId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   // Pointer-event drag state (SVG-native, no HTML drag API)
   const svgRef = useRef<SVGSVGElement>(null);
   const [draggingAcId, setDraggingAcId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const [dropZoneHover, setDropZoneHover] = useState<DropZone | null>(null);
+  const dragStartClient = useRef<{ x: number; y: number } | null>(null);
+  const dragThresholdMet = useRef(false);
+  const pendingDragAcId = useRef<string | null>(null);
 
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable");
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
-  const maint = base.aircraft.filter((a) => a.status === "maintenance");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission");
+  const mc = base.aircraft.filter((a) => a.status === "ready");
+  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
+  const maint = base.aircraft.filter((a) => a.status === "under_maintenance");
+  const onMission = base.aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
 
   function toggle(id: BuildingId) {
     setSelected((prev) => (prev === id ? null : id));
@@ -162,40 +152,70 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
     };
   }
 
+  const DRAG_THRESHOLD = 6; // px movement before considered a drag
+
   function handleSVGPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!draggingAcId) return;
+    if (!pendingDragAcId.current) return;
+    // Check if threshold met to start actual drag
+    if (!dragThresholdMet.current && dragStartClient.current) {
+      const dx = e.clientX - dragStartClient.current.x;
+      const dy = e.clientY - dragStartClient.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+      dragThresholdMet.current = true;
+      setDraggingAcId(pendingDragAcId.current);
+    }
+    if (!draggingAcId && !dragThresholdMet.current) return;
     const pos = screenToSVG(e.clientX, e.clientY);
     setDragPos(pos);
     setDropZoneHover(getZoneAt(pos.x, pos.y));
   }
 
   function handleSVGPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    if (!draggingAcId) return;
-    const pos = screenToSVG(e.clientX, e.clientY);
-    const zone = getZoneAt(pos.x, pos.y);
-    if (zone) onDropAircraft(draggingAcId, zone);
+    const acId = pendingDragAcId.current;
+    const wasDrag = dragThresholdMet.current;
+    // Reset all drag state
+    pendingDragAcId.current = null;
+    dragStartClient.current = null;
+    dragThresholdMet.current = false;
     setDraggingAcId(null);
     setDragPos(null);
     setDropZoneHover(null);
+    if (!acId) return;
+    if (wasDrag) {
+      // It was a real drag — handle drop
+      const pos = screenToSVG(e.clientX, e.clientY);
+      const zone = getZoneAt(pos.x, pos.y);
+      if (zone) onDropAircraft(acId, zone);
+    } else {
+      // It was a click — navigate to aircraft dashboard
+      const ac = base.aircraft.find((a) => a.id === acId);
+      if (ac) navigate(`/aircraft/${ac.tailNumber}`);
+    }
   }
 
   function cancelDrag() {
+    pendingDragAcId.current = null;
+    dragStartClient.current = null;
+    dragThresholdMet.current = false;
     setDraggingAcId(null);
     setDragPos(null);
     setDropZoneHover(null);
   }
 
   // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
+  const apronX = 60;
+  const apronWidth = 780;
+  const apronCols = 12;
+  const apronColWidth = apronWidth / apronCols;
   const apronAircraft = base.aircraft
-    .filter((a) => a.status === "mission_capable" || a.status === "not_mission_capable")
-    .slice(0, 32);
-  const cols = 16;
+    .filter((a) => a.status === "ready" || a.status === "unavailable")
+    .slice(0, apronCols);
 
   return (
     <div>
       {/* ── SVG MAP ───────────────────────────────────────────────── */}
-      <div className="relative w-full bg-[#e8f0e8] overflow-x-auto select-none">
-  
+      <div className="relative w-full overflow-x-auto select-none" style={{ background: "#ffffff" }}>
+
         <svg
           ref={svgRef}
           viewBox="0 0 900 500"
@@ -206,81 +226,94 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           onPointerUp={handleSVGPointerUp}
           onPointerLeave={cancelDrag}
         >
-          <JasFilterDefs />
-          {/* Grass background */}
-          <rect width="900" height="500" fill="#dceadc" />
+          {/* ── Background */}
+          <rect width="900" height="500" fill="transparent" />
+
+          {/* Subtle tactical grid */}
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0C234C" strokeWidth="0.3" opacity="0.15" />
+            </pattern>
+            {["0C234C","D7AB3A","D9192E","6B7280","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222"].map((hex) => (
+              <filter key={hex} id={`tint-${hex}`}>
+                <feFlood floodColor={`#${hex}`} result="c" />
+                <feComposite in="c" in2="SourceAlpha" operator="in" />
+              </filter>
+            ))}
+          </defs>
+          <rect width="900" height="500" fill="url(#grid)" />
 
           {/* Drag-drop instructions banner */}
-          <rect x="20" y="8" width="860" height="24" rx="3" fill="#e0f2fe" stroke="#0284c7" strokeWidth="1.5" opacity="0.85" />
-          <text x="30" y="24" fontSize="9" fill="#0c4a6e" fontFamily="monospace" fontWeight="bold">
-            💡 Dra flygplan → Bana (✈️ uppdrag) · Hangar (🔧 underhåll) · Reservdel (📦 LRU 2h) · Bränsle (⛽) · Ammo (💣)
+          <rect x="20" y="8" width="860" height="22" rx="3" fill="#0C234C" opacity="0.92" />
+          <text x="30" y="22" fontSize="9" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">
+            Dra flygplan → Bana (uppdrag) · Hangar (underhall) · Reservdel (byta komponent) · Bränsle · Ammo
           </text>
 
-          {/* ── Perimeter fence (disabled) ── */}
-          <rect x="20" y="20" width="860" height="460" fill="none" stroke="none" strokeWidth="0" />
+          {/* ── Perimeter fence */}
+          <rect x="20" y="36" width="860" height="446" fill="none" stroke="#0C234C" strokeWidth="1" strokeDasharray="8 4" opacity="0.18" rx="2" />
 
-          {/* ── Taxiway (south of runway) ── */}
-          <rect x="60" y="238" width="780" height="14" fill="#b0b8c8" />
+          {/* ── Taxiway (thin connector strip, no roads) ── */}
+          <rect x="60" y="238" width="780" height="10" rx="2" fill="#b0b8c8" opacity="0.7" />
+          {/* Taxiway centre-line dashes */}
+          <line x1="60" y1="243" x2="840" y2="243" stroke="#D7AB3A" strokeWidth="0.8" strokeDasharray="12 10" opacity="0.45" />
 
-          {/* ── Runway drop zone ── */}
-          <rect x="60" y="150" width="780" height="60" rx="2" fill="#9aa4b8" />
-          {/* Runway centre-line */}
-          <line x1="60" y1="180" x2="840" y2="180" stroke="#f8fafc" strokeWidth="1.5" strokeDasharray="20 14" />
-          {/* Runway threshold marks */}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <rect key={i} x={75 + i * 14} y={154} width={8} height={18} fill="#c8d0dc" />
-          ))}
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <rect key={i} x={807 - i * 14} y={188} width={8} height={18} fill="#c8d0dc" />
-          ))}
-          <text x="450" y="183" textAnchor="middle" fontSize="9" fill="#fff" fontFamily="monospace" letterSpacing="3">
-            LANDNINGSBANA 09/27
-          </text>
+          {/* ── Runway ── */}
+          <g
+            style={{ cursor: "pointer" }}
+            onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("runway"); } }}
+          >
+            {/* Asphalt base */}
+            <rect x="60" y="148" width="780" height="62" rx="3" fill="#5a6070"
+              stroke={selected === "runway" ? "#D7AB3A" : "none"}
+              strokeWidth={selected === "runway" ? 2.5 : 0} />
+            {/* Centre-line */}
+            <line x1="60" y1="179" x2="840" y2="179" stroke="#ffffff" strokeWidth="1.5" strokeDasharray="22 12" opacity="0.9" />
+            {/* Threshold marks - left */}
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <rect key={`tl-${i}`} x={72 + i * 14} y={152} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
+            ))}
+            {/* Threshold marks - right */}
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <rect key={`tr-${i}`} x={810 - i * 14} y={192} width={7} height={16} rx="1" fill="#ffffff" opacity="0.55" />
+            ))}
+            {/* Runway designation text */}
+            <text x="100" y="178" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">09</text>
+            <text x="800" y="200" textAnchor="middle" fontSize="10" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" opacity="0.9">27</text>
+            <text x="450" y="183" textAnchor="middle" fontSize="9" fill="#ffffff" fontFamily="monospace" letterSpacing="4" opacity="0.85">
+              LANDNINGSBANA 09/27
+            </text>
+            {/* PAPI lights at both ends */}
+            {[0, 1, 2, 3].map((i) => (
+              <rect key={`papi-${i}`} x={62 + i * 6} y={210} width={4} height={5} rx="1"
+                fill={i < 2 ? "#D9192E" : "#ffffff"} opacity="0.9" />
+            ))}
+          </g>
 
-          {/* ── On-mission aircraft rendered ON the runway ── */}
-          {onMission.slice(0, 10).map((ac, i) => {
-            const rx = 95 + i * 75;
-            const ry = 192;
-            const color = "#2563eb";
-            return (
-              <g key={`mission-${ac.id}`}
-                onMouseEnter={() => setHoveredAc(ac.id)}
-                onMouseLeave={() => setHoveredAc(null)}
-              >
-                <JasEToken cx={rx} cy={ry} color={color} />
-                {/* Speed lines */}
-                <line x1={rx+15} y1={ry-1} x2={rx+22} y2={ry-1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
-                <line x1={rx+15} y1={ry+1} x2={rx+22} y2={ry+1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
-                {hoveredAc === ac.id && (
-                  <g>
-                    <rect x={rx-18} y={ry-22} width="36" height="11" rx="2" fill="#1e3a8a" opacity="0.9" />
-                    <text x={rx} y={ry-14} textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
+          {/* (on-mission aircraft shown in PÅ UPPDRAG box below, not on runway) */}
 
           {/* ── Apron / Parking ── */}
           <rect
-            x="60" y="208" width="780" height="100"
-            fill={selected === "apron" ? "#dbeafe" : "#c8d4e8"}
-            stroke={selected === "apron" ? "#005AA0" : "#8099bb"}
-            strokeWidth={selected === "apron" ? 2 : 1}
+            x="60" y="218" width="780" height="90"
+            fill={selected === "apron" ? "#c8d4e8" : "#ffffff"}
+            stroke={selected === "apron" ? "#0C234C" : "#8099bb"}
+            strokeWidth={selected === "apron" ? 2 : 0.8}
             rx="4"
             style={{ cursor: "pointer" }}
             onClick={(e) => { e.stopPropagation(); toggle("apron"); }}
           />
-          <text x="75" y="220" fontSize="8" fill="#374e70" fontFamily="monospace">UPPSTÄLLNINGSPLATS</text>
+          {/* Parking bay lines */}
+          {Array.from({ length: apronCols + 1 }, (_, i) => (
+            <line key={`bay-${i}`} x1={apronX + i * apronColWidth} y1={218} x2={apronX + i * apronColWidth} y2={308}
+              stroke="#0C234C" strokeWidth="0.4" opacity="0.25" />
+          ))}
+          <text x="75" y="230" fontSize="8" fill="#0C234C" fontFamily="monospace" fontWeight="bold" opacity="0.6">UPPSTÄLLNINGSPLATS</text>
 
-          {/* Aircraft icons on apron — Gripen silhouette, facing left (nose at -x) */}
+          {/* Aircraft icons on apron */}
           {apronAircraft.map((ac, i) => {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const cx = 80 + col * 46;
-            const cy = 248 + row * 44;
+            const col = i % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
+            const cy = 270; // lowered slightly to align inside the parking bay
             const color = getAircraftColor(ac);
-            const isHovered = hoveredAc === ac.id;
             const isSelAc = selectedAcId === ac.id;
             return (
               <g
@@ -288,123 +321,118 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 style={{ cursor: draggingAcId === ac.id ? "grabbing" : isSelAc ? "pointer" : "grab" }}
                 onMouseEnter={() => { if (!draggingAcId) setHoveredAc(ac.id); }}
                 onMouseLeave={() => setHoveredAc(null)}
-                onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); selectAircraft(ac.id); } }}
                 onPointerDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  // Capture pointer on the SVG so move/up fire on SVG even when cursor leaves aircraft
                   svgRef.current?.setPointerCapture(e.pointerId);
-                  setDraggingAcId(ac.id);
+                  pendingDragAcId.current = ac.id;
+                  dragStartClient.current = { x: e.clientX, y: e.clientY };
+                  dragThresholdMet.current = false;
                   setSelectedAcId(null);
                   const pos = screenToSVG(e.clientX, e.clientY);
                   setDragPos(pos);
                   setDropZoneHover(null);
                 }}
               >
-                {/* Selection ring */}
                 {isSelAc && (
-                  <ellipse cx={cx} cy={cy} rx="16" ry="12" fill="none" stroke={color} strokeWidth="1.5" strokeDasharray="3 2" />
+                  <ellipse cx={cx} cy={cy} rx="20" ry="15" fill="none" stroke="#D7AB3A" strokeWidth="1.5" strokeDasharray="3 2" />
                 )}
-                {/* Drop shadow */}
-                <ellipse cx={cx} cy={cy + 1.5} rx="13" ry="5" fill="rgba(0,0,0,0.12)" />
-                {/* JAS 39E silhouette */}
-                <JasEToken cx={cx} cy={cy} color={color} />
-
-                {/* ── Battery indicator ── */}
-                {(() => {
-                  const battPct = Math.min(1, ac.hoursToService / 100);
-                  const battColor = ac.hoursToService <= 20 ? "#dc2626" : ac.hoursToService < 50 ? "#d97706" : "#16a34a";
-                  const bX = cx - 11, bY = cy + 15, bW = 22, bH = 6;
-                  return (
-                    <g>
-                      {/* Outer casing */}
-                      <rect x={bX} y={bY} width={bW} height={bH} rx={1.5} fill="rgba(0,0,0,0.25)" stroke="white" strokeWidth={1} />
-                      {/* Terminal nub */}
-                      <rect x={bX + bW + 0.5} y={bY + 1.5} width={2} height={bH - 3} rx={0.5} fill="white" opacity={0.75} />
-                      {/* Fill level */}
-                      <rect x={bX + 1.5} y={bY + 1.5} width={Math.max(0, (bW - 3) * battPct)} height={bH - 3} rx={1} fill={battColor} />
-                    </g>
-                  );
-                })()}
-
-                {/* Label (always visible) */}
-                <g>
-                  <rect x={cx - 18} y={cy - 28} width="36" height="14" rx="2" fill="#fff" stroke={color} strokeWidth="0.8" />
-                  <text x={cx} y={cy - 20} textAnchor="middle" fontSize="7" fill={color} fontFamily="monospace" fontWeight="bold">
-                    {ac.tailNumber}
-                  </text>
-                  <text x={cx} y={cy - 16} textAnchor="middle" fontSize="5.5" fill="#64748b" fontFamily="monospace">
-                    {AC_LABEL[ac.status]}
-                  </text>
-                </g>
+                {/* Urgent: mission active NOW — pulsing orange ring + badge */}
+                {overdueAircraftIds.includes(ac.id) && (
+                  <g>
+                    <ellipse cx={cx} cy={cy} rx="22" ry="17" fill="none" stroke="#FF6B00" strokeWidth="2" strokeDasharray="4 2" opacity="0.9">
+                      <animate attributeName="stroke-opacity" values="0.9;0.2;0.9" dur="1s" repeatCount="indefinite" />
+                    </ellipse>
+                    {(() => {
+                      const label = overdueMissionLabels[ac.id] ?? "NU!";
+                      const bw = Math.max(28, label.length * 5 + 8);
+                      return (
+                        <>
+                          <rect x={cx - bw / 2} y={cy + 14} width={bw} height="11" rx="2.5" fill="#FF6B00" />
+                          <text x={cx} y={cy + 22} textAnchor="middle" fontSize="6" fill="white" fontFamily="monospace" fontWeight="bold">{label}</text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
+                {/* Upcoming: future ATO assignment — steady blue badge */}
+                {!overdueAircraftIds.includes(ac.id) && upcomingAircraftIds.includes(ac.id) && (
+                  <g>
+                    <ellipse cx={cx} cy={cy} rx="22" ry="17" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7" />
+                    {(() => {
+                      const label = upcomingMissionLabels[ac.id] ?? "SCHD";
+                      const bw = Math.max(32, label.length * 4.5 + 8);
+                      return (
+                        <>
+                          <rect x={cx - bw / 2} y={cy + 14} width={bw} height="11" rx="2.5" fill="#1D4ED8" opacity="0.9" />
+                          <text x={cx} y={cy + 22} textAnchor="middle" fontSize="5.5" fill="white" fontFamily="monospace" fontWeight="bold">{label}</text>
+                        </>
+                      );
+                    })()}
+                  </g>
+                )}
+                {/* Tail label */}
+                <rect x={cx - 22} y={cy - 35} width="44" height="13" rx="2"
+                  fill={color === "#0C234C" ? "#0C234C" : "#fff"} fillOpacity="0.92"
+                  stroke={overdueAircraftIds.includes(ac.id) ? "#FF6B00" : color} strokeWidth={overdueAircraftIds.includes(ac.id) ? 1.5 : 0.8} />
+                <text x={cx} y={cy - 26} textAnchor="middle" fontSize="6.5"
+                  fill={color === "#0C234C" ? "#D7AB3A" : color} fontFamily="monospace" fontWeight="bold">
+                  {ac.tailNumber}
+                </text>
+                <AircraftImage cx={cx} cy={cy} color={color} />
               </g>
             );
           })}
 
-          {/* ── Maintenance Hangars (4) ── */}
-          {[0, 1, 2, 3].map((i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            const hx = 60 + col * 100;
-            const hy = 318 + row * 65;
+          {/* ── Maintenance Hangars (8, 4×2 grid) ── */}
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+            const col = i % 4;
+            const row = Math.floor(i / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
             const occupied = i < base.maintenanceBays.occupied;
             const isSel = selected === "hangar";
             const isHangarHot = dropZoneHover === "hangar";
             return (
-              <g
-                key={i}
-                style={{ cursor: "pointer" }}
-                onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("hangar"); } }}
-              >
-                {/* Roof */}
-                <rect
-                  x={hx} y={hy} width="86" height="58"
-                  fill={isHangarHot ? "#c7d2e8" : occupied ? "#fefce8" : "#eff6ff"}
-                  stroke={isHangarHot ? "#d97706" : isSel ? "#005AA0" : occupied ? "#d97706" : "#93b4d8"}
-                  strokeWidth={isHangarHot || isSel ? 2 : 1.2}
-                  rx="2"
-                />
-                
+              <g key={i} style={{ cursor: "pointer" }}
+                onClick={(e) => { if (!draggingAcId) { e.stopPropagation(); toggle("hangar"); } }}>
+                {/* Hangar body */}
+                <rect x={hx} y={hy} width="78" height="52" rx="3"
+                  fill={isHangarHot ? "#D7AB3A22" : occupied ? "#D7AB3A15" : "#0C234C0a"}
+                  stroke={isHangarHot ? "#D7AB3A" : isSel ? "#0C234C" : occupied ? "#D7AB3A" : "#0C234C55"}
+                  strokeWidth={isHangarHot || isSel ? 2 : 1} />
+                {/* Roof ridge */}
+                <line x1={hx + 39} y1={hy} x2={hx + 39} y2={hy + 24} stroke="#0C234C" strokeWidth="0.5" opacity="0.3" />
                 {/* Door */}
-                <rect x={hx + 18} y={hy + 30} width="50" height="28" rx="1"
-                  fill={occupied ? "#fde68a40" : "#bfdbfe40"} stroke={occupied ? "#d9770640" : "#93b4d8"} strokeWidth="0.8" />
-                {/* Roof lines */}
-                <line x1={hx + 43} y1={hy} x2={hx + 43} y2={hy + 30} stroke="#93b4d8" strokeWidth="0.6" />
-                {/* Label */}
-                <text x={hx + 43} y={hy + 12} textAnchor="middle" fontSize="7" fill={occupied ? "#92400e" : "#1e3a5f"} fontFamily="monospace">
-                  HANGAR {i + 1}
+                <rect x={hx + 16} y={hy + 26} width="46" height="24" rx="1"
+                  fill={occupied ? "#D7AB3A20" : "#0C234C08"}
+                  stroke={occupied ? "#D7AB3A80" : "#0C234C30"} strokeWidth="0.8" />
+                <text x={hx + 39} y={hy + 12} textAnchor="middle" fontSize="7"
+                  fill={occupied ? "#0C234C" : "#0C234C80"} fontFamily="monospace" fontWeight="bold">
+                  H{i + 1}
                 </text>
-                
                 {occupied && (
-                  <circle cx={hx + 72} cy={hy + 8} r="5" fill="#d97706" opacity="0.8">
-                    <animate attributeName="opacity" values="0.8;0.3;0.8" dur="2s" repeatCount="indefinite" />
+                  <circle cx={hx + 66} cy={hy + 8} r="4" fill="#D7AB3A" opacity="0.9">
+                    <animate attributeName="opacity" values="0.9;0.3;0.9" dur="2s" repeatCount="indefinite" />
                   </circle>
                 )}
               </g>
             );
           })}
-          {/* Hangar label */}
-          <text x="146" y="314" textAnchor="middle" fontSize="7" fill="#1e3a5f" fontFamily="monospace">UNDERHÅLLSHALLAR</text>
+          <text x="228" y="314" textAnchor="middle" fontSize="7" fill="#0C234C" opacity="0.7" fontFamily="monospace" fontWeight="bold">UNDERHÅLLSHALLAR</text>
 
           {/* ── Maintenance aircraft inside hangars ── */}
-          {maint.slice(0, 4).map((ac, i) => {
-            const col = i % 2;
-            const row = Math.floor(i / 2);
-            const hx = 60 + col * 100;
-            const hy = 318 + row * 65;
-            const mx = hx + 43, my = hy + 42;
+          {maint.slice(0, 8).map((ac, i) => {
+            const col = i % 4;
+            const row = Math.floor(i / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
+            const mx = hx + 39, my = hy + 38;
             return (
               <g key={`maint-${ac.id}`}
                 onMouseEnter={() => setHoveredAc(ac.id)}
-                onMouseLeave={() => setHoveredAc(null)}
-              >
-                <JasEToken cx={mx} cy={my} color="#d97706" opacity={0.7} />
-                {hoveredAc === ac.id && (
-                  <g>
-                    <rect x={mx-18} y={my-20} width="36" height="11" rx="2" fill="#92400e" opacity="0.95" />
-                    <text x={mx} y={my-12} textAnchor="middle" fontSize="7" fill="#fff" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
-                  </g>
-                )}
+                onMouseLeave={() => setHoveredAc(null)}>
+                <AircraftImage cx={mx} cy={my} color="#D7AB3A" opacity={0.75} />
               </g>
             );
           })}
@@ -413,27 +441,36 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           {(() => {
             const isSel = selected === "fuel";
             const fuelPct = base.fuel / 100;
-            const fuelColor = base.fuel > 60 ? "#15803d" : base.fuel > 30 ? "#d97706" : "#dc2626";
+            const fuelColor = base.fuel > 60 ? "#0C234C" : base.fuel > 30 ? "#D7AB3A" : "#D9192E";
+            const fuelX = 432;
+            const fuelY = 372;
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("fuel"); }}>
-                {/* Main building */}
-                <rect x="280" y="318" width="110" height="72" rx="2"
-                  fill={isSel ? "#f0fdf4" : "#ecfdf5"}
-                  stroke={isSel ? fuelColor : "#6ee7b7"}
-                  strokeWidth={isSel ? 2 : 1.2} />
-                {/* Tanks (circles) */}
-                <circle cx="316" cy="345" r="18" fill="#d1fae5" stroke={fuelColor} strokeWidth="1" opacity="0.9" />
-                <circle cx="354" cy="345" r="18" fill="#d1fae5" stroke={fuelColor} strokeWidth="1" opacity="0.9" />
-                {/* Fuel fill level visual */}
-                <clipPath id="fuelClip1"><circle cx="316" cy="345" r="17" /></clipPath>
-                <rect x="299" y={345 + 17 - 34 * fuelPct} width="34" height={34 * fuelPct} fill={fuelColor} opacity="0.4" clipPath="url(#fuelClip1)" />
-                <clipPath id="fuelClip2"><circle cx="354" cy="345" r="17" /></clipPath>
-                <rect x="337" y={345 + 17 - 34 * fuelPct} width="34" height={34 * fuelPct} fill={fuelColor} opacity="0.4" clipPath="url(#fuelClip2)" />
-                {/* Labels */}
-                <text x="316" y="347" textAnchor="middle" fontSize="7" fill={fuelColor} fontFamily="monospace">{Math.round(base.fuel)}%</text>
-                <text x="354" y="347" textAnchor="middle" fontSize="7" fill={fuelColor} fontFamily="monospace">{Math.round(base.fuel)}%</text>
-                <text x="335" y="374" textAnchor="middle" fontSize="7" fill="#166534" fontFamily="monospace">BRÄNSLE</text>
-                <text x="335" y="382" textAnchor="middle" fontSize="7" fill="#166534" fontFamily="monospace">DEPÅ</text>
+                <rect x={fuelX} y={fuelY} width="110" height="72" rx="3"
+                  fill={isSel ? "#D7AB3A10" : "#0C234C08"}
+                  stroke={isSel ? "#D7AB3A" : fuelColor + "60"}
+                  strokeWidth={isSel ? 2 : 1} />
+                {/* Tanks */}
+                {(() => {
+                  const tank1Cx = fuelX + 36;
+                  const tank2Cx = fuelX + 74;
+                  const tankCy = fuelY + 27;
+                  const fillW = 34;
+                  const fillX = (cx: number) => cx - fillW / 2;
+                  return (
+                    <>
+                      <circle cx={tank1Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
+                      <circle cx={tank2Cx} cy={tankCy} r="18" fill="#D7DEE1" stroke={fuelColor} strokeWidth="1" opacity="0.85" />
+                      <clipPath id="fuelClip1"><circle cx={tank1Cx} cy={tankCy} r="17" /></clipPath>
+                      <rect x={fillX(tank1Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.6" clipPath="url(#fuelClip1)" />
+                      <clipPath id="fuelClip2"><circle cx={tank2Cx} cy={tankCy} r="17" /></clipPath>
+                      <rect x={fillX(tank2Cx)} y={tankCy + 17 - 34 * fuelPct} width={fillW} height={34 * fuelPct} fill={fuelColor} opacity="0.6" clipPath="url(#fuelClip2)" />
+                    </>
+                  );
+                })()}
+                <text x={fuelX + 36} y={fuelY + 29} textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
+                <text x={fuelX + 74} y={fuelY + 29} textAnchor="middle" fontSize="6.5" fill={fuelColor} fontFamily="monospace" fontWeight="bold">{Math.round(base.fuel)}%</text>
+                <text x={fuelX + 55} y={fuelY + 56} textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">BRÄNSLE DEPÅ</text>
               </g>
             );
           })()}
@@ -442,32 +479,146 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           {(() => {
             const isSel = selected === "ammo";
             const totalAmmo = base.ammunition.reduce((s, a) => s + a.quantity, 0);
-            const maxAmmo = base.ammunition.reduce((s, a) => s + a.max, 0);
-            const critical = totalAmmo / maxAmmo < 0.3;
+            const maxAmmo   = base.ammunition.reduce((s, a) => s + a.max, 0);
+            const critical  = totalAmmo / maxAmmo < 0.3;
+            // missile geometry — matches original trapezoid footprint (x=430–544, y=320–362)
+            const centers = [447, 487, 527];
+            const bW = 12;       // body width
+            const noseTop = 318; // nose tip y
+            const noseBot = 326; // nose base / body top y
+            const bodyBot = 348; // body bottom y
+            const bodyH = bodyBot - noseBot;
+            const finH = 7, finW = 5;
+            const strokeColor = critical || isSel ? "#D9192E" : "#0C234C55";
+            const strokeW = isSel ? 2 : 1;
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("ammo"); }}>
-                {/* Earth revetments (trapezoids) */}
-                {[0, 1, 2].map((j) => (
-                  <polygon
-                    key={j}
-                    points={`${430 + j * 40},320 ${464 + j * 40},320 ${458 + j * 40},350 ${436 + j * 40},350`}
-                    fill={isSel ? "#fff7ed" : "#fef3c7"}
-                    stroke={critical ? "#dc2626" : isSel ? "#dc2626" : "#d97706"}
-                    strokeWidth={isSel ? 2 : 1}
-                  />
-                ))}
-                {/* Bunker doors */}
-                {[0, 1, 2].map((j) => (
-                  <rect key={j} x={442 + j * 40} y={335} width="12" height="15" rx="1"
-                    fill="#fde68a" stroke="#d97706" strokeWidth="0.6" />
-                ))}
-                {/* Warning marker */}
+                {base.ammunition.map((a, i) => {
+                  const pct = a.quantity / a.max;
+                  const color = pct <= 0.3 ? "#D9192E" : pct <= 0.7 ? "#D7AB3A" : "#22a05a";
+                  const colorDim = pct <= 0.3 ? "#D9192E30" : pct <= 0.7 ? "#D7AB3A30" : "#22a05a30";
+                  const cx = centers[i];
+                  const totalH = bodyBot - noseTop;
+                  const fillH = totalH * pct;         // how tall the colored zone is
+                  const fillTop = bodyBot - fillH;    // y where color starts
+                  const clipId = `ammo-clip-${i}`;
+                  const isHov = hoveredAmmo === a.type;
+                  const ttW = 64, ttH = 22;
+                  const ttX = cx - ttW / 2, ttY = noseTop - ttH - 4;
+                  // missile silhouette polygon (nose + body, no fins)
+                  const silhouette = `${cx},${noseTop} ${cx + bW / 2},${noseBot} ${cx + bW / 2},${bodyBot} ${cx - bW / 2},${bodyBot} ${cx - bW / 2},${noseBot}`;
+                  return (
+                    <g key={a.type}
+                      onMouseEnter={() => setHoveredAmmo(a.type)}
+                      onMouseLeave={() => setHoveredAmmo(null)}
+                      style={{ cursor: "pointer" }}>
+                      <defs>
+                        <clipPath id={clipId}>
+                          <polygon points={silhouette} />
+                        </clipPath>
+                      </defs>
+                      {/* dim full silhouette */}
+                      <polygon points={silhouette} fill={colorDim} />
+                      {/* colored fill rising from bottom, clipped to silhouette */}
+                      <rect x={cx - bW / 2} y={fillTop} width={bW} height={fillH}
+                        fill={color} clipPath={`url(#${clipId})`} />
+                      {/* fins — always solid */}
+                      <polygon
+                        points={`${cx - bW / 2},${bodyBot - finH} ${cx - bW / 2 - finW},${bodyBot} ${cx - bW / 2},${bodyBot}`}
+                        fill={color} />
+                      <polygon
+                        points={`${cx + bW / 2},${bodyBot - finH} ${cx + bW / 2 + finW},${bodyBot} ${cx + bW / 2},${bodyBot}`}
+                        fill={color} />
+                      {/* type label */}
+                      <text x={cx} y={bodyBot + 8} textAnchor="middle" fontSize="6"
+                        fontFamily="monospace" fontWeight="bold" fill="#0C234C">
+                        {a.type}
+                      </text>
+                      {/* hover tooltip */}
+                      {isHov && (
+                        <g>
+                          <rect x={ttX} y={ttY} width={ttW} height={ttH} rx="3"
+                            fill="#0C234C" stroke={color} strokeWidth="1" opacity="0.95" />
+                          <text x={cx} y={ttY + 9} textAnchor="middle" fontSize="6.5"
+                            fontFamily="monospace" fontWeight="bold" fill={color}>
+                            {a.type}
+                          </text>
+                          <text x={cx} y={ttY + 18} textAnchor="middle" fontSize="6"
+                            fontFamily="monospace" fill="#FFFFFF">
+                            {a.quantity}/{a.max} ({Math.round(pct * 100)}%)
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
                 {critical && (
-                  <circle cx="550" cy="325" r="6" fill="#dc2626" opacity="0.8">
-                    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" />
+                  <circle cx="550" cy="321" r="4" fill="#D9192E">
+                    <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
-                <text x="494" y="368" textAnchor="middle" fontSize="7" fill="#92400e" fontFamily="monospace">AMMO DEPOT</text>
+                <text x="487" y="364" textAnchor="middle" fontSize="7"
+                  fill={critical ? "#D9192E" : "#0C234C"} fontFamily="monospace" fontWeight="bold">
+                  AMMUNITION DEPÅ
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* ── På Uppdrag Box ── */}
+          {(() => {
+            const boxX = 585, boxY = 314, boxW = 255, boxH = 135;
+            const cols = 4;
+            return (
+              <g>
+                <rect x={boxX} y={boxY} width={boxW} height={boxH} rx="4"
+                  fill="#0a1d3e" stroke="#1a4a8a" strokeWidth="1.5" opacity="0.95" />
+                <rect x={boxX} y={boxY} width={boxW} height={16} rx="4"
+                  fill="#1a3a6a" />
+                <text x={boxX + boxW / 2} y={boxY + 11} textAnchor="middle" fontSize="8"
+                  fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" letterSpacing="2">
+                  PÅ UPPDRAG ({onMission.length})
+                </text>
+                {onMission.length === 0 && (
+                  <text x={boxX + boxW / 2} y={boxY + 90} textAnchor="middle" fontSize="8"
+                    fill="#5566aa" fontFamily="monospace">— inga aktiva uppdrag —</text>
+                )}
+                {onMission.slice(0, 16).map((ac, i) => {
+                  const col = i % cols;
+                  const row = Math.floor(i / cols);
+                  const cx = boxX + 32 + col * 60;
+                  const cy = boxY + 42 + row * 50;
+                  const isRet = ac.status === "returning";
+                  const color = isRet ? "#5a3a8a" : "#1a4a8a";
+                  return (
+                    <g key={`uppdrag-${ac.id}`}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setHoveredAc(ac.id)}
+                      onMouseLeave={() => setHoveredAc(null)}
+                      onClick={() => navigate("/map", { state: { aircraftId: ac.id, baseId: base.id } })}
+                    >
+                      <AircraftImage cx={cx} cy={cy} color={color} opacity={isRet ? 0.7 : 1} />
+                      {/* Returning indicator */}
+                      {isRet && (
+                        <text x={cx} y={cy - 18} textAnchor="middle" fontSize="7" fill="#aa88ff" fontFamily="monospace">↩</text>
+                      )}
+                      {/* Tail number label */}
+                      <rect x={cx-17} y={cy+8} width="34" height="11" rx="2"
+                        fill={color} fillOpacity="0.9" />
+                      <text x={cx} y={cy+16} textAnchor="middle" fontSize="6"
+                        fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber}</text>
+                      {/* Hover tooltip */}
+                      {hoveredAc === ac.id && (
+                        <g>
+                          <rect x={cx-20} y={cy-34} width="40" height="13" rx="2" fill="#0C234C" opacity="0.95" />
+                          <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
+                            {isRet ? "Återvänder" : ac.currentMission ?? "UPP"}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
               </g>
             );
           })()}
@@ -477,21 +628,22 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             const isSel = selected === "command";
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("command"); }}>
-                <rect x="60" y="40" width="110" height="70" rx="3"
-                  fill={isSel ? "#eff6ff" : "#dbeafe"}
-                  stroke={isSel ? "#005AA0" : "#3b82f6"}
-                  strokeWidth={isSel ? 2 : 1.2} />
+                <rect x="60" y="40" width="110" height="70" rx="4"
+                  fill={isSel ? "#D7AB3A15" : "#0C234C0e"}
+                  stroke={isSel ? "#D7AB3A" : "#0C234C60"}
+                  strokeWidth={isSel ? 2 : 1} />
                 {/* Antenna */}
-                <line x1="115" y1="40" x2="115" y2="25" stroke="#005AA0" strokeWidth="1.5" />
-                <line x1="108" y1="28" x2="122" y2="28" stroke="#005AA0" strokeWidth="1" />
-                {/* Windows */}
+                <line x1="115" y1="40" x2="115" y2="24" stroke="#D7AB3A" strokeWidth="1.5" />
+                <line x1="106" y1="28" x2="124" y2="28" stroke="#D7AB3A" strokeWidth="1" />
+                <circle cx="115" cy="24" r="2.5" fill="#D7AB3A" opacity="0.9">
+                  <animate attributeName="opacity" values="0.9;0.3;0.9" dur="3s" repeatCount="indefinite" />
+                </circle>
                 {[0, 1, 2, 3].map((j) => (
-                  <rect key={j} x={70 + j * 24} y={60} width="14" height="10" rx="1"
-                    fill="#bfdbfe" stroke="#3b82f6" strokeWidth="0.5" opacity="0.8" />
+                  <rect key={j} x={70 + j * 24} y={58} width="14" height="10" rx="1"
+                    fill="#D7AB3A22" stroke="#0C234C40" strokeWidth="0.5" />
                 ))}
-                {/* Door */}
-                <rect x="103" y="82" width="24" height="28" rx="1" fill="#93c5fd" stroke="#3b82f6" strokeWidth="0.6" />
-                <text x="115" y="52" textAnchor="middle" fontSize="7" fill="#1e3a8a" fontFamily="monospace">BAS-HQ</text>
+                <rect x="103" y="80" width="24" height="28" rx="1" fill="#0C234C15" stroke="#0C234C40" strokeWidth="0.6" />
+                <text x="115" y="52" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">BAS-HQ</text>
               </g>
             );
           })()}
@@ -502,71 +654,62 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             const critical = base.spareParts.some((p) => p.quantity / p.maxQuantity < 0.3);
             return (
               <g style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); toggle("spareparts"); }}>
-                <rect x="200" y="40" width="130" height="70" rx="2"
-                  fill={isSel ? "#fff7ed" : "#ffedd5"}
-                  stroke={critical ? "#dc2626" : isSel ? "#ea580c" : "#f97316"}
-                  strokeWidth={isSel ? 2 : 1.2} />
-                {/* Shelving lines */}
+                <rect x="200" y="40" width="130" height="70" rx="3"
+                  fill={isSel ? "#D7AB3A12" : "#0C234C08"}
+                  stroke={critical ? "#D9192E" : isSel ? "#D7AB3A" : "#0C234C50"}
+                  strokeWidth={isSel ? 2 : 1} />
                 {[0, 1, 2].map((j) => (
-                  <line key={j} x1="210" y1={55 + j * 14} x2="320" y2={55 + j * 14}
-                    stroke="#fdba74" strokeWidth="0.6" />
+                  <line key={j} x1="212" y1={55 + j * 14} x2="318" y2={55 + j * 14}
+                    stroke="#0C234C" strokeWidth="0.5" opacity="0.2" />
                 ))}
-                {/* Loading dock */}
-                <rect x="245" y="95" width="40" height="15" rx="1" fill="#fed7aa" stroke="#f97316" strokeWidth="0.6" />
+                <rect x="245" y="95" width="40" height="15" rx="1" fill="#D7DEE1" stroke="#0C234C30" strokeWidth="0.5" />
                 {critical && (
-                  <circle cx="320" cy="48" r="6" fill="#dc2626" opacity="0.8">
-                    <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.5s" repeatCount="indefinite" />
+                  <circle cx="320" cy="47" r="5" fill="#D9192E">
+                    <animate attributeName="opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
                   </circle>
                 )}
-                <text x="265" y="52" textAnchor="middle" fontSize="7" fill="#c2410c" fontFamily="monospace">RESERVDELS-</text>
-                <text x="265" y="62" textAnchor="middle" fontSize="7" fill="#c2410c" fontFamily="monospace">FÖRRÅD</text>
+                <text x="265" y="52" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">RESERVDELS-</text>
+                <text x="265" y="62" textAnchor="middle" fontSize="7" fill="#0C234C" fontFamily="monospace" fontWeight="bold">FÖRRÅD</text>
               </g>
             );
           })()}
 
-          {/* ── Personnel barracks ── */}
-          <g>
-            <rect x="360" y="40" width="100" height="70" rx="2"
-              fill="#f0fdfa" stroke="#6ee7b7" strokeWidth="1" />
-            {[0, 1, 2].map((row) =>
-              [0, 1, 2, 3].map((col) => (
-                <rect key={`${row}-${col}`}
-                  x={370 + col * 20} y={50 + row * 16}
-                  width="12" height="9" rx="1"
-                  fill="#ccfbf1" stroke="#6ee7b7" strokeWidth="0.5" opacity="0.7" />
-              ))
-            )}
-            <text x="410" y="120" textAnchor="middle" fontSize="7" fill="#0f766e" fontFamily="monospace">FÖRLÄGGNING</text>
-          </g>
+          {/* NO ROADS — only taxiway strip drawn above */}
 
-
-          {/* ── Legend ── */}
+          {/* ── Legend (SAAB styled) ── */}
           <g>
-            <rect x="680" y="40" width="180" height="90" rx="3" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1" opacity="0.95" />
-            <text x="770" y="52" textAnchor="middle" fontSize="8" fill="#475569" fontFamily="monospace">LEGENDARIUM</text>
+            <rect x="656" y="38" width="184" height="105" rx="4"
+              fill="#0C234C" opacity="0.92" />
+            <rect x="656" y="38" width="184" height="5" rx="2"
+              fill="#D7AB3A" />
+            <text x="748" y="53" textAnchor="middle" fontSize="8" fill="#D7AB3A"
+              fontFamily="monospace" fontWeight="bold" letterSpacing="2">LEGEND</text>
             {[
-              { color: "#005AA0", label: "Mission Capable" },
-              { color: "#2563eb", label: "På uppdrag" },
-              { color: "#d97706", label: "Underhåll" },
-              { color: "#dc2626", label: "Ej operativ" },
+              { color: "#0C234C", label: "Operativ" },
+              { color: "#B06000", label: "Degraderad (< 60%)" },
+              { color: "#CC2222", label: "Kritisk (< 30%)" },
+              { color: "#D7AB3A", label: "Underhåll" },
+              { color: "#6B7280", label: "Ej operativ" },
             ].map((item, i) => (
               <g key={i}>
-                <circle cx="700" cy={70 + i * 18} r="5" fill={item.color} opacity="0.85" />
-                <text x="713" y={74 + i * 18} fontSize="8" fill="#475569" fontFamily="monospace">{item.label}</text>
+                <circle cx="675" cy={62 + i * 17} r="4.5" fill={item.color} />
+                <text x="688" y={66 + i * 17} fontSize="8" fill="#D7DEE1"
+                  fontFamily="monospace">{item.label}</text>
               </g>
             ))}
           </g>
 
-          {/* ── Status summary bar (bottom) ── */}
-          <rect x="20" y="470" width="860" height="18" rx="2" fill="#f1f5f9" stroke="#cbd5e1" strokeWidth="0.8" />
-          <text x="40" y="482" fontSize="8" fill="#16a34a" fontFamily="monospace">MC: {mc.length}</text>
-          <text x="100" y="482" fontSize="8" fill="#2563eb" fontFamily="monospace">UPP: {onMission.length}</text>
-          <text x="160" y="482" fontSize="8" fill="#d97706" fontFamily="monospace">UH: {maint.length}</text>
-          <text x="220" y="482" fontSize="8" fill="#dc2626" fontFamily="monospace">NMC: {nmc.length}</text>
-          <text x="320" y="482" fontSize="8" fill="#475569" fontFamily="monospace">
+          {/* ── Status bar (bottom) ── */}
+          <rect x="20" y="470" width="860" height="20" rx="3" fill="#0C234C" opacity="0.88" />
+          <rect x="20" y="470" width="860" height="2" rx="1" fill="#D7AB3A" opacity="0.7" />
+          <text x="40" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">MC: {mc.length}</text>
+          <text x="105" y="483" fontSize="8" fill="#7aaef0" fontFamily="monospace">UPP: {onMission.length}</text>
+          <text x="175" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace">UH: {maint.length}</text>
+          <text x="235" y="483" fontSize="8" fill="#D9192E" fontFamily="monospace">NMC: {nmc.length}</text>
+          <text x="330" y="483" fontSize="8" fill="#D7DEE1" fontFamily="monospace">
             BRÄNSLE: {Math.round(base.fuel)}% · UH-PLATSER: {base.maintenanceBays.occupied}/{base.maintenanceBays.total}
           </text>
-          <text x="820" y="482" textAnchor="end" fontSize="8" fill="#005AA0" fontFamily="monospace">
+          <text x="840" y="483" textAnchor="end" fontSize="8" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">
             {base.name.toUpperCase()}
           </text>
 
@@ -608,8 +751,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             const gx = dragPos.x, gy = dragPos.y;
             return (
               <g opacity="0.8" style={{ pointerEvents: "none" }}>
-                <ellipse cx={gx} cy={gy + 1.5} rx="14" ry="6" fill="rgba(0,0,0,0.2)" />
-                <JasEToken cx={gx} cy={gy} color={gc} />
+                <AircraftImage cx={gx} cy={gy} color={gc} />
                 {/* Tail number label on ghost */}
                 <rect x={gx-16} y={gy-28} width="32" height="10" rx="2" fill={gc} opacity="0.9" />
                 <text x={gx} y={gy-21} textAnchor="middle" fontSize="7" fill="white" fontFamily="monospace" fontWeight="bold">
@@ -625,9 +767,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             if (acIdx < 0) return null;
             const ac = apronAircraft[acIdx];
             const col = acIdx % cols;
-            const row = Math.floor(acIdx / cols);
-            const cx = 80 + col * 46;
-            const cy = 248 + row * 44;
+            const cx = 60 + (col + 0.5) * (780 / cols);
+            const cy = 263;
 
             const pw = 195, ph = 225;
             const acColor = getAircraftColor(ac);
@@ -682,7 +823,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                       {/* Remaining life bar */}
                       <div>
                         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "2px" }}>
-                          <span style={{ color: "#64748b", fontWeight: "700", fontSize: "8px" }}>REMAINING LIFE</span>
+                          <span style={{ color: "#64748b", fontWeight: "700", fontSize: "8px" }}>ÅTERSTÅENDE LIVSLÄNGD</span>
                           <span style={{ color: barColor, fontWeight: "900", fontSize: "10px" }}>{pct}%</span>
                         </div>
                         <div style={{ height: "7px", background: "#e2e8f0", borderRadius: "4px", overflow: "hidden" }}>
@@ -715,8 +856,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                       {/* Engine */}
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: "#64748b" }}>Motor</span>
-                        <span style={{ fontWeight: "700", color: ac.status === "maintenance" || ac.status === "not_mission_capable" ? "#d97706" : "#16a34a" }}>
-                          {ac.status === "maintenance" ? "UNDERHÅLL" : ac.status === "not_mission_capable" ? "EJ KLAR" : "OPERATIV"}
+                        <span style={{ fontWeight: "700", color: ac.status === "under_maintenance" || ac.status === "unavailable" ? "#d97706" : "#16a34a" }}>
+                          {ac.status === "under_maintenance" ? "UNDERHÅLL" : ac.status === "unavailable" ? "EJ KLAR" : "OPERATIV"}
                         </span>
                       </div>
 
@@ -780,7 +921,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                         style={{
                           width: "100%",
                           padding: "5px 8px",
-                          background: ac.status === "not_mission_capable" ? "#dc2626" : "#005AA0",
+                          background: ac.status === "unavailable" ? "#dc2626" : "#005AA0",
                           color: "#fff",
                           border: "none",
                           borderRadius: "5px",
@@ -798,9 +939,127 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                         🎲 UTFALL-CHECK
                       </button>
 
+                      {/* Dashboard link */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/aircraft/${ac.tailNumber}`); }}
+                        style={{
+                          width: "100%",
+                          padding: "5px 8px",
+                          background: "#0C234C",
+                          color: "#D7DEE1",
+                          border: "1px solid rgba(215,222,225,0.3)",
+                          borderRadius: "5px",
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: "8px",
+                          fontWeight: "900",
+                          cursor: "pointer",
+                          letterSpacing: "1px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "4px",
+                          marginTop: "4px",
+                        }}
+                      >
+                        📊 AIRCRAFT DASHBOARD →
+                      </button>
+
                     </div>
                   </div>
                 </foreignObject>
+              </g>
+            );
+          })()}
+
+          {/* ── Apron hover panel — rendered LAST so it floats above everything ── */}
+          {hoveredAc && (() => {
+            const acIdx = apronAircraft.findIndex((a) => a.id === hoveredAc);
+            if (acIdx < 0) return null;
+            const ac = apronAircraft[acIdx];
+            const col = acIdx % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
+            const cy = 270;
+            const color = getAircraftColor(ac);
+            const hp = ac.health ?? 100;
+            const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
+            const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
+            const panelW = 110, panelH = 68;
+            const px = cx + panelW + 6 > 870 ? cx - panelW - 6 : cx + 6;
+            const py = cy - panelH - 4;
+            const statusText =
+              ac.status === "ready" ? "Operativ" :
+              ac.status === "unavailable" ? "Ej operativ (NMC)" :
+              ac.status === "under_maintenance" ? `Service – ${ac.maintenanceTimeRemaining ?? "?"}h kvar` :
+              ac.status === "on_mission" ? "På uppdrag" :
+              ac.status === "returning" ? "Återvänder" : ac.status;
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <rect x={px} y={py} width={panelW} height={panelH} rx="4"
+                  fill="#0C234C" opacity="0.96" stroke="#D7AB3A" strokeWidth="0.8" />
+                <text x={px + 5} y={py + 11} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">HÄLSA</text>
+                <rect x={px + 5} y={py + 14} width={panelW - 10} height={6} rx="1.5" fill="rgba(0,0,0,0.5)" />
+                <rect x={px + 5} y={py + 14} width={Math.max(0, (panelW - 10) * (hp / 100))} height={6} rx="1.5" fill={hColor} />
+                <text x={px + panelW - 5} y={py + 20} textAnchor="end" fontSize="6" fill={hpTextColor} fontFamily="monospace" fontWeight="bold">{hp}</text>
+                <text x={px + 5} y={py + 33} fontSize="6.5" fill="#8899bb" fontFamily="monospace">BRÄNSLE: <tspan fill="#D7DEE1" fontWeight="bold">{Math.round(base.fuel)}%</tspan></text>
+                <text x={px + 5} y={py + 45} fontSize="6" fill="#8899bb" fontFamily="monospace">LAST: <tspan fill="#D7DEE1">{ac.payload ?? "–"}</tspan></text>
+                <text x={px + 5} y={py + 57} fontSize="6" fill="#8899bb" fontFamily="monospace">
+                  <tspan fill={color === "#D9192E" ? "#ff6655" : color === "#D7AB3A" ? "#D7AB3A" : "#aaccff"}>{statusText}</tspan>
+                </text>
+              </g>
+            );
+          })()}
+
+          {/* ── Maintenance hover panel — rendered LAST so it floats above everything ── */}
+          {hoveredAc && (() => {
+            const ac = maint.find((a) => a.id === hoveredAc);
+            if (!ac) return null;
+            const idx = maint.findIndex((a) => a.id === hoveredAc);
+            const col = idx % 4;
+            const row = Math.floor(idx / 4);
+            const hx = 60 + col * 84;
+            const hy = 318 + row * 60;
+            const mx = hx + 39, my = hy + 38;
+            const pW = 138, pH = 110;
+            const px = mx + 14 + pW > 870 ? mx - pW - 6 : mx + 14;
+            const py = my - pH - 6;
+            const hp = ac.health ?? 0;
+            const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
+            const maintLabels: Record<string, string> = {
+              quick_lru:         "Snabb LRU-byte",
+              complex_lru:       "Komplex LRU-byte",
+              direct_repair:     "Direktreparation",
+              troubleshooting:   "Felsökning",
+              scheduled_service: "Periodisk service",
+            };
+            const faultLabel = ac.maintenanceType ? (maintLabels[ac.maintenanceType] ?? ac.maintenanceType) : "–";
+            const hoursLeft = ac.maintenanceTimeRemaining ?? "?";
+            const crew: { role: string; count: number }[] = [
+              { role: "Mekaniker",  count: MAINTENANCE_CREW_PER_AIRCRAFT["mech"] ?? 0 },
+              { role: "Tekniker",   count: MAINTENANCE_CREW_PER_AIRCRAFT["tech"] ?? 0 },
+              { role: "Vapensmed",  count: MAINTENANCE_CREW_PER_AIRCRAFT["arms"] ?? 0 },
+            ].filter((c) => c.count > 0);
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <rect x={px} y={py} width={pW} height={pH} rx="4"
+                  fill="#0C234C" opacity="0.97" stroke="#D7AB3A" strokeWidth="0.8" />
+                <text x={px + pW / 2} y={py + 10} textAnchor="middle" fontSize="7.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{ac.tailNumber} — SERVICE</text>
+                <line x1={px + 4} y1={py + 14} x2={px + pW - 4} y2={py + 14} stroke="#D7AB3A" strokeWidth="0.4" opacity="0.5" />
+                <text x={px + 5} y={py + 24} fontSize="6" fill="#8899bb" fontFamily="monospace">FELTYP:</text>
+                <text x={px + 38} y={py + 24} fontSize="6" fill="#D7DEE1" fontFamily="monospace" fontWeight="bold">{faultLabel}</text>
+                <text x={px + 5} y={py + 35} fontSize="6" fill="#8899bb" fontFamily="monospace">TIMMAR KVAR:</text>
+                <text x={px + 68} y={py + 35} fontSize="6" fill={typeof hoursLeft === "number" && hoursLeft <= 2 ? "#D9192E" : "#D7AB3A"} fontFamily="monospace" fontWeight="bold">{hoursLeft}h</text>
+                <text x={px + 5} y={py + 46} fontSize="6" fill="#8899bb" fontFamily="monospace">HÄLSA:</text>
+                <rect x={px + 36} y={py + 40} width={pW - 41} height={5} rx="1.5" fill="rgba(0,0,0,0.5)" />
+                <rect x={px + 36} y={py + 40} width={Math.max(0, (pW - 41) * (hp / 100))} height={5} rx="1.5" fill={hColor} />
+                <text x={px + pW - 4} y={py + 46} textAnchor="end" fontSize="5.5" fill="#aaa" fontFamily="monospace">{hp}</text>
+                <line x1={px + 4} y1={py + 52} x2={px + pW - 4} y2={py + 52} stroke="#D7AB3A" strokeWidth="0.3" opacity="0.4" />
+                <text x={px + 5} y={py + 62} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">PERSONAL I TJÄNST</text>
+                {crew.map((c, ci) => (
+                  <g key={c.role}>
+                    <text x={px + 10} y={py + 73 + ci * 12} fontSize="6" fill="#8899bb" fontFamily="monospace">• {c.role}:</text>
+                    <text x={px + pW - 5} y={py + 73 + ci * 12} textAnchor="end" fontSize="6" fill="#D7DEE1" fontFamily="monospace" fontWeight="bold">{c.count} st</text>
+                  </g>
+                ))}
               </g>
             );
           })()}
@@ -815,7 +1074,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           <UtfallModal
             aircraft={utfallAc}
             onClose={() => setUtfallAcId(null)}
-            onAccept={(outcome: UtfallOutcome) => {
+            onAccept={(outcome) => {
               setUtfallAcId(null);
               setSelectedAcId(null);
               onUtfallOutcome?.(
@@ -823,7 +1082,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 outcome.repairTime,
                 outcome.maintenanceTypeKey,
                 outcome.weaponLoss,
-                outcome.actionType,
+                outcome.actionLabel,
+                outcome.requiredSparePart,
               );
             }}
           />
@@ -847,9 +1107,10 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   {selected === "apron" && "UPPSTÄLLNINGSPLATS — FLYGPLAN"}
                   {selected === "hangar" && "UNDERHÅLLSHALLAR"}
                   {selected === "fuel" && "BRÄNSLE DEPÅ"}
-                  {selected === "ammo" && "AMMUNITION DEPOT"}
+                  {selected === "ammo" && "AMMUNITION DEPÅ"}
                   {selected === "command" && "BASBEFÄL / KOMMANDO HQ"}
                   {selected === "spareparts" && "RESERVDELSFÖRRÅD"}
+                  {selected === "runway" && "LANDNINGSBANA 09/27"}
                 </h4>
                 <button
                   onClick={() => setSelected(null)}
@@ -865,6 +1126,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
               {selected === "ammo" && <AmmoDetail base={base} />}
               {selected === "command" && <CommandDetail base={base} />}
               {selected === "spareparts" && <SparePartsDetail base={base} />}
+              {selected === "runway" && <RunwayDetail base={base} />}
             </div>
           </motion.div>
         )}
@@ -876,18 +1138,16 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
 // ── Detail sub-panels ─────────────────────────────────────────────────────
 
 function ApronDetail({ base }: { base: Base }) {
-  const groups: Record<Aircraft["status"], Aircraft[]> = {
-    mission_capable: [],
-    on_mission: [],
-    maintenance: [],
-    not_mission_capable: [],
-  };
-  base.aircraft.forEach((ac) => groups[ac.status].push(ac));
+  const groups: Record<string, Aircraft[]> = {};
+  base.aircraft.forEach((ac) => {
+    if (!groups[ac.status]) groups[ac.status] = [];
+    groups[ac.status].push(ac);
+  });
 
   return (
     <div className="space-y-3">
-      {(["mission_capable", "on_mission", "maintenance", "not_mission_capable"] as const).map((status) => {
-        const list = groups[status];
+      {(["ready", "allocated", "in_preparation", "awaiting_launch", "on_mission", "returning", "recovering", "under_maintenance", "unavailable"] as const).map((status) => {
+        const list = groups[status] ?? [];
         if (list.length === 0) return null;
         return (
           <div key={status}>
@@ -924,7 +1184,7 @@ function ApronDetail({ base }: { base: Base }) {
 
 function HangarDetail({ base }: { base: Base }) {
   const inMaint = base.aircraft.filter(
-    (a) => a.status === "maintenance" || a.status === "not_mission_capable"
+    (a) => a.status === "under_maintenance" || a.status === "unavailable"
   );
   const { total, occupied } = base.maintenanceBays;
 
@@ -1091,112 +1351,72 @@ function SparePartsDetail({ base }: { base: Base }) {
   );
 }
 
-function AircraftDetail({ ac }: { ac: Aircraft }) {
-  const color = AC_COLOR[ac.status];
-  const pct = Math.min(100, (ac.hoursToService / 100) * 100);
-  const isCritical = ac.hoursToService < 20;
-  const isLow = ac.hoursToService < 40;
-  const barColor = isCritical ? "#dc2626" : isLow ? "#d97706" : "#16a34a";
+function RunwayDetail({ base }: { base: Base }) {
+  const zone = base.zones.find((z) => z.type === "runway");
+  const queue = zone?.currentQueue ?? [];
+  const capacity = zone?.capacity ?? 1;
+  const load = queue.length / capacity;
+  const isBlocked = queue.length >= capacity;
+  const statusColor = isBlocked ? "#ef4444" : load > 0.5 ? "#eab308" : "#22c55e";
+  const statusLabel = isBlocked ? "BLOCKERAD" : "AKTIV";
 
-  const statusLabels: Record<Aircraft["status"], string> = {
-    mission_capable: "Mission Capable",
-    on_mission: "På Uppdrag",
-    maintenance: "Underhåll",
-    not_mission_capable: "Ej Operativ",
-  };
+  const queuedAircraft = queue.map(
+    (id) => base.aircraft.find((a) => a.id === id)
+  ).filter(Boolean);
 
   return (
-    <div className="space-y-4">
-      {/* Status header */}
+    <div className="space-y-3">
+      {/* Status row */}
       <div className="flex items-center gap-4">
-        {/* Aircraft silhouette icon */}
-        <svg width="80" height="40" viewBox="-20 -20 80 40">
-          <path
-            d={`M -15,0 L -12,-2.5 L 10,-1 L 14,0 L 10,1 L -12,2.5 Z`}
-            fill={color}
-          />
-          <polygon points="2,-2 -8,-13 -12,-3 -3,-2" fill={color} opacity="0.88" />
-          <polygon points="2,2 -8,13 -12,3 -3,2" fill={color} opacity="0.88" />
-          <polygon points="-8,-2 -10,-7 -5,-6 -5,-2" fill={color} opacity="0.82" />
-          <polygon points="-8,2 -10,7 -5,6 -5,2" fill={color} opacity="0.82" />
-          <rect x="11" y="-2.5" width="4" height="5" rx="2" fill={color} opacity="0.7" />
-        </svg>
-
-        <div>
-          <div className="text-lg font-black font-mono" style={{ color }}>
-            {ac.tailNumber}
-          </div>
-          <div className="text-xs text-muted-foreground font-mono">{ac.type}</div>
-          <div
-            className="text-[10px] font-mono font-bold mt-0.5 px-2 py-0.5 rounded-full inline-block border"
-            style={{ color, borderColor: `${color}40`, backgroundColor: `${color}10` }}
-          >
-            {statusLabels[ac.status]}
-          </div>
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 rounded border text-[10px] font-mono font-bold"
+          style={{ color: statusColor, borderColor: `${statusColor}40`, backgroundColor: `${statusColor}10` }}
+        >
+          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: statusColor }} />
+          {statusLabel}
         </div>
+        <span className="text-[10px] font-mono text-muted-foreground">
+          Beteckning: <span className="text-foreground font-bold">09/27</span>
+        </span>
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {[
-          { label: "TOTAL FLYGTID", value: `${ac.flightHours}h` },
-          { label: "TILL SERVICE", value: `${ac.hoursToService}h`, urgent: isCritical || isLow },
-          { label: "UPPDRAG", value: ac.currentMission || "—" },
-          { label: "UH-TYP", value: ac.maintenanceType ? ac.maintenanceType.replace(/_/g, " ") : "—" },
-        ].map((item) => (
-          <div key={item.label} className="bg-muted/30 border border-border rounded-lg p-2.5">
-            <div className="text-[8px] text-muted-foreground font-mono mb-1">{item.label}</div>
-            <div
-              className={`text-sm font-black font-mono ${item.urgent ? "" : "text-foreground"}`}
-              style={item.urgent ? { color: barColor } : {}}
-            >
-              {item.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Remaining life bar */}
+      {/* Capacity bar */}
       <div>
-        <div className="flex justify-between text-[9px] font-mono text-muted-foreground mb-1">
-          <span>REMAINING LIFE (till 100h-service)</span>
-          <span style={{ color: barColor }} className="font-bold">{ac.hoursToService}h kvar</span>
+        <div className="flex justify-between text-[10px] font-mono mb-1">
+          <span className="text-muted-foreground">Kapacitet</span>
+          <span style={{ color: statusColor }}>{queue.length}/{capacity}</span>
         </div>
-        <div className="h-3 bg-muted rounded-full overflow-hidden">
-          <motion.div
-            className="h-full rounded-full"
-            style={{ backgroundColor: barColor }}
-            initial={{ width: 0 }}
-            animate={{ width: `${pct}%` }}
-            transition={{ duration: 0.5 }}
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${Math.min(100, load * 100)}%`, backgroundColor: statusColor }}
           />
         </div>
-        {isCritical && (
-          <div className="text-[9px] text-red-600 font-mono mt-1 font-bold">
-            ⚠ KRITISK NIVÅ — Ta in för service omedelbart
-          </div>
-        )}
-        {isLow && !isCritical && (
-          <div className="text-[9px] text-amber-600 font-mono mt-1">
-            Planera service inom kort
-          </div>
-        )}
       </div>
 
-      {/* Maintenance details if applicable */}
-      {(ac.maintenanceType || ac.maintenanceTimeRemaining !== undefined) && (
-        <div className="flex gap-4 text-[10px] font-mono bg-amber-50 border border-amber-200/60 rounded-lg p-2.5">
-          <Wrench className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            {ac.maintenanceType && (
-              <div><span className="text-muted-foreground">Typ: </span><span className="font-bold">{ac.maintenanceType.replace(/_/g, " ")}</span></div>
-            )}
-            {ac.maintenanceTimeRemaining !== undefined && (
-              <div><span className="text-muted-foreground">Tid kvar: </span><span className="font-bold text-amber-700">{ac.maintenanceTimeRemaining}h</span></div>
-            )}
+      {/* Aircraft in queue */}
+      {queuedAircraft.length > 0 ? (
+        <div>
+          <p className="text-[10px] font-mono text-muted-foreground mb-1.5">Flygplan på banan:</p>
+          <div className="flex flex-wrap gap-1.5">
+            {queuedAircraft.map((ac) => ac && (
+              <span
+                key={ac.id}
+                className="text-[9px] font-mono px-2 py-1 rounded border border-amber-500/40 bg-amber-500/10 text-amber-400 font-bold"
+              >
+                {ac.tailNumber}
+              </span>
+            ))}
           </div>
         </div>
+      ) : (
+        <p className="text-[10px] font-mono text-muted-foreground">Inga flygplan på banan.</p>
       )}
+
+      <p className="text-[9px] font-mono text-muted-foreground">
+        Dra ett flygplan till banan för att starta ett uppdrag.
+      </p>
     </div>
   );
 }
+

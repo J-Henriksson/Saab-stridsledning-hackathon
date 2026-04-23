@@ -98,10 +98,10 @@ function StageCard({
 }
 
 export function AircraftPipeline({ base, onStartMaintenance, onSendMission }: AircraftPipelineProps) {
-  const mc = base.aircraft.filter((a) => a.status === "mission_capable");
+  const mc = base.aircraft.filter((a) => a.status === "ready");
   const onMission = base.aircraft.filter((a) => a.status === "on_mission");
-  const nmc = base.aircraft.filter((a) => a.status === "not_mission_capable");
-  const inMaint = base.aircraft.filter((a) => a.status === "maintenance");
+  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
+  const inMaint = base.aircraft.filter((a) => a.status === "under_maintenance");
 
   return (
     <div className="bg-card border border-border rounded-lg overflow-hidden">

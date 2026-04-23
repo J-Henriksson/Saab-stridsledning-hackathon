@@ -1,43 +1,58 @@
-import { GameState, Base, Aircraft, SparePartStock, PersonnelGroup, ATOOrder } from "@/types/game";
+import { GameState, Base, Aircraft, SparePartStock, PersonnelGroup, ATOOrder, BaseZone, AircraftType, GameEvent } from "@/types/game";
+import { ZONE_CAPACITIES } from "@/data/config/capacities";
 
 const createSpareParts = (): SparePartStock[] => [
-  { id: "radar", name: "Radar LRU", category: "Avionik", quantity: 4, maxQuantity: 6, resupplyDays: 5, onOrder: 0 },
-  { id: "engine", name: "Motor RM12", category: "Drivlina", quantity: 2, maxQuantity: 3, resupplyDays: 30, onOrder: 0 },
-  { id: "ejection", name: "Katapultstol", category: "Säkerhet", quantity: 3, maxQuantity: 4, resupplyDays: 10, onOrder: 0 },
-  { id: "hydraulic", name: "Hydraulenhet", category: "System", quantity: 5, maxQuantity: 8, resupplyDays: 7, onOrder: 0 },
-  { id: "wheel", name: "Hjul/Bromsar", category: "Landställ", quantity: 6, maxQuantity: 10, resupplyDays: 3, onOrder: 0 },
-  { id: "computer", name: "Datorenhet", category: "Avionik", quantity: 4, maxQuantity: 6, resupplyDays: 5, onOrder: 0 },
+  { id: "radar", name: "Radar LRU", category: "Avionik", quantity: 4, maxQuantity: 6, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "base_stock", turnaround: 5, isReusable: true },
+  { id: "engine", name: "Motor RM12", category: "Drivlina", quantity: 2, maxQuantity: 3, reservedQuantity: 0, resupplyDays: 30, onOrder: 0, leadTime: 30, source: "central_stock", turnaround: 30, isReusable: true },
+  { id: "ejection", name: "Katapultstol", category: "Säkerhet", quantity: 3, maxQuantity: 4, reservedQuantity: 0, resupplyDays: 10, onOrder: 0, leadTime: 10, source: "central_stock", turnaround: 10, isReusable: false },
+  { id: "hydraulic", name: "Hydraulenhet", category: "System", quantity: 5, maxQuantity: 8, reservedQuantity: 0, resupplyDays: 7, onOrder: 0, leadTime: 7, source: "base_stock", turnaround: 7, isReusable: true },
+  { id: "wheel", name: "Hjul/Bromsar", category: "Landställ", quantity: 6, maxQuantity: 10, reservedQuantity: 0, resupplyDays: 3, onOrder: 0, leadTime: 3, source: "base_stock", turnaround: 3, isReusable: false },
+  { id: "computer", name: "Datorenhet", category: "Avionik", quantity: 4, maxQuantity: 6, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "base_stock", turnaround: 5, isReusable: true },
+  { id: "ue_radar", name: "UE Radar", category: "UE", quantity: 2, maxQuantity: 4, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "central_stock", turnaround: 30, isReusable: true },
+  { id: "ue_motor", name: "UE Motor", category: "UE", quantity: 1, maxQuantity: 2, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "mro", turnaround: 30, isReusable: true },
 ];
 
+// MOB (scale=1) = 150 total. ~13 crew per aircraft in service → realistic for 8-bay operation.
+// FOB_N (scale=0.7) ≈ 105, FOB_S (scale=0.5) ≈ 75
 const createPersonnel = (scale: number): PersonnelGroup[] => [
-  { id: "mech", role: "Flygmekaniker", available: Math.round(12 * scale), total: Math.round(16 * scale), onDuty: true },
-  { id: "tech", role: "Tekniker Avionik", available: Math.round(4 * scale), total: Math.round(6 * scale), onDuty: true },
-  { id: "arms", role: "Vapensmed", available: Math.round(3 * scale), total: Math.round(4 * scale), onDuty: true },
-  { id: "fuel", role: "Drivmedelspersonal", available: Math.round(3 * scale), total: Math.round(4 * scale), onDuty: true },
-  { id: "command", role: "Basbefäl", available: Math.round(2 * scale), total: Math.round(3 * scale), onDuty: true },
+  { id: "pilot",   role: "Pilot",                 available: Math.round(20 * scale), total: Math.round(24 * scale), onDuty: true },
+  { id: "mech",    role: "Flygmekaniker",        available: Math.round(65 * scale), total: Math.round(80 * scale), onDuty: true },
+  { id: "tech",    role: "Tekniker Avionik",      available: Math.round(24 * scale), total: Math.round(30 * scale), onDuty: true },
+  { id: "arms",    role: "Vapensmed",             available: Math.round(16 * scale), total: Math.round(20 * scale), onDuty: true },
+  { id: "fuel",    role: "Drivmedelspersonal",    available: Math.round(10 * scale), total: Math.round(12 * scale), onDuty: true },
+  { id: "command", role: "Basbefäl",              available: Math.round( 7 * scale), total: Math.round( 8 * scale), onDuty: true },
 ];
 
-const createAircraft = (base: string, type: Aircraft["type"], prefix: string, count: number): Aircraft[] =>
+const createAircraft = (base: string, type: AircraftType, prefix: string, count: number): Aircraft[] =>
   Array.from({ length: count }, (_, i) => ({
-    id: `${prefix}${String(i + 1).padStart(2, "0")}`,
+    id: `${base}_${prefix}${String(i + 1).padStart(2, "0")}`,
     type,
     tailNumber: `${prefix}${String(i + 1).padStart(2, "0")}`,
-    status: "mission_capable" as const,
+    status: "ready" as const,
     currentBase: base as any,
     flightHours: Math.round(Math.random() * 80 + 10),
     hoursToService: Math.round(Math.random() * 60 + 20),
+    health: Math.round(Math.random() * 20 + 80), // start 80–100%
   }));
+
+const createZones = (baseType: "huvudbas" | "sidobas" | "reservbas", baseId: string): BaseZone[] => {
+  const caps = ZONE_CAPACITIES[baseType];
+  return Object.entries(caps).map(([zoneType, capacity]) => ({
+    id: `${baseId}_${zoneType}`,
+    type: zoneType as any,
+    capacity,
+    currentQueue: [],
+    assignedWork: [],
+    resourceStock: {},
+  }));
+};
 
 const MOB: Base = {
   id: "MOB",
   name: "Huvudbas MOB",
   type: "huvudbas",
   aircraft: [
-    ...createAircraft("MOB", "GripenE", "GE", 18),
-    ...createAircraft("MOB", "GripenF_EA", "GF", 6),
-    ...createAircraft("MOB", "GlobalEye", "GB", 2),
-    ...createAircraft("MOB", "VLO_UCAV", "VL", 4),
-    ...createAircraft("MOB", "LOTUS", "LO", 2),
+    ...createAircraft("MOB", "GripenE", "GE", 12),
   ],
   spareParts: createSpareParts(),
   personnel: createPersonnel(1),
@@ -49,7 +64,8 @@ const MOB: Base = {
     { type: "GBU-39", quantity: 16, max: 24 },
     { type: "RBS-15F", quantity: 6, max: 8 },
   ],
-  maintenanceBays: { total: 4, occupied: 0 },
+  maintenanceBays: { total: 8, occupied: 0 },
+  zones: createZones("huvudbas", "MOB"),
 };
 
 const FOB_N: Base = {
@@ -60,7 +76,11 @@ const FOB_N: Base = {
     ...createAircraft("FOB_N", "GripenE", "GE", 12),
     ...createAircraft("FOB_N", "LOTUS", "LO", 2),
   ],
-  spareParts: createSpareParts().map((p) => ({ ...p, quantity: Math.ceil(p.quantity * 0.6), maxQuantity: Math.ceil(p.maxQuantity * 0.6) })),
+  spareParts: createSpareParts().map((p) => ({
+    ...p,
+    quantity: Math.ceil(p.quantity * 0.6),
+    maxQuantity: Math.ceil(p.maxQuantity * 0.6),
+  })),
   personnel: createPersonnel(0.7),
   fuel: 80,
   maxFuel: 100,
@@ -70,6 +90,7 @@ const FOB_N: Base = {
     { type: "GBU-39", quantity: 8, max: 12 },
   ],
   maintenanceBays: { total: 2, occupied: 0 },
+  zones: createZones("sidobas", "FOB_N"),
 };
 
 const FOB_S: Base = {
@@ -77,7 +98,11 @@ const FOB_S: Base = {
   name: "Sidobas FOB Syd",
   type: "sidobas",
   aircraft: createAircraft("FOB_S", "GripenF_EA", "GF", 6),
-  spareParts: createSpareParts().map((p) => ({ ...p, quantity: Math.ceil(p.quantity * 0.5), maxQuantity: Math.ceil(p.maxQuantity * 0.5) })),
+  spareParts: createSpareParts().map((p) => ({
+    ...p,
+    quantity: Math.ceil(p.quantity * 0.5),
+    maxQuantity: Math.ceil(p.maxQuantity * 0.5),
+  })),
   personnel: createPersonnel(0.5),
   fuel: 70,
   maxFuel: 100,
@@ -86,6 +111,7 @@ const FOB_S: Base = {
     { type: "Meteor", quantity: 6, max: 8 },
   ],
   maintenanceBays: { total: 1, occupied: 0 },
+  zones: createZones("sidobas", "FOB_S"),
 };
 
 export const initialATOOrders: ATOOrder[] = [
@@ -296,11 +322,11 @@ export const initialGameState: GameState = {
   failedMissions: 0,
   atoOrders: initialATOOrders,
   events: [
-    {
-      id: "init",
-      timestamp: "Dag 1 06:00",
-      type: "info",
-      message: "Systemet initierat. ATO mottagen. Fredstillstånd.",
-    },
-  ],
+    { id: "init", timestamp: "Dag 1 06:00", type: "info", message: "Systemet initierat. ATO mottagen. Fredstillstånd." },
+  ] as GameEvent[],
+  turnPhase: "InitializeState",
+  turnNumber: 1,
+  recommendations: [],
+  maintenanceTasks: [],
+  pendingLandingChecks: [],
 };

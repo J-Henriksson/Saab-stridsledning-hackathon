@@ -1,7 +1,8 @@
 import { Base, Aircraft } from "@/types/game";
 import { AircraftStatusBadge } from "./StatusBadge";
 import { motion } from "framer-motion";
-import { Wrench, Send, Clock } from "lucide-react";
+import { Wrench, Send, Clock, ExternalLink } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface FleetGridProps {
   base: Base;
@@ -11,10 +12,10 @@ interface FleetGridProps {
 
 export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGridProps) {
   const grouped = {
-    mission_capable: base.aircraft.filter((a) => a.status === "mission_capable"),
+    ready: base.aircraft.filter((a) => a.status === "ready"),
     on_mission: base.aircraft.filter((a) => a.status === "on_mission"),
-    maintenance: base.aircraft.filter((a) => a.status === "maintenance"),
-    not_mission_capable: base.aircraft.filter((a) => a.status === "not_mission_capable"),
+    under_maintenance: base.aircraft.filter((a) => a.status === "under_maintenance"),
+    unavailable: base.aircraft.filter((a) => a.status === "unavailable"),
   };
 
   return (
@@ -22,20 +23,20 @@ export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGrid
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <h3 className="font-sans font-bold text-sm text-foreground">FLYGPLANSFLOTTA</h3>
         <div className="flex gap-4 text-xs font-mono">
-          <span className="text-status-green">{grouped.mission_capable.length} MC</span>
+          <span className="text-status-green">{grouped.ready.length} MC</span>
           <span className="text-status-blue">{grouped.on_mission.length} UPPDRAG</span>
-          <span className="text-status-amber">{grouped.maintenance.length} UH</span>
-          <span className="text-status-red">{grouped.not_mission_capable.length} NMC</span>
+          <span className="text-status-amber">{grouped.under_maintenance.length} UH</span>
+          <span className="text-status-red">{grouped.unavailable.length} NMC</span>
         </div>
       </div>
 
       <div className="p-4 space-y-4 max-h-[420px] overflow-y-auto">
         {/* NMC - needs attention */}
-        {grouped.not_mission_capable.length > 0 && (
+        {grouped.unavailable.length > 0 && (
           <div>
             <h4 className="text-[10px] uppercase tracking-wider text-status-red mb-2 font-mono">⚠ Kräver åtgärd</h4>
             <div className="space-y-1.5">
-              {grouped.not_mission_capable.map((ac) => (
+              {grouped.unavailable.map((ac) => (
                 <AircraftRow key={ac.id} ac={ac} action="maintain" onAction={() => onStartMaintenance(ac.id)} />
               ))}
             </div>
@@ -43,11 +44,11 @@ export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGrid
         )}
 
         {/* In maintenance */}
-        {grouped.maintenance.length > 0 && (
+        {grouped.under_maintenance.length > 0 && (
           <div>
             <h4 className="text-[10px] uppercase tracking-wider text-status-amber mb-2 font-mono">Under underhåll</h4>
             <div className="space-y-1.5">
-              {grouped.maintenance.map((ac) => (
+              {grouped.under_maintenance.map((ac) => (
                 <AircraftRow key={ac.id} ac={ac} />
               ))}
             </div>
@@ -70,7 +71,7 @@ export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGrid
         <div>
           <h4 className="text-[10px] uppercase tracking-wider text-status-green mb-2 font-mono">Operativa</h4>
           <div className="space-y-1.5">
-            {grouped.mission_capable.map((ac) => (
+            {grouped.ready.map((ac) => (
               <AircraftRow key={ac.id} ac={ac} action="mission" onAction={() => onSendMission(ac.id)} />
             ))}
           </div>
@@ -82,6 +83,7 @@ export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGrid
 
 function AircraftRow({ ac, action, onAction }: { ac: Aircraft; action?: "maintain" | "mission"; onAction?: () => void }) {
   const serviceWarning = ac.hoursToService < 20;
+  const navigate = useNavigate();
 
   return (
     <motion.div
@@ -89,7 +91,14 @@ function AircraftRow({ ac, action, onAction }: { ac: Aircraft; action?: "maintai
       animate={{ opacity: 1 }}
       className="flex items-center gap-3 px-3 py-2 rounded border border-border/50 bg-muted/30 text-xs font-mono"
     >
-      <span className="font-bold text-foreground w-12">{ac.tailNumber}</span>
+      <button
+        onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
+        className="font-bold text-foreground w-12 text-left hover:text-primary hover:underline transition-colors flex items-center gap-1"
+        title={`Öppna dashboard för ${ac.tailNumber}`}
+      >
+        {ac.tailNumber}
+        <ExternalLink className="h-2.5 w-2.5 opacity-50" />
+      </button>
       <span className="text-muted-foreground w-20 truncate">{ac.type.replace("_", "/")}</span>
       <AircraftStatusBadge status={ac.status} />
 

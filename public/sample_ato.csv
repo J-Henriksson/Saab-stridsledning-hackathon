@@ -1,0 +1,18 @@
+# ATO Plan — Övning NORDIC EDGE — Dag 1
+# Format: MissionID,Type,Base,Count,StartTime,EndTime,Priority,AircraftType,Payload
+MissionID,Type,Base,Count,StartTime,EndTime,Priority,AircraftType,Payload
+M001,QRA,MOB,2,0,24,high,GripenE,IRIS-T
+M002,DCA,MOB,4,6,12,high,GripenE,IRIS-T + Meteor
+M003,DCA,FOB_N,2,6,14,high,GripenE,IRIS-T
+M004,RECCE,FOB_N,2,7,11,medium,GripenE,SPANING-POD
+M005,AEW,MOB,1,8,16,high,GlobalEye,
+M006,AI_DT,FOB_S,4,8,11,high,GripenE,GBU-39
+M007,ESCORT,MOB,2,8,12,medium,GripenE,IRIS-T
+M008,RECCE,FOB_S,2,10,14,medium,GripenE,SPANING-POD
+M009,AI_ST,FOB_S,4,12,15,high,GripenE,RBS-15F + GBU-39
+M010,DCA,MOB,4,12,18,high,GripenE,IRIS-T + Meteor
+M011,TRANSPORT,MOB,2,13,16,low,,
+M012,AI_DT,FOB_N,2,14,17,medium,GripenE,GBU-39
+M013,RECCE,FOB_N,2,16,20,medium,GripenE,SPANING-POD
+M014,DCA,FOB_S,2,18,24,high,GripenE,IRIS-T
+M015,QRA,FOB_N,2,0,24,high,GripenE,IRIS-T

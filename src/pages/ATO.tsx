@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { useGameState } from "@/hooks/useGameState";
+import { useState, useRef } from "react";
+import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
-import { ATOOrder, Aircraft, BaseType, MissionType } from "@/types/game";
+import { ATOEditor } from "@/components/game/ATOEditor";
+import { ATOMissionPanel } from "@/components/game/ATOMissionPanel";
+import { ATOImporter } from "@/components/game/ATOImporter";
+import { ATOOrder, Aircraft, MissionType } from "@/types/game";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -11,15 +14,18 @@ import {
   Radio,
   Zap,
   Plane,
-  CheckCircle2,
-  Clock,
   Send,
   AlertTriangle,
   ChevronRight,
   MapPin,
   Package,
-  Users,
+  Pencil,
+  Trash2,
+  Plus,
+  Upload,
 } from "lucide-react";
+import { ATOGanttView } from "@/components/game/ATOGanttView";
+import { MissionSchedule } from "@/components/game/MissionSchedule";
 
 const missionIcons: Partial<Record<MissionType, React.ReactNode>> = {
   DCA: <Shield className="h-4 w-4" />,
@@ -30,6 +36,7 @@ const missionIcons: Partial<Record<MissionType, React.ReactNode>> = {
   AI_ST: <Zap className="h-4 w-4" />,
   ESCORT: <Shield className="h-4 w-4" />,
   TRANSPORT: <Plane className="h-4 w-4" />,
+  REBASE: <MapPin className="h-4 w-4" />,
 };
 
 const priorityColor = {
@@ -41,9 +48,9 @@ const priorityColor = {
 const priorityLabel = { high: "HÖG", medium: "MEDEL", low: "LÅG" };
 
 const statusColor = {
-  pending: "bg-primary/10 border-primary/30 text-primary",
-  assigned: "bg-status-yellow/10 border-status-yellow/30 text-status-yellow",
-  dispatched: "bg-status-green/10 border-status-green/30 text-status-green",
+  pending: "bg-status-yellow/15 border-status-yellow/40 text-status-yellow",
+  assigned: "bg-status-green/15 border-status-green/40 text-status-green",
+  dispatched: "bg-status-green/15 border-status-green/40 text-status-green",
   completed: "bg-muted border-border text-muted-foreground",
 };
 
@@ -58,21 +65,27 @@ function formatHour(h: number) {
   return `${String(h).padStart(2, "0")}:00`;
 }
 
-export default function ATO() {
-  const { state, advanceTurn, resetGame, assignAircraftToOrder, dispatchOrder } = useGameState();
+export function ATOBody({ embedded = false }: { embedded?: boolean }) {
+  const { state, advanceTurn, resetGame, assignAircraftToOrder, dispatchOrder, createATOOrder, editATOOrder, deleteATOOrder } = useGame();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedAircraft, setSelectedAircraft] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "dispatched" | "completed">("all");
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<ATOOrder | undefined>(undefined);
+  const [showImporter, setShowImporter] = useState(false);
+  const [newOrderStartHour, setNewOrderStartHour] = useState<number | undefined>(undefined);
+  const importerRef = useRef<{ triggerFileInput: () => void } | null>(null);
 
   const selectedOrder = state.atoOrders.find((o) => o.id === selectedOrderId) ?? null;
   const selectedBase = selectedOrder
     ? state.bases.find((b) => b.id === selectedOrder.launchBase)
     : null;
+  const mobReadyAircraft = state.bases.find((b) => b.id === "MOB")?.aircraft.filter((ac) => ac.status === "ready") ?? [];
 
   const availableAircraft: Aircraft[] = selectedBase
     ? selectedBase.aircraft.filter(
         (ac) =>
-          ac.status === "mission_capable" &&
+          ac.status === "ready" &&
           (!selectedOrder?.aircraftType || ac.type === selectedOrder.aircraftType)
       )
     : [];
@@ -101,6 +114,26 @@ export default function ATO() {
     toast.success(`Tilldelat ${selectedAircraft.length} flygplan till ${selectedOrder.missionType}`);
   }
 
+  function handleGanttClickEmpty(startHour: number) {
+    setEditingOrder(undefined);
+    setNewOrderStartHour(startHour);
+    setShowEditor(true);
+  }
+
+  function handleDelete() {
+    if (!selectedOrderId) return;
+    deleteATOOrder(selectedOrderId);
+    toast.success("Order raderad");
+    setSelectedOrderId(null);
+    setSelectedAircraft([]);
+  }
+
+  function handleOpenEdit() {
+    if (!selectedOrder) return;
+    setEditingOrder(selectedOrder);
+    setShowEditor(true);
+  }
+
   function handleDispatch() {
     if (!selectedOrder) return;
     if (selectedAircraft.length === 0) {
@@ -118,8 +151,8 @@ export default function ATO() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />
+    <div className={embedded ? "flex flex-col flex-1 overflow-hidden bg-background" : "flex flex-col h-screen bg-background"}>
+      {!embedded && <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />}
 
       {/* Sub-header */}
       <div className="border-b border-border bg-card px-6 py-2.5 flex items-center justify-between">
@@ -144,20 +177,43 @@ export default function ATO() {
               {dispatchedCount} AKTIVA UPPDRAG
             </span>
           )}
+          <button
+            onClick={() => { setEditingOrder(undefined); setNewOrderStartHour(undefined); setShowEditor(true); }}
+            className="flex items-center gap-1.5 text-xs font-mono font-bold px-4 py-2 rounded-lg transition-all hover:opacity-90"
+            style={{ background: "hsl(220 63% 18%)", color: "hsl(42 64% 62%)", border: "1px solid hsl(42 64% 53% / 0.3)" }}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            NY ORDER
+          </button>
+          <button
+            onClick={() => { setShowImporter(true); setTimeout(() => importerRef.current?.triggerFileInput(), 50); }}
+            className="flex items-center gap-1.5 text-xs font-mono font-bold px-4 py-2 rounded-lg transition-all hover:opacity-90"
+            style={{ background: "hsl(220 63% 18%)", color: "hsl(42 64% 62%)", border: "1px solid hsl(42 64% 53% / 0.3)" }}
+          >
+            <Upload className="h-3.5 w-3.5" />
+            CSV
+          </button>
+        </div>
+      </div>
+
+      {/* ATO Importer — always mounted so ref works; shown when showImporter is true */}
+      <div className="border-b border-border bg-card overflow-y-auto" style={{ maxHeight: "320px", display: showImporter ? "block" : "none" }}>
+        <div className="px-6 py-4">
+          <ATOImporter triggerRef={importerRef} />
         </div>
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[400px_1fr] gap-0">
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(280px,400px)_1fr] gap-0">
 
-        {/* LEFT: ATO order list */}
+        {/* LEFT: ATO order list + importer */}
         <div className="border-r border-border flex flex-col overflow-hidden">
-          {/* Filter tabs */}
+            {/* Filter tabs */}
           <div className="px-4 py-2 border-b border-border flex gap-1">
             {(["all", "pending", "dispatched", "completed"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilterStatus(f)}
+                <button
+                  key={f}
+                  onClick={() => setFilterStatus(f)}
                 className={`px-3 py-1 text-[10px] font-mono rounded transition-colors ${
                   filterStatus === f
                     ? "bg-primary/20 text-primary border border-primary/30"
@@ -180,7 +236,7 @@ export default function ATO() {
               const base = state.bases.find((b) => b.id === order.launchBase);
               const mcAtBase = base?.aircraft.filter(
                 (ac) =>
-                  ac.status === "mission_capable" &&
+                  ac.status === "ready" &&
                   (!order.aircraftType || ac.type === order.aircraftType)
               ).length ?? 0;
 
@@ -194,19 +250,19 @@ export default function ATO() {
                     isSelected
                       ? "border-primary/60 bg-primary/10"
                       : "border-border bg-card hover:border-border hover:bg-muted/30"
-                  }`}
+                  } ${order.status === "pending" ? "border-l-4 border-l-status-yellow" : order.status === "assigned" || order.status === "dispatched" ? "border-l-4 border-l-status-green" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
                       <span
                         className={`p-1 rounded border ${priorityColor[order.priority]}`}
                       >
                         {missionIcons[order.missionType] ?? <Plane className="h-4 w-4" />}
-                      </span>
-                      <div>
+                        </span>
+                        <div>
                         <div className="text-xs font-bold text-foreground">
                           {order.missionType} — {order.label}
-                        </div>
+                          </div>
                         <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
                           {formatHour(order.startHour)}–{formatHour(order.endHour)} · {order.requiredCount} fpl
                         </div>
@@ -217,20 +273,34 @@ export default function ATO() {
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${statusColor[order.status]}`}
                       >
                         {statusLabel[order.status]}
-                      </span>
+                          </span>
                       <span
                         className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${priorityColor[order.priority]}`}
                       >
                         {priorityLabel[order.priority]}
                       </span>
+                      <div className="flex gap-0.5 mt-0.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingOrder(order); setShowEditor(true); }}
+                          className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-muted-foreground/20"
+                        >
+                          Ändra
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteATOOrder(order.id); toast.success("Order raderad"); if (selectedOrderId === order.id) { setSelectedOrderId(null); setSelectedAircraft([]); } }}
+                          className="text-[10px] font-mono font-bold px-3 py-1.5 rounded-lg text-muted-foreground hover:text-status-red hover:bg-status-red/10 transition-colors border border-muted-foreground/20"
+                        >
+                          Ta bort
+                        </button>
+                      </div>
+                      </div>
                     </div>
-                  </div>
 
                   <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
-                    <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       {order.launchBase}
-                    </span>
+                      </span>
                     {order.payload && (
                       <span className="flex items-center gap-1">
                         <Package className="h-3 w-3" />
@@ -249,8 +319,8 @@ export default function ATO() {
                   {order.assignedAircraft.length > 0 && (
                     <div className="mt-1.5 text-[9px] font-mono text-status-yellow">
                       Tilldelade: {order.assignedAircraft.join(", ")}
-                    </div>
-                  )}
+                      </div>
+                    )}
 
                   {isSelected && (
                     <div className="mt-1 flex items-center gap-1 text-[9px] text-primary font-mono">
@@ -264,8 +334,8 @@ export default function ATO() {
           </div>
         </div>
 
-        {/* RIGHT: Assignment panel */}
-        <div className="overflow-y-auto">
+        {/* RIGHT: Mission panel */}
+        <div className="overflow-hidden flex flex-col">
           <AnimatePresence mode="wait">
             {selectedOrder ? (
               <motion.div
@@ -273,176 +343,26 @@ export default function ATO() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 8 }}
-                className="p-6 space-y-6"
+                className="flex-1 overflow-hidden flex flex-col h-full"
               >
-                {/* Order header */}
-                <div className="bg-card border border-border rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <span className={`p-2 rounded-lg border ${priorityColor[selectedOrder.priority]}`}>
-                      {missionIcons[selectedOrder.missionType] ?? <Plane className="h-5 w-5" />}
-                    </span>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-foreground">
-                          {selectedOrder.missionType} — {selectedOrder.label}
-                        </h3>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${statusColor[selectedOrder.status]}`}>
-                          {statusLabel[selectedOrder.status]}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                        <div className="text-[10px]">
-                          <div className="text-muted-foreground mb-0.5">Tid</div>
-                          <div className="font-mono text-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatHour(selectedOrder.startHour)}–{formatHour(selectedOrder.endHour)}
-                          </div>
-                        </div>
-                        <div className="text-[10px]">
-                          <div className="text-muted-foreground mb-0.5">Flygplan krävda</div>
-                          <div className="font-mono text-foreground flex items-center gap-1">
-                            <Users className="h-3 w-3" />
-                            {selectedOrder.requiredCount} × {selectedOrder.aircraftType ?? "valfri typ"}
-                          </div>
-                        </div>
-                        <div className="text-[10px]">
-                          <div className="text-muted-foreground mb-0.5">Startbas</div>
-                          <div className="font-mono text-foreground flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {selectedOrder.launchBase}
-                          </div>
-                        </div>
-                        {selectedOrder.payload && (
-                          <div className="text-[10px]">
-                            <div className="text-muted-foreground mb-0.5">Lastning</div>
-                            <div className="font-mono text-foreground flex items-center gap-1">
-                              <Package className="h-3 w-3" />
-                              {selectedOrder.payload}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Aircraft selection */}
-                {selectedOrder.status !== "dispatched" && selectedOrder.status !== "completed" ? (
-                  <>
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h4 className="text-sm font-bold text-foreground">Välj flygplan</h4>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Tillgängliga Mission Capable vid {selectedOrder.launchBase}
-                            {selectedOrder.aircraftType ? ` · Typ: ${selectedOrder.aircraftType}` : ""}
-                          </p>
-                        </div>
-                        <div className={`text-sm font-mono font-bold ${
-                          selectedAircraft.length >= selectedOrder.requiredCount
-                            ? "text-status-green"
-                            : "text-status-red"
-                        }`}>
-                          {selectedAircraft.length} / {selectedOrder.requiredCount}
-                        </div>
-                      </div>
-
-                      {availableAircraft.length === 0 ? (
-                        <div className="bg-status-red/10 border border-status-red/30 rounded-lg p-4 text-center">
-                          <AlertTriangle className="h-5 w-5 text-status-red mx-auto mb-2" />
-                          <p className="text-xs text-status-red font-bold">Inga tillgängliga flygplan</p>
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            Inga MC-flygplan av typ {selectedOrder.aircraftType ?? "valfri"} vid {selectedOrder.launchBase}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                          {availableAircraft.map((ac) => {
-                            const selected = selectedAircraft.includes(ac.id);
-                            const overCount =
-                              !selected && selectedAircraft.length >= selectedOrder.requiredCount;
-                            return (
-                              <button
-                                key={ac.id}
-                                onClick={() => !overCount && toggleAircraft(ac.id)}
-                                disabled={overCount}
-                                className={`p-3 rounded-lg border text-left transition-all ${
-                                  selected
-                                    ? "bg-primary/15 border-primary/50 text-foreground"
-                                    : overCount
-                                    ? "opacity-40 cursor-not-allowed border-border bg-card"
-                                    : "border-border bg-card hover:border-primary/40 hover:bg-muted/30"
-                                }`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                                      selected
-                                        ? "bg-primary border-primary"
-                                        : "border-muted-foreground"
-                                    }`}
-                                  >
-                                    {selected && <CheckCircle2 className="h-3 w-3 text-primary-foreground" />}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="text-xs font-bold font-mono">{ac.tailNumber}</div>
-                                    <div className="text-[10px] text-muted-foreground">{ac.type}</div>
-                                  </div>
-                                  <div className="ml-auto text-right">
-                                    <div className="text-[9px] font-mono text-muted-foreground">{ac.flightHours}h</div>
-                                    <div className="text-[9px] font-mono text-status-green">MC</div>
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-3 pt-2">
-                      <button
-                        onClick={handleAssign}
-                        disabled={selectedAircraft.length === 0}
-                        className="px-4 py-2 text-sm font-mono rounded border border-primary/40 text-primary bg-primary/10 hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        SPARA TILLDELNING
-                      </button>
-                      <button
-                        onClick={handleDispatch}
-                        disabled={selectedAircraft.length === 0 || availableAircraft.length === 0}
-                        className="flex items-center gap-2 px-6 py-2 text-sm font-mono font-bold rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Send className="h-4 w-4" />
-                        SKICKA UPPDRAG
-                      </button>
-                      {selectedAircraft.length < selectedOrder.requiredCount && selectedAircraft.length > 0 && (
-                        <span className="text-[10px] text-status-yellow font-mono">
-                          ⚠ {selectedOrder.requiredCount - selectedAircraft.length} fpl saknas
-                        </span>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className={`rounded-lg border p-6 text-center ${
-                    selectedOrder.status === "dispatched"
-                      ? "bg-status-green/10 border-status-green/30"
-                      : "bg-muted border-border"
-                  }`}>
-                    <CheckCircle2 className={`h-8 w-8 mx-auto mb-2 ${
-                      selectedOrder.status === "dispatched" ? "text-status-green" : "text-muted-foreground"
-                    }`} />
-                    <p className="font-bold text-sm">
-                      {selectedOrder.status === "dispatched" ? "Uppdrag skickat" : "Uppdrag genomfört"}
-                    </p>
-                    {selectedOrder.assignedAircraft.length > 0 && (
-                      <p className="text-[10px] text-muted-foreground mt-2 font-mono">
-                        Flygplan: {selectedOrder.assignedAircraft.join(", ")}
-                      </p>
-                    )}
-                  </div>
-                )}
+                <ATOMissionPanel
+                  order={selectedOrder}
+                  allOrders={state.atoOrders}
+                  state={state}
+                  availableAircraft={availableAircraft}
+                  selectedAircraft={selectedAircraft}
+                  onSelectAircraft={setSelectedAircraft}
+                  onAssign={handleAssign}
+                  onDispatch={handleDispatch}
+                  onEdit={handleOpenEdit}
+                  onDelete={handleDelete}
+                  currentHour={state.hour}
+                  onSelectOrder={(id) => {
+                    const o = state.atoOrders.find((o) => o.id === id);
+                    if (o) handleSelectOrder(o);
+                  }}
+                  editATOOrder={editATOOrder}
+                />
               </motion.div>
             ) : (
               <motion.div
@@ -461,6 +381,52 @@ export default function ATO() {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Bottom Gantt panel */}
+      <div className="border-t border-border bg-card shrink-0 flex flex-col" style={{ minHeight: "200px", height: "300px" }}>
+        <div className="px-4 py-1.5 flex items-center justify-between border-b border-border/50">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-bold text-muted-foreground tracking-widest">DAGLIG ATO-PLAN</span>
+            <span className="text-[10px] font-mono text-muted-foreground">· Dag {state.day}</span>
+          </div>
+          <span className="text-[9px] font-mono text-muted-foreground/60 italic">Klicka på tomt fält för att skapa ny order</span>
+        </div>
+        <div className="flex-1 min-h-0">
+          <MissionSchedule
+            atoOrders={state.atoOrders}
+            day={state.day}
+            hour={state.hour}
+            selectedOrderId={selectedOrderId ?? ""}
+            onSelectOrder={(order) => handleSelectOrder(order)}
+          />
+        </div>
+      </div>
+
+      {/* ATO Editor Modal */}
+      {showEditor && (
+        <ATOEditor
+          order={editingOrder}
+          defaultStartHour={editingOrder ? undefined : newOrderStartHour}
+          availableAircraft={editingOrder ? undefined : mobReadyAircraft}
+          onSave={(order, selectedAircraft) => {
+            if (editingOrder) {
+              editATOOrder(editingOrder.id, order);
+              toast.success("Order uppdaterad");
+            } else {
+              createATOOrder(order);
+              toast.success(`Ny ATO-order skapad${selectedAircraft.length > 0 ? ` · ${selectedAircraft.length} fpl tilldelade` : ""}`);
+            }
+            setShowEditor(false);
+            setEditingOrder(undefined);
+            setNewOrderStartHour(undefined);
+          }}
+          onCancel={() => { setShowEditor(false); setEditingOrder(undefined); setNewOrderStartHour(undefined); }}
+        />
+      )}
     </div>
   );
+}
+
+export default function ATO() {
+  return <ATOBody />;
 }
