@@ -48,6 +48,8 @@ export interface UnitBase {
   currentBase: BaseType | null;
   lastBase: BaseType | null;
   deployedAt?: { day: number; hour: number };
+  /** Set during TRANSFER_UNIT; the engine STOREs the unit here on arrival. */
+  pendingArrivalBase?: BaseType;
 }
 
 export interface AircraftUnit extends UnitBase {

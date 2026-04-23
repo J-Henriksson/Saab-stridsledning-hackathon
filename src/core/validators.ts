@@ -117,6 +117,12 @@ export function validateAction(state: GameState, action: GameAction): Validation
       if (!unit) return { valid: false, reason: "Unit not found" };
       const atBase = state.bases.some((b) => b.units.some((u) => u.id === unit.id));
       if (atBase) return { valid: false, reason: "Unit already at base" };
+      const homeId = action.toBaseId ?? unit.currentBase ?? unit.lastBase;
+      if (!homeId) return { valid: false, reason: "No home base to recall to" };
+      const dest = state.bases.find((b) => b.id === homeId);
+      if (!dest) return { valid: false, reason: "Home base not found" };
+      const cap = canStoreUnit(dest, unit);
+      if (!cap.ok) return { valid: false, reason: cap.reason };
       return { valid: true };
     }
     case "RELOCATE_UNIT":
