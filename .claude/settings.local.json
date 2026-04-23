@@ -10,7 +10,12 @@
       "Bash(git add *)",
       "Bash(echo \"Exit: $?\")",
       "Bash(npx vite *)",
-      "Bash(git *)"
+      "Bash(ssh *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)"
     ]
   }
 }
