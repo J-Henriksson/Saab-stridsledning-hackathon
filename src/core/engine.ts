@@ -45,11 +45,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 
   switch (action.type) {
+    case "TICK":
+      return handleTick(state, action.seconds);
+
     case "ADVANCE_HOUR":
       return handleAdvanceHour(state);
 
     case "TOGGLE_PAUSE":
       return { ...state, isRunning: !state.isRunning };
+
+    case "SET_GAME_SPEED":
+      return { ...state, gameSpeed: action.speed };
 
     case "ASSIGN_AIRCRAFT":
       return handleAssignAircraft(state, action.orderId, action.aircraftIds);
@@ -158,6 +164,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     default:
       return state;
   }
+}
+
+function handleTick(state: GameState, seconds: number): GameState {
+  const totalSec = state.second + seconds;
+  const newSec = totalSec % 60;
+  const extraMin = Math.floor(totalSec / 60);
+  const totalMin = state.minute + extraMin;
+  const newMin = totalMin % 60;
+  const extraHour = Math.floor(totalMin / 60);
+
+  if (extraHour > 0) {
+    // Run full hour simulation then patch in sub-hour time
+    const afterHour = handleAdvanceHour({ ...state, minute: newMin, second: newSec });
+    return afterHour;
+  }
+
+  return { ...state, second: newSec, minute: newMin };
 }
 
 function handleAdvanceHour(state: GameState): GameState {

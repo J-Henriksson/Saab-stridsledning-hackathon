@@ -137,8 +137,10 @@ export interface ScenarioDay {
 
 // ── Game actions (discriminated union) ────────────────────────────────────
 export type GameAction =
+  | { type: "TICK"; seconds: number }
   | { type: "ADVANCE_HOUR" }
   | { type: "TOGGLE_PAUSE" }
+  | { type: "SET_GAME_SPEED"; speed: number }
   | { type: "ASSIGN_AIRCRAFT"; orderId: string; aircraftIds: string[] }
   | { type: "MOVE_AIRCRAFT"; aircraftId: string; fromZone: string; toZone: string; baseId: BaseType }
   | { type: "CREATE_ATO_ORDER"; order: Omit<ATOOrder, "id" | "status" | "assignedAircraft"> }
@@ -221,6 +223,8 @@ export interface Base {
 export interface GameState {
   day: number;
   hour: number;
+  minute: number;
+  second: number;
   phase: ScenarioPhase;
   bases: Base[];
   successfulMissions: number;
@@ -228,6 +232,7 @@ export interface GameState {
   events: GameEvent[];
   atoOrders: ATOOrder[];
   isRunning: boolean;
+  gameSpeed: number;
   recommendations: Recommendation[];
   maintenanceTasks: MaintenanceTask[];
   pendingLandingChecks: { aircraftId: string; baseId: BaseType }[];
