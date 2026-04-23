@@ -2,6 +2,7 @@ import type { GameState, GameAction, AircraftStatus } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import type { Unit } from "@/types/units";
 import { canStoreUnit } from "@/core/units/capacity";
+import { getAircraft } from "@/core/units/helpers";
 
 export interface ValidationResult {
   valid: boolean;
@@ -44,7 +45,7 @@ export function validateAction(state: GameState, action: GameAction): Validation
       const base = state.bases.find((b) => b.id === order.launchBase);
       if (!base) return { valid: false, reason: "Launch base not found" };
       for (const acId of action.aircraftIds) {
-        const ac = base.aircraft.find((a) => a.id === acId);
+        const ac = getAircraft(base).find((a) => a.id === acId);
         if (!ac) return { valid: false, reason: `Aircraft ${acId} not found at ${order.launchBase}` };
         if (!isMissionCapable(ac.status)) {
           return { valid: false, reason: `Aircraft ${acId} is not mission capable (${ac.status})` };
@@ -65,7 +66,7 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "START_MAINTENANCE": {
       const base = state.bases.find((b) => b.id === action.baseId);
       if (!base) return { valid: false, reason: "Base not found" };
-      const ac = base.aircraft.find((a) => a.id === action.aircraftId);
+      const ac = getAircraft(base).find((a) => a.id === action.aircraftId);
       if (!ac) return { valid: false, reason: "Aircraft not found" };
       if (ac.status !== "unavailable") {
         return { valid: false, reason: "Aircraft is not in unavailable state" };
@@ -79,7 +80,7 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "SEND_MISSION_DROP": {
       const base = state.bases.find((b) => b.id === action.baseId);
       if (!base) return { valid: false, reason: "Base not found" };
-      const ac = base.aircraft.find((a) => a.id === action.aircraftId);
+      const ac = getAircraft(base).find((a) => a.id === action.aircraftId);
       if (!ac) return { valid: false, reason: "Aircraft not found" };
       if (!isMissionCapable(ac.status)) {
         return { valid: false, reason: "Aircraft is not mission capable" };
@@ -166,7 +167,7 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "REBASE_AIRCRAFT": {
       const fromBase = state.bases.find((b) => b.id === action.fromBase);
       if (!fromBase) return { valid: false, reason: "Avsändarbas ej hittad" };
-      const ac = fromBase.aircraft.find((a) => a.id === action.aircraftId);
+      const ac = getAircraft(fromBase).find((a) => a.id === action.aircraftId);
       if (!ac) return { valid: false, reason: "Flygplan ej hittat vid angiven bas" };
       const blocked: AircraftStatus[] = ["on_mission", "in_preparation", "awaiting_launch", "returning", "recovering", "allocated"];
       if (blocked.includes(ac.status)) {

@@ -15,6 +15,7 @@ import {
 import grippenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
 import type { Aircraft, AircraftStatus, BaseType } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { toast } from "sonner";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
@@ -779,7 +780,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
   const { state, rebaseAircraft, applyUtfallOutcome, markFaultNMC } = useGame();
   const navigate = useNavigate();
 
-  const aircraft = state.bases.flatMap((b) => b.aircraft).find((a) => a.tailNumber === tailNumber);
+  const aircraft = state.bases.flatMap((b) => getAircraft(b)).find((a) => a.tailNumber === tailNumber);
 
   const [activeTab, setActiveTab]   = useState<DashTab>("oversikt");
   const [modal, setModal]           = useState<"pilot" | "crew" | "missions" | null>(null);
@@ -1601,7 +1602,8 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
           <div className="space-y-2 py-2">
             {otherBases.map((base) => {
               const isSelected = pendingToBase === base.id;
-              const mcCount = base.aircraft.filter((a) => a.status === "ready").length;
+              const baseAircraft = getAircraft(base);
+              const mcCount = baseAircraft.filter((a) => a.status === "ready").length;
               return (
                 <button
                   key={base.id}
@@ -1619,7 +1621,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[11px] font-mono text-[#D7DEE1]/70">{base.aircraft.length} plan</div>
+                    <div className="text-[11px] font-mono text-[#D7DEE1]/70">{baseAircraft.length} plan</div>
                     <div className="text-[10px] font-mono text-green-400">{mcCount} MC</div>
                   </div>
                 </button>

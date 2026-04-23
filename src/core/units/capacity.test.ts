@@ -8,7 +8,6 @@ function makeBase(overrides: Partial<Base> = {}): Base {
     id: "MOB",
     name: "Test MOB",
     type: "huvudbas",
-    aircraft: [],
     units: [],
     spareParts: [],
     personnel: [],

@@ -7,11 +7,22 @@ import { generateATOOrders } from "@/data/initialGameState";
 import { generateRecommendations } from "./recommendations";
 import { validateAction } from "./validators";
 import { uuid } from "./uuid";
-import type { Unit } from "@/types/units";
+import type { Unit, AircraftUnit } from "@/types/units";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
 import { enforceAirborneInvariant, advanceMovement, perHourFuelDrain } from "@/core/units/movement";
 import { BASE_COORDS } from "@/pages/map/constants";
+import { getAircraft } from "@/core/units/helpers";
+
+/**
+ * Returns a new `units` array where each aircraft is replaced by the result
+ * of `fn(ac)`, leaving non-aircraft units untouched. Centralizes the type
+ * narrowing boilerplate introduced when `Base.aircraft` was folded into
+ * `Base.units`.
+ */
+function mapAircraftInUnits(units: Unit[], fn: (ac: AircraftUnit) => AircraftUnit): Unit[] {
+  return units.map((u) => (u.category === "aircraft" ? fn(u as AircraftUnit) : u));
+}
 
 function assessRisk(health: number): RiskLevel {
   if (health < 20) return "catastrophic";
@@ -562,12 +573,12 @@ function handleAdvanceHour(state: GameState): GameState {
   // Fuel drain + per-aircraft health wear
   const fuelDrain = FUEL_DRAIN_RATE[nextPhase] ?? 0.5;
   let updatedBases = state.bases.map((base) => {
-    const anyOnMission = base.aircraft.some((ac) => ac.status === "on_mission");
+    const anyOnMission = getAircraft(base).some((ac) => ac.status === "on_mission");
     const drain = anyOnMission ? fuelDrain : 0;
     return {
       ...base,
       fuel: Math.max(0, base.fuel - drain),
-      aircraft: base.aircraft.map((ac) => {
+      units: mapAircraftInUnits(base.units, (ac) => {
         let wear = 0;
         if (ac.status === "ready" || ac.status === "allocated") {
           wear = Math.floor(Math.random() * 6) + 5;
@@ -591,7 +602,7 @@ function handleAdvanceHour(state: GameState): GameState {
   // Tick maintenance timers
   updatedBases = updatedBases.map((base) => {
     let completedCount = 0;
-    const updatedAircraft = base.aircraft.map((ac) => {
+    const updatedUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
         const remaining = ac.maintenanceTimeRemaining - 1;
         if (remaining <= 0) {
@@ -617,7 +628,9 @@ function handleAdvanceHour(state: GameState): GameState {
       }
       return ac;
     });
-    const maintenanceCount = updatedAircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintenanceCount = updatedUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     const personnel = completedCount > 0
       ? base.personnel.map((p) => ({
           ...p,
@@ -626,7 +639,7 @@ function handleAdvanceHour(state: GameState): GameState {
       : base.personnel;
     return {
       ...base,
-      aircraft: updatedAircraft,
+      units: updatedUnits,
       personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintenanceCount, base.maintenanceBays.total) },
     };
@@ -652,7 +665,7 @@ function handleAdvanceHour(state: GameState): GameState {
   // Handle REBASE completions
   const rebaseTransfers: { aircraftId: string; fromBaseId: string; toBaseId: string }[] = [];
   updatedBases.forEach((base) => {
-    base.aircraft.forEach((ac) => {
+    getAircraft(base).forEach((ac) => {
       if (
         ac.status === "on_mission" &&
         ac.currentMission === "REBASE" &&
@@ -667,11 +680,12 @@ function handleAdvanceHour(state: GameState): GameState {
 
   let basesAfterRebases = updatedBases;
   for (const transfer of rebaseTransfers) {
-    const srcAircraft = basesAfterRebases
-      .find((b) => b.id === transfer.fromBaseId)
-      ?.aircraft.find((a) => a.id === transfer.aircraftId);
+    const srcBase = basesAfterRebases.find((b) => b.id === transfer.fromBaseId);
+    const srcAircraft = srcBase
+      ? getAircraft(srcBase).find((a) => a.id === transfer.aircraftId)
+      : undefined;
     if (!srcAircraft) continue;
-    const arrivedAircraft = {
+    const arrivedAircraft: AircraftUnit = {
       ...srcAircraft,
       currentBase: transfer.toBaseId as BaseType,
       status: "ready" as AircraftStatus,
@@ -681,10 +695,10 @@ function handleAdvanceHour(state: GameState): GameState {
     };
     basesAfterRebases = basesAfterRebases.map((base) => {
       if (base.id === transfer.fromBaseId) {
-        return { ...base, aircraft: base.aircraft.filter((a) => a.id !== transfer.aircraftId) };
+        return { ...base, units: base.units.filter((u) => u.id !== transfer.aircraftId) };
       }
       if (base.id === transfer.toBaseId) {
-        return { ...base, aircraft: [...base.aircraft, arrivedAircraft] };
+        return { ...base, units: [...base.units, arrivedAircraft] };
       }
       return base;
     });
@@ -693,7 +707,7 @@ function handleAdvanceHour(state: GameState): GameState {
   // Set returning aircraft
   const basesAfterReturn = basesAfterRebases.map((base) => ({
     ...base,
-    aircraft: base.aircraft.map((ac) => {
+    units: mapAircraftInUnits(base.units, (ac) => {
       if (ac.status === "on_mission") {
         const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
         const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;
@@ -859,7 +873,7 @@ function handleRebaseAircraft(
   toBaseId: string,
 ): GameState {
   const fromBase = state.bases.find((b) => b.id === fromBaseId);
-  const aircraft = fromBase?.aircraft.find((a) => a.id === aircraftId);
+  const aircraft = fromBase ? getAircraft(fromBase).find((a) => a.id === aircraftId) : undefined;
   if (!aircraft) return state;
 
   const missionEndHour = state.hour + REBASE_TRANSIT_HOURS;
@@ -871,14 +885,14 @@ function handleRebaseAircraft(
     base.id === fromBaseId
       ? {
           ...base,
-          aircraft: base.aircraft.map((ac) =>
+          units: mapAircraftInUnits(base.units, (ac) =>
             ac.id === aircraftId
               ? {
                   ...ac,
                   status: "on_mission" as AircraftStatus,
                   currentMission: "REBASE" as MissionType,
                   missionEndHour,
-                  rebaseTarget: toBaseId as typeof ac.currentBase,
+                  rebaseTarget: toBaseId as BaseType,
                 }
               : ac
           ),
@@ -895,8 +909,8 @@ function handleRebaseAircraft(
     startHour: state.hour,
     endHour: missionEndHour,
     requiredCount: 1,
-    launchBase: fromBaseId as typeof aircraft.currentBase,
-    targetBase: toBaseId as typeof aircraft.currentBase,
+    launchBase: fromBaseId as BaseType,
+    targetBase: toBaseId as BaseType,
     priority: "high" as const,
     status: "dispatched" as const,
     assignedAircraft: [aircraftId],
@@ -907,7 +921,7 @@ function handleRebaseAircraft(
     {
       type: "info",
       message: `${aircraft.tailNumber} ombasering påbörjad → ${toBaseName} (ankomst ${String(missionEndHour % 24).padStart(2, "0")}:00Z)`,
-      base: fromBaseId as typeof aircraft.currentBase,
+      base: fromBaseId as BaseType,
       aircraftId: aircraft.tailNumber,
       riskLevel: "low",
       resourceImpact: `Ombasering från ${fromBaseId} till ${toBaseId}`,
@@ -935,7 +949,7 @@ function handleDispatchOrder(state: GameState, orderId: string): GameState {
     if (base.id !== order.launchBase) return base;
     return {
       ...base,
-      aircraft: base.aircraft.map((ac) => {
+      units: mapAircraftInUnits(base.units, (ac) => {
         if (!order.assignedAircraft.includes(ac.id) || !isMissionCapable(ac.status)) return ac;
         const extra = order.missionType === "REBASE" && order.targetBase
           ? { missionEndHour: order.endHour, rebaseTarget: order.targetBase }
@@ -965,17 +979,20 @@ function handleDispatchOrder(state: GameState, orderId: string): GameState {
 }
 
 function handleStartMaintenance(state: GameState, baseId: string, aircraftId: string): GameState {
-  const tail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const tail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
-    const aircraft = base.aircraft.map((ac) => {
+    const newUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.id !== aircraftId || ac.status !== "unavailable") return ac;
       return { ...ac, status: "under_maintenance" as AircraftStatus };
     });
-    const maintenanceCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintenanceCount = newUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     return {
       ...base,
-      aircraft,
+      units: newUnits,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintenanceCount, base.maintenanceBays.total) },
     };
   });
@@ -983,7 +1000,7 @@ function handleStartMaintenance(state: GameState, baseId: string, aircraftId: st
   return addEvent({ ...state, bases: updatedBases }, {
     type: "info",
     message: `Underhåll påbörjat på ${tail}`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: tail,
     actionType: "MAINTENANCE_START",
     riskLevel: "low",
@@ -993,21 +1010,24 @@ function handleStartMaintenance(state: GameState, baseId: string, aircraftId: st
 
 function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: string, missionType: MissionType, durationHours?: number): GameState {
   const endHour = durationHours ? state.hour + durationHours : undefined;
-  const aircraft = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId);
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const aircraft = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId) : undefined;
   const tail = aircraft?.tailNumber ?? aircraftId;
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
-    const acList = base.aircraft.map((ac) => {
-      if (ac.id !== aircraftId || !isMissionCapable(ac.status)) return ac;
-      return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType, missionEndHour: endHour };
-    });
-    return { ...base, aircraft: acList };
+    return {
+      ...base,
+      units: mapAircraftInUnits(base.units, (ac) => {
+        if (ac.id !== aircraftId || !isMissionCapable(ac.status)) return ac;
+        return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType, missionEndHour: endHour };
+      }),
+    };
   });
 
   return addEvent({ ...state, bases: updatedBases }, {
     type: "success",
     message: `${tail} skickad på ${missionType}-uppdrag`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: tail,
     actionType: "MISSION_DISPATCH",
     riskLevel: assessRisk(aircraft?.health ?? 100),
@@ -1041,7 +1061,7 @@ function handleCompleteLandingCheck(
     if (base.id !== baseId) return base;
     return {
       ...base,
-      aircraft: base.aircraft.map((ac) =>
+      units: mapAircraftInUnits(base.units, (ac) =>
         ac.id === aircraftId
           ? { ...ac, status: "ready" as AircraftStatus, currentMission: undefined }
           : ac
@@ -1049,11 +1069,12 @@ function handleCompleteLandingCheck(
     };
   });
 
-  const landTail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const landTail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   return addEvent({ ...state, bases: updatedBases, pendingLandingChecks: updatedLandingChecks }, {
     type: "success",
     message: `${landTail} landad och godkänd — återvänder till uppställningsplats`,
-    base: baseId as any,
+    base: baseId as BaseType,
     aircraftId: landTail,
     actionType: "LANDING_RECEIVED",
     riskLevel: "low",
@@ -1074,7 +1095,7 @@ function handleApplyUtfall(
 
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
-    const aircraft = base.aircraft.map((ac) => {
+    const newUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.id !== aircraftId) return ac;
       if (repairTime === 0) {
         // NMC — park the aircraft and remember which part will be needed when it enters the bay
@@ -1088,7 +1109,9 @@ function handleApplyUtfall(
         requiredSparePart: undefined, // consumed below
       };
     });
-    const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintCount = newUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     const personnel = repairTime > 0
       ? base.personnel.map((p) => ({
           ...p,
@@ -1107,20 +1130,21 @@ function handleApplyUtfall(
 
     return {
       ...base,
-      aircraft,
+      units: newUnits,
       personnel,
       spareParts,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
 
-  const utfallTail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const utfallTail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   const partNote = consumedPartName ? ` — reservdel använd: ${consumedPartName}` : "";
   const utfallRisk: RiskLevel = repairTime > 8 ? "catastrophic" : repairTime > 4 ? "high" : repairTime > 2 ? "medium" : "low";
   return addEvent({ ...state, bases: updatedBases }, {
     type: utfallRisk === "catastrophic" ? "critical" : "warning",
     message: `UTFALL: ${utfallTail} — ${actionLabel} — ${repairTime}h underhåll (Vapensystemsförlust ${weaponLoss}%)${partNote}`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: utfallTail,
     actionType: "UTFALL_APPLIED",
     riskLevel: utfallRisk,
@@ -1141,10 +1165,10 @@ function handleHangarDropConfirm(
 
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
-    const incoming = base.aircraft.find((a) => a.id === aircraftId);
+    const incoming = getAircraft(base).find((a) => a.id === aircraftId);
     const partToConsume = incoming?.requiredSparePart;
 
-    const aircraft = base.aircraft.map((ac) => {
+    const newUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.id !== aircraftId) return ac;
       return {
         ...ac,
@@ -1154,7 +1178,9 @@ function handleHangarDropConfirm(
         requiredSparePart: undefined, // consumed below
       };
     });
-    const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintCount = newUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     const personnel = base.personnel.map((p) => ({
       ...p,
       available: Math.max(0, p.available - (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
@@ -1171,20 +1197,21 @@ function handleHangarDropConfirm(
 
     return {
       ...base,
-      aircraft,
+      units: newUnits,
       personnel,
       spareParts,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
 
-  const hangarTail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const hangarTail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   const label = restoreHealth ? "Förebyggande underhåll" : "Felsökning/Reparation";
   const partNote = consumedPartName ? ` — reservdel använd: ${consumedPartName}` : "";
   return addEvent({ ...state, bases: updatedBases }, {
     type: "info",
     message: `${hangarTail} → ${label} (${repairTime}h) påbörjat${partNote}`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: hangarTail,
     actionType: "HANGAR_CONFIRM",
     riskLevel: "low",
@@ -1207,7 +1234,7 @@ function handleMarkFaultNMC(
     if (base.id !== baseId) return base;
     return {
       ...base,
-      aircraft: base.aircraft.map((ac) => {
+      units: mapAircraftInUnits(base.units, (ac) => {
         if (ac.id !== aircraftId) return ac;
         return {
           ...ac,
@@ -1221,11 +1248,12 @@ function handleMarkFaultNMC(
     };
   });
 
-  const nmcTail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const nmcTail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   return addEvent({ ...state, bases: updatedBases }, {
     type: "warning",
     message: `${nmcTail} NMC — ${actionLabel} (${repairTime}h) — ej i hangar`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: nmcTail,
     actionType: "FAULT_NMC",
     riskLevel: "high",
@@ -1237,12 +1265,14 @@ function handleMarkFaultNMC(
 function handlePauseMaintenance(state: GameState, baseId: string, aircraftId: string): GameState {
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
-    const aircraft = base.aircraft.map((ac) => {
+    const newUnits = mapAircraftInUnits(base.units, (ac) => {
       if (ac.id !== aircraftId || ac.status !== "under_maintenance") return ac;
       // Pause: work stops, aircraft returns to unavailable (fault still present)
       return { ...ac, status: "unavailable" as AircraftStatus, health: 0 };
     });
-    const maintCount = aircraft.filter((a) => a.status === "under_maintenance").length;
+    const maintCount = newUnits.filter(
+      (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
+    ).length;
     // Restore crew when aircraft leaves maintenance bay
     const personnel = base.personnel.map((p) => ({
       ...p,
@@ -1250,17 +1280,18 @@ function handlePauseMaintenance(state: GameState, baseId: string, aircraftId: st
     }));
     return {
       ...base,
-      aircraft,
+      units: newUnits,
       personnel,
       maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintCount, base.maintenanceBays.total) },
     };
   });
 
-  const pauseTail = state.bases.find((b) => b.id === baseId)?.aircraft.find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId;
+  const srcBase = state.bases.find((b) => b.id === baseId);
+  const pauseTail = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId)?.tailNumber ?? aircraftId : aircraftId;
   return addEvent({ ...state, bases: updatedBases }, {
     type: "warning",
     message: `Underhåll pausat på ${pauseTail} — arbetet återupptas manuellt`,
-    base: baseId,
+    base: baseId as BaseType,
     aircraftId: pauseTail,
     actionType: "MAINTENANCE_PAUSE",
     riskLevel: "medium",
@@ -1285,7 +1316,7 @@ function handleConsumeSparePart(state: GameState, baseId: string, sparePartId: s
   return addEvent({ ...state, bases: updatedBases }, {
     type: "info",
     message: `Reservdel använd: ${part?.name ?? sparePartId} (−${quantity}) vid ${baseId}`,
-    base: baseId,
+    base: baseId as BaseType,
     actionType: "SPARE_PART_USED",
     riskLevel: "low",
     resourceImpact: `${part?.name ?? sparePartId} ×${quantity}`,

@@ -1,4 +1,5 @@
 import { Base, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wrench, Clock, CheckCircle, X, Users, Cpu, Shield, AlertTriangle, History } from "lucide-react";
 import { useState } from "react";
@@ -161,7 +162,7 @@ export function MaintenanceBays({ base, onDropAircraft }: MaintenanceBaysProps) 
   const [dragOverId, setDragOverId]       = useState<number | null>(null);
   const [selectedBayId, setSelectedBayId] = useState<number | null>(null);
 
-  const maintAircraft = base.aircraft.filter((a) => a.status === "under_maintenance");
+  const maintAircraft = getAircraft(base).filter((a) => a.status === "under_maintenance");
   const bays: BayInfo[] = Array.from({ length: base.maintenanceBays.total }, (_, i) => ({
     id: i + 1,
     label: BAY_LABELS[i]?.label || `UHplats ${i + 1}`,

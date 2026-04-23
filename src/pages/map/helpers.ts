@@ -1,4 +1,5 @@
 import { Base } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 
 export type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -10,8 +11,9 @@ export type SelectedEntity =
 
 export function statusColor(base: Base | undefined) {
   if (!base) return "#4a5568";
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const ratio = mc / base.aircraft.length;
+  const list = getAircraft(base);
+  const mc = list.filter((a) => a.status === "ready").length;
+  const ratio = mc / list.length;
   if (ratio >= 0.7) return "#22c55e";
   if (ratio >= 0.4) return "#eab308";
   return "#ef4444";
@@ -24,8 +26,9 @@ export function fuelColor(pct: number) {
 }
 
 export function getReadiness(base: Base) {
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const total = base.aircraft.length;
+  const list = getAircraft(base);
+  const mc = list.filter((a) => a.status === "ready").length;
+  const total = list.length;
   const ratio = mc / total;
   if (ratio >= 0.7) return { label: "GRÖN", cls: "text-status-green bg-status-green/10 border-status-green/40" };
   if (ratio >= 0.4) return { label: "GULT", cls: "text-status-yellow bg-status-yellow/10 border-status-yellow/40" };

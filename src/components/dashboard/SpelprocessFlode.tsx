@@ -1,4 +1,5 @@
 import { Base } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion } from "framer-motion";
 import {
   RadioTower, PlaneTakeoff, PlaneLanding, Hammer,
@@ -25,10 +26,11 @@ const stepDefs = [
 ];
 
 export function SpelprocessFlode({ base }: SpelprocessFlodeProps) {
-  const mc        = base.aircraft.filter((a) => a.status === "ready").length;
-  const nmc       = base.aircraft.filter((a) => a.status === "unavailable").length;
-  const maint     = base.aircraft.filter((a) => a.status === "under_maintenance").length;
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission").length;
+  const acs       = getAircraft(base);
+  const mc        = acs.filter((a) => a.status === "ready").length;
+  const nmc       = acs.filter((a) => a.status === "unavailable").length;
+  const maint     = acs.filter((a) => a.status === "under_maintenance").length;
+  const onMission = acs.filter((a) => a.status === "on_mission").length;
   const fuelOk    = base.fuel > 30;
   const totalPersonnel = base.personnel.reduce((s, p) => s + p.available, 0);
 

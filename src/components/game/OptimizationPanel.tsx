@@ -1,4 +1,5 @@
 import { GameState } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion } from "framer-motion";
 import { TrendingUp, AlertTriangle, CheckCircle, Target } from "lucide-react";
 
@@ -11,11 +12,12 @@ export function OptimizationPanel({ state, baseId }: OptimizationPanelProps) {
   const base = state.bases.find((b) => b.id === baseId);
   if (!base) return null;
 
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const total = base.aircraft.length;
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready").length;
+  const total = aircraft.length;
   const readinessRate = total > 0 ? (mc / total) * 100 : 0;
 
-  const nmcWaiting = base.aircraft.filter((a) => a.status === "unavailable").length;
+  const nmcWaiting = aircraft.filter((a) => a.status === "unavailable").length;
   const baysAvailable = base.maintenanceBays.total - base.maintenanceBays.occupied;
   const criticalParts = base.spareParts.filter((p) => p.quantity / p.maxQuantity < 0.3);
   const lowAmmo = base.ammunition.filter((a) => a.quantity / a.max < 0.3);
@@ -107,13 +109,13 @@ export function OptimizationPanel({ state, baseId }: OptimizationPanelProps) {
         <div>
           <div className="text-[10px] text-muted-foreground">Uppdrag idag</div>
           <div className="text-lg font-mono font-bold text-status-blue">
-            {base.aircraft.filter((a) => a.status === "on_mission").length}
+            {aircraft.filter((a) => a.status === "on_mission").length}
           </div>
         </div>
         <div>
           <div className="text-[10px] text-muted-foreground">I UH</div>
           <div className="text-lg font-mono font-bold text-status-amber">
-            {base.aircraft.filter((a) => a.status === "under_maintenance").length}
+            {aircraft.filter((a) => a.status === "under_maintenance").length}
           </div>
         </div>
         <div>

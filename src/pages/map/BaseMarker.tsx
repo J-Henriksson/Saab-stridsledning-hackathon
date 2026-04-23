@@ -2,6 +2,7 @@ import { Marker } from "react-map-gl/maplibre";
 import { Base } from "@/types/game";
 import { statusColor, fuelColor } from "./helpers";
 import { BASE_COORDS } from "./constants";
+import { getAircraft } from "@/core/units/helpers";
 
 export function BaseMarker({
   id,
@@ -20,10 +21,11 @@ export function BaseMarker({
   const color = statusColor(base);
   const isMainBase = id === "MOB";
   const size = isMainBase ? 46 : 34;
-  const mc = base ? base.aircraft.filter((a) => a.status === "ready").length : 0;
-  const onMission = base ? base.aircraft.filter((a) => a.status === "on_mission").length : 0;
+  const acList = base ? getAircraft(base) : [];
+  const mc = acList.filter((a) => a.status === "ready").length;
+  const onMission = acList.filter((a) => a.status === "on_mission").length;
   const isBottleneck = base && (
-    mc / base.aircraft.length < 0.4 ||
+    mc / acList.length < 0.4 ||
     base.maintenanceBays.occupied >= base.maintenanceBays.total ||
     base.fuel < 20
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { GameState } from "@/types/game";
 import { isMissionCapable, isInMaintenance } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { CheckCircle, Fuel, Package, Users } from "lucide-react";
 
 interface PhasePanelProps {
@@ -71,10 +72,10 @@ function ResourceReview({ state }: { state: GameState }) {
 }
 
 function OutcomeReport({ state }: { state: GameState }) {
-  const totalAc = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
-  const mc = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => isMissionCapable(a.status)).length, 0);
-  const onMission = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "on_mission").length, 0);
-  const inMaint = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => isInMaintenance(a.status)).length, 0);
+  const totalAc = state.bases.reduce((s, b) => s + getAircraft(b).length, 0);
+  const mc = state.bases.reduce((s, b) => s + getAircraft(b).filter((a) => isMissionCapable(a.status)).length, 0);
+  const onMission = state.bases.reduce((s, b) => s + getAircraft(b).filter((a) => a.status === "on_mission").length, 0);
+  const inMaint = state.bases.reduce((s, b) => s + getAircraft(b).filter((a) => isInMaintenance(a.status)).length, 0);
 
   return (
     <div className="grid grid-cols-4 gap-2">

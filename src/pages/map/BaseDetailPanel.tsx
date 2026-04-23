@@ -1,5 +1,6 @@
 import { Base } from "@/types/game";
 import { fuelColor, getReadiness } from "./helpers";
+import { getAircraft } from "@/core/units/helpers";
 import { StatBox, Row } from "./StatBox";
 import {
   Plane,
@@ -20,10 +21,11 @@ export function BaseDetailPanel({
   base: Base;
   onSelectAircraft: (id: string) => void;
 }) {
-  const mc = base.aircraft.filter((a) => a.status === "ready");
-  const nmc = base.aircraft.filter((a) => a.status === "unavailable");
-  const maintenance = base.aircraft.filter((a) => a.status === "under_maintenance");
-  const onMission = base.aircraft.filter((a) => a.status === "on_mission");
+  const aircraftList = getAircraft(base);
+  const mc = aircraftList.filter((a) => a.status === "ready");
+  const nmc = aircraftList.filter((a) => a.status === "unavailable");
+  const maintenance = aircraftList.filter((a) => a.status === "under_maintenance");
+  const onMission = aircraftList.filter((a) => a.status === "on_mission");
   const readiness = getReadiness(base);
   const totalPersonnel = base.personnel.reduce((s, p) => s + p.total, 0);
   const availPersonnel = base.personnel.reduce((s, p) => s + p.available, 0);
@@ -39,9 +41,9 @@ export function BaseDetailPanel({
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-2">
-        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="Mission Capable" value={mc.length} total={base.aircraft.length} color="green" />
-        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="På uppdrag" value={onMission.length} total={base.aircraft.length} color="blue" />
-        <StatBox icon={<Wrench className="h-3.5 w-3.5" />} label="I underhåll" value={maintenance.length + nmc.length} total={base.aircraft.length} color="yellow" />
+        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="Mission Capable" value={mc.length} total={aircraftList.length} color="green" />
+        <StatBox icon={<Plane className="h-3.5 w-3.5" />} label="På uppdrag" value={onMission.length} total={aircraftList.length} color="blue" />
+        <StatBox icon={<Wrench className="h-3.5 w-3.5" />} label="I underhåll" value={maintenance.length + nmc.length} total={aircraftList.length} color="yellow" />
         <StatBox icon={<Users className="h-3.5 w-3.5" />} label="Personal" value={availPersonnel} total={totalPersonnel} color="purple" />
       </div>
 
@@ -192,10 +194,10 @@ export function BaseDetailPanel({
       {/* Aircraft list */}
       <div>
         <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
-          <Plane className="h-3 w-3" /> FLYGPLAN ({base.aircraft.length} st)
+          <Plane className="h-3 w-3" /> FLYGPLAN ({aircraftList.length} st)
         </div>
         <div className="space-y-1">
-          {base.aircraft.map((ac) => (
+          {aircraftList.map((ac) => (
             <button
               key={ac.id}
               onClick={() => onSelectAircraft(ac.id)}

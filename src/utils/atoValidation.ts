@@ -1,4 +1,5 @@
 import { ATOOrder, GameState } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 
 export type ValidationSeverity = "error" | "warning" | "info";
 
@@ -14,12 +15,13 @@ export function validateATOOrder(order: ATOOrder, state: GameState): ValidationW
   const base = state.bases.find((b) => b.id === order.launchBase);
 
   // 1. MC aircraft availability
-  const availableCount =
-    base?.aircraft.filter(
-      (ac) =>
-        ac.status === "ready" &&
-        (!order.aircraftType || ac.type === order.aircraftType)
-    ).length ?? 0;
+  const availableCount = base
+    ? getAircraft(base).filter(
+        (ac) =>
+          ac.status === "ready" &&
+          (!order.aircraftType || ac.type === order.aircraftType)
+      ).length
+    : 0;
 
   if (availableCount < order.requiredCount) {
     warnings.push({

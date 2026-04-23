@@ -1,5 +1,6 @@
 import type { GameState } from "@/types/game";
 import type { SetupOverrides } from "@/types/setup";
+import { getAircraft } from "@/core/units/helpers";
 
 export function applySetupOverrides(
   initialState: GameState,
@@ -9,10 +10,17 @@ export function applySetupOverrides(
     const override = overrides.bases.find((o) => o.baseId === base.id);
     if (!override) return base;
 
+    // Trim aircraft units to the requested count; keep every other unit category.
+    const aircraftList = getAircraft(base);
+    const keepIds = new Set(aircraftList.slice(0, override.aircraftCount).map((a) => a.id));
+    const trimmedUnits = base.units.filter(
+      (u) => u.category !== "aircraft" || keepIds.has(u.id)
+    );
+
     return {
       ...base,
       fuel: override.fuel,
-      aircraft: base.aircraft.slice(0, override.aircraftCount),
+      units: trimmedUnits,
       ammunition: base.ammunition.map((ammo) => {
         const o = override.ammunition.find((a) => a.type === ammo.type);
         return o ? { ...ammo, quantity: o.quantity } : ammo;
@@ -32,7 +40,7 @@ export function deriveDefaultOverrides(state: GameState): SetupOverrides {
     bases: state.bases.map((base) => ({
       baseId: base.id,
       fuel: base.fuel,
-      aircraftCount: base.aircraft.length,
+      aircraftCount: getAircraft(base).length,
       ammunition: base.ammunition.map((a) => ({ type: a.type, quantity: a.quantity })),
       spareParts: base.spareParts.map((p) => ({ id: p.id, quantity: p.quantity })),
     })),

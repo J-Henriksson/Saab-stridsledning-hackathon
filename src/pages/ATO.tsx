@@ -5,6 +5,7 @@ import { ATOEditor } from "@/components/game/ATOEditor";
 import { ATOMissionPanel } from "@/components/game/ATOMissionPanel";
 import { ATOImporter } from "@/components/game/ATOImporter";
 import { ATOOrder, Aircraft, MissionType } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -80,10 +81,11 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
   const selectedBase = selectedOrder
     ? state.bases.find((b) => b.id === selectedOrder.launchBase)
     : null;
-  const mobReadyAircraft = state.bases.find((b) => b.id === "MOB")?.aircraft.filter((ac) => ac.status === "ready") ?? [];
+  const mobBase = state.bases.find((b) => b.id === "MOB");
+  const mobReadyAircraft = mobBase ? getAircraft(mobBase).filter((ac) => ac.status === "ready") : [];
 
   const availableAircraft: Aircraft[] = selectedBase
-    ? selectedBase.aircraft.filter(
+    ? getAircraft(selectedBase).filter(
         (ac) =>
           ac.status === "ready" &&
           (!selectedOrder?.aircraftType || ac.type === selectedOrder.aircraftType)
@@ -234,11 +236,11 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
             {filteredOrders.map((order) => {
               const isSelected = order.id === selectedOrderId;
               const base = state.bases.find((b) => b.id === order.launchBase);
-              const mcAtBase = base?.aircraft.filter(
+              const mcAtBase = base ? getAircraft(base).filter(
                 (ac) =>
                   ac.status === "ready" &&
                   (!order.aircraftType || ac.type === order.aircraftType)
-              ).length ?? 0;
+              ).length : 0;
 
               return (
                 <motion.div

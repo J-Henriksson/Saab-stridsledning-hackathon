@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { GameState } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { PhaseBadge } from "./StatusBadge";
 import { Pause, Play, RotateCcw, LayoutDashboard, Map } from "lucide-react";
 import { NavLink } from "react-router-dom";
@@ -29,8 +30,8 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
   const today = useMemo(() => new Date(), []);
   const dateStr = `${WEEKDAYS[today.getDay()]} ${today.getDate()} ${MONTHS[today.getMonth()]}`;
 
-  const totalAircraft = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
-  const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
+  const totalAircraft = state.bases.reduce((s, b) => s + getAircraft(b).length, 0);
+  const mcAircraft = state.bases.reduce((s, b) => s + getAircraft(b).filter((a) => a.status === "ready").length, 0);
   const mcPct = totalAircraft > 0 ? Math.round((mcAircraft / totalAircraft) * 100) : 0;
 
   return (

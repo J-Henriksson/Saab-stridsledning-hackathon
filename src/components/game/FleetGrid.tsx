@@ -1,4 +1,5 @@
 import { Base, Aircraft } from "@/types/game";
+import { getAircraft } from "@/core/units/helpers";
 import { AircraftStatusBadge } from "./StatusBadge";
 import { motion } from "framer-motion";
 import { Wrench, Send, Clock, ExternalLink } from "lucide-react";
@@ -11,11 +12,12 @@ interface FleetGridProps {
 }
 
 export function FleetGrid({ base, onStartMaintenance, onSendMission }: FleetGridProps) {
+  const aircraft = getAircraft(base);
   const grouped = {
-    ready: base.aircraft.filter((a) => a.status === "ready"),
-    on_mission: base.aircraft.filter((a) => a.status === "on_mission"),
-    under_maintenance: base.aircraft.filter((a) => a.status === "under_maintenance"),
-    unavailable: base.aircraft.filter((a) => a.status === "unavailable"),
+    ready: aircraft.filter((a) => a.status === "ready"),
+    on_mission: aircraft.filter((a) => a.status === "on_mission"),
+    under_maintenance: aircraft.filter((a) => a.status === "under_maintenance"),
+    unavailable: aircraft.filter((a) => a.status === "unavailable"),
   };
 
   return (

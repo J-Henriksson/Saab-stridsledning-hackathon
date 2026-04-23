@@ -3,6 +3,7 @@ import { Source, Layer, Marker } from "react-map-gl/maplibre";
 import type { LineLayout, LinePaint } from "maplibre-gl";
 import { Base } from "@/types/game";
 import { SUPPLY_LINES, BASE_COORDS } from "./constants";
+import { getAircraft } from "@/core/units/helpers";
 
 export function SupplyLinesLayer({ bases }: { bases: Base[] }) {
   const { geojson, stressedMidpoints } = useMemo(() => {
@@ -17,7 +18,7 @@ export function SupplyLinesLayer({ bases }: { bases: Base[] }) {
       const aBase = bases.find((b) => b.id === aId);
       const bBase = bases.find((b) => b.id === bId);
       const active = !!(aBase && bBase);
-      const totalAc = (aBase?.aircraft.length ?? 0) + (bBase?.aircraft.length ?? 0);
+      const totalAc = (aBase ? getAircraft(aBase).length : 0) + (bBase ? getAircraft(bBase).length : 0);
       const avgFuel = ((aBase?.fuel ?? 100) + (bBase?.fuel ?? 100)) / 2;
       const flowIntensity = active ? Math.max(1.5, Math.min(4, totalAc / 10 + (100 - avgFuel) / 40)) : 1;
       const stressed = active && avgFuel < 30;
