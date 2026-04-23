@@ -17,6 +17,10 @@ export function enforceAirborneInvariant(unit: Unit, isAtBase: boolean): Unit {
   return unit;
 }
 
+export function perMinuteFuelDrain(unit: Unit, phase: ScenarioPhase): number {
+  return perHourFuelDrain(unit, phase) / 60;
+}
+
 export function perHourFuelDrain(unit: Unit, phase: ScenarioPhase): number {
   switch (unit.category) {
     case "aircraft":
@@ -44,14 +48,14 @@ function distanceDeg(a: GeoPosition, b: GeoPosition): number {
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
-export function advanceMovement(unit: Unit): Unit {
+export function advanceMovement(unit: Unit, hoursElapsed: number = 1): Unit {
   if (unit.movement.state !== "moving" && unit.movement.state !== "airborne") {
     return unit;
   }
   const dest = unit.movement.destination;
   if (!isGeoPosition(dest)) return unit;
 
-  const stepDeg = unit.movement.speed * KNOTS_TO_DEG_PER_HOUR;
+  const stepDeg = unit.movement.speed * KNOTS_TO_DEG_PER_HOUR * hoursElapsed;
   const remaining = distanceDeg(unit.position, dest);
 
   if (stepDeg >= remaining || remaining < 1e-4) {
