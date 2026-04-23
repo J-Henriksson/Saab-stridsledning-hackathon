@@ -5,6 +5,7 @@ export type SelectedEntity =
   | { kind: "aircraft"; baseId: string; aircraftId: string }
   | { kind: "enemy_base"; id: string }
   | { kind: "enemy_entity"; id: string }
+  | { kind: "unit"; unitId: string }
   | null;
 
 export function statusColor(base: Base | undefined) {

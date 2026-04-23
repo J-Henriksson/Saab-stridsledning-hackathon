@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
 import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
@@ -8,7 +8,7 @@ import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin, PenLine, Crosshair, Swords } from "lucide-react";
 
-import { BASE_COORDS, MAP_STYLE } from "./map/constants";
+import { BASE_COORDS, SWEDEN_CENTER, INITIAL_ZOOM, MAP_STYLE } from "./map/constants";
 import { SelectedEntity } from "./map/helpers";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
@@ -21,6 +21,8 @@ import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
 import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
+import { UnitsLayer } from "./map/UnitsLayer";
+import { UnitDetailPanel } from "./map/UnitDetailPanel";
 import { Base, AircraftStatus } from "@/types/game";
 
 interface PlacingMode {
@@ -53,6 +55,11 @@ export default function MapPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const allUnits = useMemo(
+    () => [...state.bases.flatMap((b) => b.units), ...state.deployedUnits],
+    [state.bases, state.deployedUnits]
+  );
+
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
       ? state.bases.find((b) => b.id === selected.baseId)
@@ -74,6 +81,10 @@ export default function MapPage() {
       : undefined;
 
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
+
+  const selectedUnit = selected?.kind === "unit"
+    ? allUnits.find((u) => u.id === selected.unitId)
+    : undefined;
 
   useEffect(() => {
     isFollowing.current = false;
@@ -228,12 +239,20 @@ export default function MapPage() {
               onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
             />
 
+            <UnitsLayer
+              units={allUnits}
+              onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
+              selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+            />
+
             {Object.keys(BASE_COORDS).map((id) => (
               <BaseMarker
                 key={id}
                 id={id}
                 base={state.bases.find((b) => b.id === id)}
-                isSelected={selected?.kind === "base" && selected.baseId === id}
+                isSelected={
+                  (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === id
+                }
                 onClick={() => setSelected({ kind: "base", baseId: id })}
               />
             ))}
@@ -311,15 +330,24 @@ export default function MapPage() {
               {/* Panel header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
-                  <div className="flex items-center gap-1.5">
-                    {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
-                      selected.kind === "enemy_base"
-                        ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
-                        : <Swords className="h-3.5 w-3.5 text-red-300" />
-                    )}
-                    <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
+                  {selectedUnit ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
+                          selected.kind === "enemy_base"
+                            ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
+                            : <Swords className="h-3.5 w-3.5 text-red-300" />
+                        )}
+                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle?.main}</div>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle?.sub}</div>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={() => setSelected(null)}
@@ -329,7 +357,13 @@ export default function MapPage() {
                 </button>
               </div>
 
-              {selectedAircraft ? (
+              {selectedUnit ? (
+                <UnitDetailPanel
+                  unit={selectedUnit}
+                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
+                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+                />
+              ) : selectedAircraft && selected.kind === "aircraft" ? (
                 <AircraftDetailPanel
                   aircraft={selectedAircraft}
                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
