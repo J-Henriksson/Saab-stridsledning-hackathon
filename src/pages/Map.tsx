@@ -14,6 +14,7 @@ import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
 import { AircraftLayer } from "./map/AircraftLayer";
 import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
+import { WindLayer } from "./map/WindLayer";
 import { Base, AircraftStatus } from "@/types/game";
 
 export default function MapPage() {
@@ -139,6 +140,9 @@ export default function MapPage() {
               />
             ))}
           </MapGL>
+
+          {/* Wind particle flow field */}
+          <WindLayer />
 
           {/* Scanline CRT overlay */}
           <div
