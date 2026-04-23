@@ -225,7 +225,15 @@ export type GameAction =
   | { type: "PLAN_DELETE_FRIENDLY_MARKER"; id: string }
   | { type: "PLAN_ADD_FRIENDLY_ENTITY"; entity: Omit<FriendlyEntity, "id" | "createdAt"> }
   | { type: "PLAN_EDIT_FRIENDLY_ENTITY"; id: string; updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">> }
-  | { type: "PLAN_DELETE_FRIENDLY_ENTITY"; id: string };
+  | { type: "PLAN_DELETE_FRIENDLY_ENTITY"; id: string }
+  | { type: "DEPLOY_UNIT"; unitId: string; destination: import("./units").GeoPosition; speed?: number }
+  | { type: "TRANSFER_UNIT"; unitId: string; toBaseId: BaseType }
+  | { type: "RECALL_UNIT"; unitId: string; toBaseId?: BaseType }
+  | { type: "RELOCATE_UNIT"; unitId: string; destination: import("./units").GeoPosition }
+  | { type: "CLASSIFY_CONTACT"; unitId: string; affiliation: import("./units").Affiliation }
+  | { type: "STORE_UNIT"; unitId: string; baseId: BaseType }
+  | { type: "SET_AD_STATE"; unitId: string; deployedState: "emplaced" | "stowed" }
+  | { type: "SET_RADAR_EMITTING"; unitId: string; emitting: boolean };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 export interface Aircraft {
@@ -276,6 +284,7 @@ export interface Base {
   name: string;
   type: "huvudbas" | "sidobas" | "reservbas";
   aircraft: Aircraft[];
+  units: import("./units").Unit[];
   spareParts: SparePartStock[];
   personnel: PersonnelGroup[];
   fuel: number;
@@ -292,6 +301,7 @@ export interface GameState {
   second: number;
   phase: ScenarioPhase;
   bases: Base[];
+  deployedUnits: import("./units").Unit[];
   successfulMissions: number;
   failedMissions: number;
   events: GameEvent[];
@@ -315,7 +325,14 @@ export type AARActionType =
   | "UTFALL_APPLIED"
   | "SPARE_PART_USED"
   | "FAULT_NMC"
-  | "HANGAR_CONFIRM";
+  | "HANGAR_CONFIRM"
+  | "UNIT_DEPLOYED"
+  | "UNIT_RECALLED"
+  | "UNIT_TRANSFERRED"
+  | "UNIT_DESTROYED"
+  | "CONTACT_CLASSIFIED"
+  | "UNIT_RELOCATED"
+  | "UNIT_FUEL_LOW";
 
 export type RiskLevel = "low" | "medium" | "high" | "catastrophic";
 
@@ -325,8 +342,10 @@ export interface GameEvent {
   type: "info" | "warning" | "critical" | "success";
   message: string;
   base?: BaseType;
-  // AAR fields
+  /** @deprecated use unitId. Kept in sync automatically for aircraft events. */
   aircraftId?: string;
+  unitId?: string;
+  unitCategory?: import("./units").UnitCategory;
   actionType?: AARActionType;
   riskLevel?: RiskLevel;
   healthAtDecision?: number;
@@ -359,3 +378,5 @@ export interface ATOOrder {
   /** Estimated fuel percentage on arrival at destination */
   fuelOnArrival?: number;
 }
+
+export type { Unit, UnitCategory, Affiliation, AircraftUnit, DroneUnit, AirDefenseUnit, GroundVehicleUnit, RadarUnit, GeoPosition, Movement, MovementState } from "./units";
