@@ -7,7 +7,9 @@
       "Bash(npx tsc:*)",
       "Bash(grep -n \"w-\\\\[.*px\\\\]\" /home/augustus/Projects/hackathons/saab/final-version/smart-airbase-system/src/components/game/*.tsx)",
       "Bash(git checkout *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(npx vite *)"
     ]
   }
 }

@@ -40,7 +40,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
         `Bränsle vid ${base.name} är ${base.fuel.toFixed(0)}%. Risk för att inte kunna genomföra planerade uppdrag.`,
         "warning",
         base.fuel < 15 ? "critical" : "high",
-        { type: "ADVANCE_PHASE" }, // placeholder
+        { type: "ADVANCE_HOUR" }, // placeholder
         { expectedBenefit: "Säkerställ bränsletillgång", tradeoff: "Kan kräva omplanering av uppdrag" },
       ));
     }
@@ -53,7 +53,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
           `Bara ${part.quantity}/${part.maxQuantity} ${part.name} kvar. Beställ påfyllning.`,
           "resupply",
           "high",
-          { type: "ADVANCE_PHASE" },
+          { type: "ADVANCE_HOUR" },
           { affectedAssets: [part.id], expectedBenefit: "Undvik underhållsstopp", tradeoff: `Leveranstid: ${part.resupplyDays} dagar` },
         ));
       }
@@ -82,7 +82,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
         `${waitingForBay.length} flygplan väntar på underhållsplats, alla ${base.maintenanceBays.total} platser upptagna.`,
         "rebalance",
         "high",
-        { type: "ADVANCE_PHASE" },
+        { type: "ADVANCE_HOUR" },
         { affectedAssets: waitingForBay.map((a) => a.id), tradeoff: "Kan kräva omfördelning av flygplan mellan baser" },
       ));
     }
@@ -102,7 +102,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
         `${order.label} kräver ${order.requiredCount} flygplan, bara ${availableAc} tillgängliga vid ${order.launchBase}.`,
         "reassign",
         "high",
-        { type: "ADVANCE_PHASE" },
+        { type: "ADVANCE_HOUR" },
         { affectedMissions: [order.id], tradeoff: "Kan behöva omplanera bas eller typ" },
       ));
     }
@@ -115,7 +115,7 @@ export function generateRecommendations(state: GameState): Recommendation[] {
       "Policy: Kannibalisering (plundring) är förbjuden denna dag.",
       "warning",
       "medium",
-      { type: "ADVANCE_PHASE" },
+      { type: "ADVANCE_HOUR" },
       { expectedBenefit: "Informativ", tradeoff: "Kan begränsa underhållsmöjligheter" },
     ));
   }
@@ -151,7 +151,7 @@ function generateFleetOptimizationRecs(state: GameState): Recommendation[] {
         `${top.map((ac) => ac.tailNumber).join(", ")} är i bäst skick — hög hälsa och god servicemarginal.`,
         "schedule",
         "medium",
-        { type: "ADVANCE_PHASE" },
+        { type: "ADVANCE_HOUR" },
         { affectedAssets: top.map((ac) => ac.id), expectedBenefit: "Maximera operativ tillgänglighet" },
       ));
     }
@@ -163,7 +163,7 @@ function generateFleetOptimizationRecs(state: GameState): Recommendation[] {
         `${needService.slice(0, 3).map((ac) => `${ac.tailNumber} (${ac.hoursToService}h)`).join(", ")} är nära 100h-service — undvik långa uppdrag.`,
         "maintenance",
         urgent ? "high" : "medium",
-        { type: "ADVANCE_PHASE" },
+        { type: "ADVANCE_HOUR" },
         { affectedAssets: needService.map((ac) => ac.id), tradeoff: "Flygplan otillgängligt under service" },
       ));
     }
@@ -187,7 +187,7 @@ function generateBayBalanceRecs(state: GameState): Recommendation[] {
         `${occupied}/${total} platser upptagna. Prioritera snabba LRU-jobb för att frigöra kapacitet.`,
         "rebalance",
         "high",
-        { type: "ADVANCE_PHASE" },
+        { type: "ADVANCE_HOUR" },
         { expectedBenefit: "Frigör hangarkapacitet", tradeoff: "Skjut upp icke-kritiska jobb" },
       ));
     } else if (pct < 0.2 && total > 1) {
@@ -200,7 +200,7 @@ function generateBayBalanceRecs(state: GameState): Recommendation[] {
           `${occupied}/${total} platser används — bra tillfälle för förebyggande service (${nearService.length} flygplan nära service-intervall).`,
           "maintenance",
           "medium",
-          { type: "ADVANCE_PHASE" },
+          { type: "ADVANCE_HOUR" },
           { affectedAssets: nearService.map((ac) => ac.id), expectedBenefit: "Optimera serviceschema" },
         ));
       }
@@ -210,7 +210,7 @@ function generateBayBalanceRecs(state: GameState): Recommendation[] {
           `Inga flygplan i underhåll vid ${base.name} under krigsläge — bör preventiv service schemaläggas?`,
           "warning",
           "high",
-          { type: "ADVANCE_PHASE" },
+          { type: "ADVANCE_HOUR" },
         ));
       }
     }

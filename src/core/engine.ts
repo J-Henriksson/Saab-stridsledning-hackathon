@@ -1,9 +1,10 @@
-import type { GameState, GameAction, GameEvent, AircraftStatus, MissionType, RiskLevel } from "@/types/game";
+import type { GameState, GameAction, GameEvent, AircraftStatus, MissionType, RiskLevel, BaseType } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import { initialGameState } from "@/data/initialGameState";
-import { PHASE_ORDER, getNextPhase, isLastPhase, getPhaseDefinition } from "@/data/config/phases";
-import { MAINTENANCE_CREW_PER_AIRCRAFT } from "@/data/config/capacities";
-import { handlePhase } from "./phases";
+import { MAINTENANCE_CREW_PER_AIRCRAFT, FUEL_DRAIN_RATE } from "@/data/config/capacities";
+import { getPhaseForDay } from "@/data/config/scenario";
+import { generateATOOrders } from "@/data/initialGameState";
+import { generateRecommendations } from "./recommendations";
 import { validateAction } from "./validators";
 import { uuid } from "./uuid";
 
@@ -44,8 +45,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 
   switch (action.type) {
-    case "ADVANCE_PHASE":
-      return handleAdvancePhase(state);
+    case "ADVANCE_HOUR":
+      return handleAdvanceHour(state);
+
+    case "SET_GAME_SPEED":
+      return { ...state, gameSpeed: action.speed };
+
+    case "TOGGLE_PAUSE":
+      return { ...state, isRunning: !state.isRunning };
 
     case "ASSIGN_AIRCRAFT":
       return handleAssignAircraft(state, action.orderId, action.aircraftIds);
@@ -156,6 +163,238 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+function handleAdvanceHour(state: GameState): GameState {
+  const newHour = state.hour + 1;
+  const dayRollover = newHour >= 24;
+  const nextDay = dayRollover ? state.day + 1 : state.day;
+  const nextHour = dayRollover ? 6 : newHour;
+  const nextPhase = getPhaseForDay(nextDay);
+
+  const newEvents: GameEvent[] = [];
+
+  if (nextPhase !== state.phase) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+      type: "critical",
+      message: `Fas ändrad till ${nextPhase}`,
+    });
+  }
+
+  // Fuel drain + per-aircraft health wear
+  const fuelDrain = FUEL_DRAIN_RATE[nextPhase] ?? 0.5;
+  let updatedBases = state.bases.map((base) => {
+    const anyOnMission = base.aircraft.some((ac) => ac.status === "on_mission");
+    const drain = anyOnMission ? fuelDrain : 0;
+    return {
+      ...base,
+      fuel: Math.max(0, base.fuel - drain),
+      aircraft: base.aircraft.map((ac) => {
+        let wear = 0;
+        if (ac.status === "ready" || ac.status === "allocated") {
+          wear = Math.floor(Math.random() * 6) + 5;
+        } else if (ac.status === "on_mission") {
+          wear = Math.floor(Math.random() * 11) + 20;
+        }
+        const consumesServiceHours = ["ready", "allocated", "in_preparation", "awaiting_launch", "on_mission", "returning"];
+        const newHoursToService = consumesServiceHours.includes(ac.status)
+          ? Math.max(0, ac.hoursToService - 1)
+          : ac.hoursToService;
+        if (wear === 0) return { ...ac, hoursToService: newHoursToService };
+        const newHealth = Math.max(0, (ac.health ?? 100) - wear);
+        if (newHealth === 0 && (ac.status === "ready" || ac.status === "allocated")) {
+          return { ...ac, health: 0, hoursToService: newHoursToService, status: "unavailable" as AircraftStatus };
+        }
+        return { ...ac, health: newHealth, hoursToService: newHoursToService };
+      }),
+    };
+  });
+
+  // Tick maintenance timers
+  updatedBases = updatedBases.map((base) => {
+    let completedCount = 0;
+    const updatedAircraft = base.aircraft.map((ac) => {
+      if (ac.status === "under_maintenance" && ac.maintenanceTimeRemaining) {
+        const remaining = ac.maintenanceTimeRemaining - 1;
+        if (remaining <= 0) {
+          completedCount++;
+          newEvents.push({
+            id: uuid(),
+            timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+            type: "success",
+            message: `${ac.tailNumber} underhåll klart — nu operativ`,
+            base: base.id,
+          });
+          return {
+            ...ac,
+            status: "ready" as AircraftStatus,
+            health: 100,
+            hoursToService: 80,
+            maintenanceTimeRemaining: undefined,
+            maintenanceType: undefined,
+            maintenanceTask: undefined,
+          };
+        }
+        return { ...ac, maintenanceTimeRemaining: remaining };
+      }
+      return ac;
+    });
+    const maintenanceCount = updatedAircraft.filter((a) => a.status === "under_maintenance").length;
+    const personnel = completedCount > 0
+      ? base.personnel.map((p) => ({
+          ...p,
+          available: Math.min(p.total, p.available + completedCount * (MAINTENANCE_CREW_PER_AIRCRAFT[p.id] ?? 0)),
+        }))
+      : base.personnel;
+    return {
+      ...base,
+      aircraft: updatedAircraft,
+      personnel,
+      maintenanceBays: { ...base.maintenanceBays, occupied: Math.min(maintenanceCount, base.maintenanceBays.total) },
+    };
+  });
+
+  // Generate new ATO on day rollover
+  const newATOOrders = dayRollover ? generateATOOrders(nextDay, nextPhase) : state.atoOrders;
+
+  // Mark completed orders and collect returning aircraft
+  const returningAircraft: { aircraftId: string; baseId: string }[] = [];
+  const updatedATOOrders = newATOOrders.map((o) => {
+    if (o.status === "dispatched" && nextHour >= o.endHour) {
+      if (o.missionType !== "REBASE") {
+        o.assignedAircraft.forEach((acId) =>
+          returningAircraft.push({ aircraftId: acId, baseId: o.launchBase })
+        );
+      }
+      return { ...o, status: "completed" as const };
+    }
+    return o;
+  });
+
+  // Handle REBASE completions
+  const rebaseTransfers: { aircraftId: string; fromBaseId: string; toBaseId: string }[] = [];
+  updatedBases.forEach((base) => {
+    base.aircraft.forEach((ac) => {
+      if (
+        ac.status === "on_mission" &&
+        ac.currentMission === "REBASE" &&
+        ac.rebaseTarget &&
+        ac.missionEndHour !== undefined &&
+        nextHour >= ac.missionEndHour
+      ) {
+        rebaseTransfers.push({ aircraftId: ac.id, fromBaseId: base.id, toBaseId: ac.rebaseTarget });
+      }
+    });
+  });
+
+  let basesAfterRebases = updatedBases;
+  for (const transfer of rebaseTransfers) {
+    const srcAircraft = basesAfterRebases
+      .find((b) => b.id === transfer.fromBaseId)
+      ?.aircraft.find((a) => a.id === transfer.aircraftId);
+    if (!srcAircraft) continue;
+    const arrivedAircraft = {
+      ...srcAircraft,
+      currentBase: transfer.toBaseId as BaseType,
+      status: "ready" as AircraftStatus,
+      currentMission: undefined,
+      missionEndHour: undefined,
+      rebaseTarget: undefined,
+    };
+    basesAfterRebases = basesAfterRebases.map((base) => {
+      if (base.id === transfer.fromBaseId) {
+        return { ...base, aircraft: base.aircraft.filter((a) => a.id !== transfer.aircraftId) };
+      }
+      if (base.id === transfer.toBaseId) {
+        return { ...base, aircraft: [...base.aircraft, arrivedAircraft] };
+      }
+      return base;
+    });
+  }
+
+  // Set returning aircraft
+  const basesAfterReturn = basesAfterRebases.map((base) => ({
+    ...base,
+    aircraft: base.aircraft.map((ac) => {
+      if (ac.status === "on_mission") {
+        const fromATO = returningAircraft.some((r) => r.aircraftId === ac.id && r.baseId === base.id);
+        const fromDrop = ac.missionEndHour !== undefined && nextHour >= ac.missionEndHour;
+        if (fromATO || fromDrop) {
+          if (fromDrop && !fromATO) {
+            returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
+          }
+          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
+        }
+      }
+      return ac;
+    }),
+  }));
+
+  if (returningAircraft.length > 0) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+      type: "info" as const,
+      message: `${returningAircraft.length} flygplan återvänder — mottagningskontroll krävs`,
+    });
+  }
+
+  // Resource checks every hour
+  for (const base of basesAfterReturn) {
+    if (base.fuel < 20) {
+      newEvents.push({
+        id: uuid(),
+        timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+        type: "critical",
+        message: `KRITISK bränslenivå vid ${base.id}: ${base.fuel.toFixed(0)}%`,
+        base: base.id,
+      });
+    }
+    for (const part of base.spareParts) {
+      if (part.quantity === 0) {
+        newEvents.push({
+          id: uuid(),
+          timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+          type: "critical",
+          message: `SLUT PÅ ${part.name} vid ${base.id}`,
+          base: base.id,
+        });
+      }
+    }
+  }
+
+  if (dayRollover) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+      type: "info",
+      message: `Dag ${nextDay} börjar — ATO uppdaterad`,
+    });
+  }
+
+  const newLandingChecks = returningAircraft.map((r) => ({
+    aircraftId: r.aircraftId,
+    baseId: r.baseId as BaseType,
+  }));
+
+  const nextStatePreRec: GameState = {
+    ...state,
+    day: nextDay,
+    hour: nextHour,
+    phase: nextPhase,
+    bases: basesAfterReturn,
+    atoOrders: updatedATOOrders,
+    pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],
+    events: [...newEvents, ...state.events].slice(0, 200),
+  };
+
+  // Refresh recommendations every 3 game-hours
+  if (nextHour % 3 === 0) {
+    return { ...nextStatePreRec, recommendations: generateRecommendations(nextStatePreRec) };
+  }
+  return nextStatePreRec;
+}
+
 const REBASE_TRANSIT_HOURS = 2;
 
 function handleRebaseAircraft(
@@ -220,38 +459,6 @@ function handleRebaseAircraft(
       decisionContext: "Ombasering utförd manuellt",
     }
   );
-}
-
-function handleAdvancePhase(state: GameState): GameState {
-  let nextState = state;
-  const MAX_AUTO = 14; // safety limit to prevent infinite loops
-
-  for (let i = 0; i < MAX_AUTO; i++) {
-    // Run current phase logic
-    nextState = handlePhase(nextState);
-
-    // Move to next phase
-    if (isLastPhase(nextState.turnPhase)) {
-      nextState = {
-        ...nextState,
-        turnPhase: PHASE_ORDER[0],
-        turnNumber: nextState.turnNumber + 1,
-      };
-    } else {
-      const next = getNextPhase(nextState.turnPhase);
-      if (next) {
-        nextState = { ...nextState, turnPhase: next };
-      }
-    }
-
-    // Stop if the new phase requires player interaction (not auto-advance)
-    const nextPhaseDef = getPhaseDefinition(nextState.turnPhase);
-    if (!nextPhaseDef.autoAdvance) {
-      break;
-    }
-  }
-
-  return nextState;
 }
 
 function handleAssignAircraft(state: GameState, orderId: string, aircraftIds: string[]): GameState {

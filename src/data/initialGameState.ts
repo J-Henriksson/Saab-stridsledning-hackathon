@@ -324,8 +324,8 @@ export const initialGameState: GameState = {
   events: [
     { id: "init", timestamp: "Dag 1 06:00", type: "info", message: "Systemet initierat. ATO mottagen. Fredstillstånd." },
   ] as GameEvent[],
-  turnPhase: "InitializeState",
-  turnNumber: 1,
+  isRunning: false,
+  gameSpeed: 1,
   recommendations: [],
   maintenanceTasks: [],
   pendingLandingChecks: [],

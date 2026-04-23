@@ -6,9 +6,11 @@ export interface ValidationResult {
   reason?: string;
 }
 
-// Actions that are always allowed regardless of current phase
+// Actions that are always allowed
 const ALWAYS_ALLOWED: GameAction["type"][] = [
-  "ADVANCE_PHASE",
+  "ADVANCE_HOUR",
+  "SET_GAME_SPEED",
+  "TOGGLE_PAUSE",
   "RESET_GAME",
   "SEND_MISSION_DROP",
   "APPLY_UTFALL_OUTCOME",
@@ -98,7 +100,9 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "PAUSE_MAINTENANCE":
     case "MARK_FAULT_NMC":
     case "CONSUME_SPARE_PART":
-    case "ADVANCE_PHASE":
+    case "ADVANCE_HOUR":
+    case "SET_GAME_SPEED":
+    case "TOGGLE_PAUSE":
     case "RESET_GAME":
       return { valid: true };
 

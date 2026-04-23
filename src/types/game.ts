@@ -58,23 +58,6 @@ export function isInMaintenance(status: AircraftStatus): boolean {
   return status === "under_maintenance" || status === "unavailable";
 }
 
-// ── 14-phase turn sequence ────────────────────────────────────────────────
-export type TurnPhase =
-  | "InitializeState"
-  | "InterpretATO"
-  | "ReviewResources"
-  | "ChooseGroupingStrategy"
-  | "SetManningSchedule"
-  | "EstimateNeeds"
-  | "BuildTimetable"
-  | "AllocateAircraft"
-  | "OrderPreparation"
-  | "PrepareStatusCards"
-  | "ExecutePreparation"
-  | "ReportOutcome"
-  | "UpdateMaintenancePlan"
-  | "IncrementTime";
-
 // ── Base zones ────────────────────────────────────────────────────────────
 export type BaseZoneType =
   | "runway"
@@ -154,7 +137,9 @@ export interface ScenarioDay {
 
 // ── Game actions (discriminated union) ────────────────────────────────────
 export type GameAction =
-  | { type: "ADVANCE_PHASE" }
+  | { type: "ADVANCE_HOUR" }
+  | { type: "SET_GAME_SPEED"; speed: number }
+  | { type: "TOGGLE_PAUSE" }
   | { type: "ASSIGN_AIRCRAFT"; orderId: string; aircraftIds: string[] }
   | { type: "MOVE_AIRCRAFT"; aircraftId: string; fromZone: string; toZone: string; baseId: BaseType }
   | { type: "CREATE_ATO_ORDER"; order: Omit<ATOOrder, "id" | "status" | "assignedAircraft"> }
@@ -243,8 +228,8 @@ export interface GameState {
   failedMissions: number;
   events: GameEvent[];
   atoOrders: ATOOrder[];
-  turnPhase: TurnPhase;
-  turnNumber: number;
+  isRunning: boolean;
+  gameSpeed: number;
   recommendations: Recommendation[];
   maintenanceTasks: MaintenanceTask[];
   pendingLandingChecks: { aircraftId: string; baseId: BaseType }[];

@@ -1,28 +1,23 @@
-import type { GameState, TurnPhase } from "@/types/game";
+import type { ReactNode } from "react";
+import type { GameState } from "@/types/game";
 import { isMissionCapable, isInMaintenance } from "@/types/game";
-import { AlertTriangle, CheckCircle, Fuel, Package, Users, Wrench, Zap } from "lucide-react";
+import { CheckCircle, Fuel, Package, Users } from "lucide-react";
 
 interface PhasePanelProps {
   state: GameState;
 }
 
 export function PhasePanel({ state }: PhasePanelProps) {
-  switch (state.turnPhase) {
-    case "ReviewResources":
-      return <ResourceReview state={state} />;
-    case "AllocateAircraft":
-      return <AllocationSummary state={state} />;
-    case "ExecutePreparation":
-      return <ExecutionSummary state={state} />;
-    case "ReportOutcome":
-      return <OutcomeReport state={state} />;
-    default:
-      return null;
-  }
+  return (
+    <div className="space-y-2">
+      <ResourceReview state={state} />
+      <OutcomeReport state={state} />
+    </div>
+  );
 }
 
 function ResourceReview({ state }: { state: GameState }) {
-  const warnings: { icon: React.ReactNode; message: string; severity: "critical" | "warning" | "ok" }[] = [];
+  const warnings: { icon: ReactNode; message: string; severity: "critical" | "warning" | "ok" }[] = [];
 
   for (const base of state.bases) {
     if (base.fuel < 20) {
@@ -71,77 +66,6 @@ function ResourceReview({ state }: { state: GameState }) {
           {w.message}
         </div>
       ))}
-    </div>
-  );
-}
-
-function AllocationSummary({ state }: { state: GameState }) {
-  const pendingOrders = state.atoOrders.filter((o) => o.status === "pending");
-
-  return (
-    <div className="space-y-2">
-      <div className="text-[10px] font-mono font-bold" style={{ color: "hsl(218 15% 45%)" }}>
-        {pendingOrders.length} VÄNTANDE ORDER ATT TILLDELA
-      </div>
-      {pendingOrders.map((order) => {
-        const base = state.bases.find((b) => b.id === order.launchBase);
-        const available = base?.aircraft.filter(
-          (ac) => isMissionCapable(ac.status) && (!order.aircraftType || ac.type === order.aircraftType)
-        ).length ?? 0;
-        const ok = available >= order.requiredCount;
-
-        return (
-          <div
-            key={order.id}
-            className="flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-mono"
-            style={{
-              background: ok ? "hsl(152 60% 32% / 0.06)" : "hsl(353 74% 47% / 0.06)",
-              border: `1px solid ${ok ? "hsl(152 60% 32% / 0.2)" : "hsl(353 74% 47% / 0.2)"}`,
-            }}
-          >
-            <span className="font-bold" style={{ color: "hsl(220 63% 18%)" }}>
-              {order.missionType} — {order.label}
-            </span>
-            <span style={{ color: ok ? "hsl(152 60% 32%)" : "hsl(353 74% 42%)" }}>
-              {available}/{order.requiredCount} MC
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ExecutionSummary({ state }: { state: GameState }) {
-  const recentEvents = state.events.filter((e) => e.type === "warning" || e.type === "critical").slice(0, 5);
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 text-[10px] font-mono font-bold" style={{ color: "hsl(218 15% 45%)" }}>
-        <Zap className="h-3.5 w-3.5" />
-        KLARGÖRINGSRESULTAT
-      </div>
-      {recentEvents.length === 0 ? (
-        <div className="flex items-center gap-2 p-3 rounded-lg" style={{ background: "hsl(152 60% 32% / 0.08)", border: "1px solid hsl(152 60% 32% / 0.2)" }}>
-          <CheckCircle className="h-4 w-4" style={{ color: "hsl(152 60% 38%)" }} />
-          <span className="text-[11px] font-mono" style={{ color: "hsl(152 60% 28%)" }}>Inga avvikelser</span>
-        </div>
-      ) : (
-        recentEvents.map((e) => (
-          <div
-            key={e.id}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-mono"
-            style={{
-              background: e.type === "critical" ? "hsl(353 74% 47% / 0.08)" : "hsl(42 64% 53% / 0.08)",
-              border: `1px solid ${e.type === "critical" ? "hsl(353 74% 47% / 0.2)" : "hsl(42 64% 53% / 0.2)"}`,
-              color: e.type === "critical" ? "hsl(353 74% 40%)" : "hsl(42 64% 36%)",
-            }}
-          >
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{e.message}</span>
-          </div>
-        ))
-      )}
     </div>
   );
 }

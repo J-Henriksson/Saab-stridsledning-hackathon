@@ -9,8 +9,11 @@ export interface GameEngine {
   dispatch: (action: GameAction) => void;
   importATOBatch: (orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[], sourceFile: string, riskCount: number) => void;
 
-  // Convenience dispatchers matching old useGameState API
-  advanceTurn: () => void;
+  // Clock controls
+  togglePause: () => void;
+  setGameSpeed: (speed: number) => void;
+
+  // Convenience dispatchers
   startMaintenance: (baseId: string, aircraftId: string) => void;
   sendOnMission: (baseId: string, aircraftId: string, mission: string) => void;
   assignAircraftToOrder: (orderId: string, aircraftIds: string[]) => void;
@@ -38,7 +41,8 @@ export interface GameEngine {
 export function useGameEngine(): GameEngine {
   const [state, dispatch] = useReducer(gameReducer, initialGameState);
 
-  const advanceTurn = useCallback(() => dispatch({ type: "ADVANCE_PHASE" }), []);
+  const togglePause = useCallback(() => dispatch({ type: "TOGGLE_PAUSE" }), []);
+  const setGameSpeed = useCallback((speed: number) => dispatch({ type: "SET_GAME_SPEED", speed }), []);
   const resetGame = useCallback(() => dispatch({ type: "RESET_GAME" }), []);
 
   const startMaintenance = useCallback((baseId: string, aircraftId: string) => {
@@ -173,14 +177,15 @@ export function useGameEngine(): GameEngine {
 
   return useMemo(() => ({
     state, dispatch,
-    advanceTurn, startMaintenance, sendOnMission, assignAircraftToOrder,
+    togglePause, setGameSpeed,
+    startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
     applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
     consumeSparePart, importATOBatch, rebaseAircraft,
   }), [
-    state, advanceTurn, startMaintenance, sendOnMission, assignAircraftToOrder,
+    state, togglePause, setGameSpeed, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
     applyUtfallOutcome, completeLandingCheck, resetGame, getResourceSummary,
     createATOOrder, editATOOrder, deleteATOOrder,

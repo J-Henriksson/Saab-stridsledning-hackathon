@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { useGameEngine, type GameEngine } from "@/hooks/useGameEngine";
+import { useGameClock } from "@/hooks/useGameClock";
 import { SetupScreen } from "@/components/setup/SetupScreen";
 import { applySetupOverrides } from "@/utils/applySetupOverrides";
 import { initialGameState } from "@/data/initialGameState";
@@ -9,6 +10,7 @@ const GameContext = createContext<GameEngine | null>(null);
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const engine = useGameEngine();
+  useGameClock(engine.state, engine.dispatch);
   const [gameStarted, setGameStarted] = useState(false);
 
   const handleStartDefault = useCallback(() => {

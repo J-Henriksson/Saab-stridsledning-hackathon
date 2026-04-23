@@ -1,17 +1,19 @@
 import { GameState } from "@/types/game";
 import { PhaseBadge } from "./StatusBadge";
-import { getPhaseDefinition } from "@/data/config/phases";
-import { Clock, RotateCcw, LayoutDashboard, Map, ChevronRight } from "lucide-react";
+import { Clock, RotateCcw, LayoutDashboard, Map, ChevronRight, Play, Pause } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
+const SPEEDS = [1, 2, 5, 10];
+
 interface TopBarProps {
   state: GameState;
-  onAdvanceTurn: () => void;
+  onTogglePause: () => void;
+  onSetSpeed: (speed: number) => void;
   onReset: () => void;
 }
 
-export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
+export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProps) {
   const totalAircraft = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
   const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
   const mcPct = totalAircraft > 0 ? Math.round((mcAircraft / totalAircraft) * 100) : 0;
@@ -90,9 +92,6 @@ export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
           <span className="font-mono font-bold text-white">{String(state.hour).padStart(2, "0")}:00</span>
         </div>
         <PhaseBadge phase={state.phase} />
-        <span className="text-[9px] font-mono px-2 py-0.5 rounded-full" style={{ background: "hsl(42 64% 53% / 0.15)", color: "hsl(42 64% 62%)", border: "1px solid hsl(42 64% 53% / 0.3)" }}>
-          {getPhaseDefinition(state.turnPhase).shortLabel}
-        </span>
         <div className="flex items-center gap-2">
           <div className="text-right">
             <div className="text-[10px] font-mono" style={{ color: "hsl(200 12% 60%)" }}>MC-RATE</div>
@@ -113,18 +112,36 @@ export function TopBar({ state, onAdvanceTurn, onReset }: TopBarProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-2">
+        {/* Speed selector */}
+        <div className="flex items-center gap-0.5">
+          {SPEEDS.map((s) => (
+            <button
+              key={s}
+              onClick={() => onSetSpeed(s)}
+              className="px-2 py-1 text-[10px] font-mono font-bold rounded transition-all duration-100"
+              style={state.gameSpeed === s
+                ? { background: "hsl(42 64% 53% / 0.3)", color: "hsl(42 64% 70%)", border: "1px solid hsl(42 64% 53% / 0.6)" }
+                : { background: "transparent", color: "hsl(200 12% 55%)", border: "1px solid hsl(200 12% 30%)" }
+              }
+            >
+              {s}×
+            </button>
+          ))}
+        </div>
+        {/* Play / Pause */}
         <button
-          onClick={onAdvanceTurn}
-          className="flex items-center gap-2 px-4 py-2 text-[11px] font-mono font-bold rounded-lg transition-all duration-150 hover:opacity-90 active:scale-95"
+          onClick={onTogglePause}
+          className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-bold rounded-lg transition-all duration-150 hover:opacity-90 active:scale-95"
           style={{
-            background: "var(--gradient-gold)",
-            color: "hsl(220 63% 14%)",
-            boxShadow: "0 2px 12px hsl(42 64% 53% / 0.4)",
+            background: state.isRunning ? "hsl(353 74% 60% / 0.2)" : "var(--gradient-gold)",
+            color: state.isRunning ? "hsl(353 74% 70%)" : "hsl(220 63% 14%)",
+            border: state.isRunning ? "1px solid hsl(353 74% 60% / 0.5)" : "none",
+            boxShadow: state.isRunning ? "none" : "0 2px 12px hsl(42 64% 53% / 0.4)",
             letterSpacing: "0.12em",
           }}
         >
-          {getPhaseDefinition(state.turnPhase).buttonLabel ?? "NÄSTA FAS"}
-          <ChevronRight className="h-3.5 w-3.5" />
+          {state.isRunning ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          {state.isRunning ? "PAUSA" : "STARTA"}
         </button>
         <button
           onClick={onReset}

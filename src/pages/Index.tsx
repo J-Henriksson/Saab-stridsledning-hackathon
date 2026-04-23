@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { MaintenanceBays } from "@/components/game/MaintenanceBays";
-import { TurnPhaseTracker } from "@/components/game/TurnPhaseTracker";
 import { PhasePanel } from "@/components/game/PhasePanel";
 import { RecommendationFeed } from "@/components/game/RecommendationFeed";
 import { StatusKort } from "@/components/dashboard/StatusKort";
@@ -58,7 +57,7 @@ function Panel({ title, icon: Icon, children }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 const Index = () => {
   const {
-    state, advanceTurn, startMaintenance, sendOnMission, resetGame,
+    state, togglePause, setGameSpeed, startMaintenance, sendOnMission, resetGame,
     moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome,
     completeLandingCheck, applyRecommendation, dismissRecommendation,
     hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart,
@@ -191,7 +190,7 @@ const Index = () => {
 
   return (
     <div className="flex flex-col h-screen font-mono" style={{ background: "hsl(0 0% 100%)" }}>
-      <TopBar state={state} onAdvanceTurn={advanceTurn} onReset={resetGame} />
+      <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
 
       {/* ── COMMAND STRIP ── */}
       <div className="flex items-center gap-3 px-5 py-2 flex-shrink-0 border-b"
@@ -201,7 +200,7 @@ const Index = () => {
         <div className="flex items-center gap-1.5 text-[10px] font-mono pr-3 border-r"
           style={{ color: "rgba(215,222,225,0.38)", borderColor: "rgba(215,222,225,0.1)" }}>
           <Clock className="h-3 w-3" />
-          {dateStr} · T{state.turnNumber} · {String(state.hour).padStart(2, "0")}:00Z
+          {dateStr} · {String(state.hour).padStart(2, "0")}:00Z
         </div>
 
         {/* Base selector */}
@@ -374,7 +373,7 @@ const Index = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] font-mono" style={{ color: "rgba(215,222,225,0.4)" }}>
-                          T{state.turnNumber} · {String(state.hour).padStart(2,"0")}:00Z
+                          {String(state.hour).padStart(2,"0")}:00Z
                         </span>
                         {(() => {
                           const phaseStyle =
@@ -512,12 +511,6 @@ const Index = () => {
                     <RemainingLifeGraf bases={[selectedBase]} phase={state.phase} />
                   </Panel>
 
-                  {/* Turn tracker + Phase panel */}
-                  <TurnPhaseTracker
-                    currentPhase={state.turnPhase}
-                    turnNumber={state.turnNumber}
-                    onAdvancePhase={advanceTurn}
-                  />
                   <PhasePanel state={state} />
                 </>
                 );
