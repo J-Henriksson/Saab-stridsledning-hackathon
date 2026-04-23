@@ -48,10 +48,12 @@ function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircr
   const pos = BASE_COORDS[baseId];
   const units: Unit[] = [];
 
-  // Convert existing aircraft records to AircraftUnit variants
+  // Mirror existing aircraft records as AircraftUnit variants, preserving IDs
+  // so event logs and other references stay consistent across the two arrays.
   aircraftList.forEach((a) => {
     units.push(
       createAircraftUnit({
+        id: a.id,
         name: a.tailNumber,
         tailNumber: a.tailNumber,
         type: a.type,

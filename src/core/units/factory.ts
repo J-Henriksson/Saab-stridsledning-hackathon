@@ -23,10 +23,11 @@ export function createAircraftUnit(params: CommonParams & {
   tailNumber: string;
   role?: AircraftUnit["role"];
   fuel?: number;
+  id?: string;
 }): AircraftUnit {
   const affiliation = params.affiliation ?? "friend";
   return {
-    id: uuid(),
+    id: params.id ?? uuid(),
     category: "aircraft",
     type: params.type,
     tailNumber: params.tailNumber,
