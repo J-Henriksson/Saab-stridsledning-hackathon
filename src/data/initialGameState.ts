@@ -1,5 +1,14 @@
 import { GameState, Base, Aircraft, SparePartStock, PersonnelGroup, ATOOrder, BaseZone, AircraftType, GameEvent } from "@/types/game";
 import { ZONE_CAPACITIES } from "@/data/config/capacities";
+import {
+  createAircraftUnit,
+  createDroneUnit,
+  createAirDefenseUnit,
+  createGroundVehicleUnit,
+  createRadarUnit,
+} from "@/core/units/factory";
+import type { Unit } from "@/types/units";
+import { BASE_COORDS } from "@/pages/map/constants";
 
 const createSpareParts = (): SparePartStock[] => [
   { id: "radar", name: "Radar LRU", category: "Avionik", quantity: 4, maxQuantity: 6, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "base_stock", turnaround: 5, isReusable: true },
@@ -35,6 +44,74 @@ const createAircraft = (base: string, type: AircraftType, prefix: string, count:
     health: Math.round(Math.random() * 20 + 80), // start 80–100%
   }));
 
+function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircraft[]): Unit[] {
+  const pos = BASE_COORDS[baseId];
+  const units: Unit[] = [];
+
+  // Convert existing aircraft records to AircraftUnit variants
+  aircraftList.forEach((a) => {
+    units.push(
+      createAircraftUnit({
+        name: a.tailNumber,
+        tailNumber: a.tailNumber,
+        type: a.type,
+        role: a.type === "GlobalEye" ? "awacs" : a.type === "VLO_UCAV" ? "ucav" : "fighter",
+        position: pos,
+        currentBase: baseId,
+      })
+    );
+  });
+
+  // Drones (MOB, FOB_N only)
+  const droneCount = baseId === "FOB_S" ? 0 : 4;
+  for (let i = 0; i < droneCount; i++) {
+    units.push(createDroneUnit({
+      name: `${baseId}-DRN-${i + 1}`,
+      type: "ISR_DRONE",
+      position: pos,
+      currentBase: baseId,
+    }));
+  }
+
+  // Air defense
+  const adConfig: { type: "SAM_LONG" | "SAM_MEDIUM" }[] = {
+    MOB: [{ type: "SAM_LONG" as const }, { type: "SAM_LONG" as const }],
+    FOB_N: [{ type: "SAM_MEDIUM" as const }],
+    FOB_S: [{ type: "SAM_MEDIUM" as const }],
+  }[baseId];
+  adConfig.forEach((cfg, i) => {
+    units.push(createAirDefenseUnit({
+      name: `${baseId}-AD-${i + 1}`,
+      type: cfg.type,
+      position: pos,
+      currentBase: baseId,
+    }));
+  });
+
+  // Ground vehicles
+  const gvCount = { MOB: 6, FOB_N: 4, FOB_S: 2 }[baseId];
+  const gvTypes: ("LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER")[] =
+    ["LOGISTICS_TRUCK", "ARMORED_TRANSPORT", "FUEL_BOWSER"];
+  for (let i = 0; i < gvCount; i++) {
+    units.push(createGroundVehicleUnit({
+      name: `${baseId}-GV-${i + 1}`,
+      type: gvTypes[i % gvTypes.length],
+      position: pos,
+      currentBase: baseId,
+    }));
+  }
+
+  // Ground radar
+  units.push(createRadarUnit({
+    name: `${baseId}-RAD-1`,
+    type: "SEARCH_RADAR",
+    position: pos,
+    currentBase: baseId,
+  }));
+
+  return units;
+}
+
 const createZones = (baseType: "huvudbas" | "sidobas" | "reservbas", baseId: string): BaseZone[] => {
   const caps = ZONE_CAPACITIES[baseType];
   return Object.entries(caps).map(([zoneType, capacity]) => ({
@@ -47,14 +124,16 @@ const createZones = (baseType: "huvudbas" | "sidobas" | "reservbas", baseId: str
   }));
 };
 
+const MOB_AIRCRAFT: Aircraft[] = [
+  ...createAircraft("MOB", "GripenE", "GE", 12),
+];
+
 const MOB: Base = {
   id: "MOB",
   name: "Huvudbas MOB",
   type: "huvudbas",
-  aircraft: [
-    ...createAircraft("MOB", "GripenE", "GE", 12),
-  ],
-  units: [],
+  aircraft: MOB_AIRCRAFT,
+  units: seedUnitsForBase("MOB", MOB_AIRCRAFT),
   spareParts: createSpareParts(),
   personnel: createPersonnel(1),
   fuel: 95,
@@ -69,15 +148,17 @@ const MOB: Base = {
   zones: createZones("huvudbas", "MOB"),
 };
 
+const FOB_N_AIRCRAFT: Aircraft[] = [
+  ...createAircraft("FOB_N", "GripenE", "GE", 12),
+  ...createAircraft("FOB_N", "LOTUS", "LO", 2),
+];
+
 const FOB_N: Base = {
   id: "FOB_N",
   name: "Sidobas FOB Nord",
   type: "sidobas",
-  aircraft: [
-    ...createAircraft("FOB_N", "GripenE", "GE", 12),
-    ...createAircraft("FOB_N", "LOTUS", "LO", 2),
-  ],
-  units: [],
+  aircraft: FOB_N_AIRCRAFT,
+  units: seedUnitsForBase("FOB_N", FOB_N_AIRCRAFT),
   spareParts: createSpareParts().map((p) => ({
     ...p,
     quantity: Math.ceil(p.quantity * 0.6),
@@ -95,12 +176,14 @@ const FOB_N: Base = {
   zones: createZones("sidobas", "FOB_N"),
 };
 
+const FOB_S_AIRCRAFT: Aircraft[] = createAircraft("FOB_S", "GripenF_EA", "GF", 6);
+
 const FOB_S: Base = {
   id: "FOB_S",
   name: "Sidobas FOB Syd",
   type: "sidobas",
-  aircraft: createAircraft("FOB_S", "GripenF_EA", "GF", 6),
-  units: [],
+  aircraft: FOB_S_AIRCRAFT,
+  units: seedUnitsForBase("FOB_S", FOB_S_AIRCRAFT),
   spareParts: createSpareParts().map((p) => ({
     ...p,
     quantity: Math.ceil(p.quantity * 0.5),
