@@ -43,10 +43,30 @@ export interface FixedMilitaryAsset {
   lng: number;
   fillLevel?: number;
   protectionRadiusKm?: number;
+  areaOfResponsibilityKm?: number;
+}
+
+export type ProtectedAssetType =
+  | "critical_infrastructure"
+  | "civilian_population"
+  | "military_value"
+  | "logistics";
+
+export type ProtectedAssetPriority = "critical" | "high" | "medium" | "low";
+
+export interface ProtectedAsset {
+  id: string;
+  name: string;
+  type: ProtectedAssetType;
+  position: { lat: number; lng: number };
+  priority: ProtectedAssetPriority;
 }
 
 export interface OverlayLayerVisibility {
   militaryAssets: boolean;
   civilianInfrastructure: boolean;
   activeZones: boolean;
+  coverageRings: boolean;
+  showOverlaps: boolean;
+  showGaps: boolean;
 }

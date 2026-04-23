@@ -353,5 +353,8 @@ export const initialGameState: GameState = {
     militaryAssets: true,
     civilianInfrastructure: true,
     activeZones: true,
+    coverageRings: true,
+    showOverlaps: true,
+    showGaps: true,
   },
 };

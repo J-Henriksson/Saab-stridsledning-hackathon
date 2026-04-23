@@ -9,6 +9,7 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 59.49,
     lng: 17.75,
     protectionRadiusKm: 5,
+    areaOfResponsibilityKm: 30,
   },
   {
     id: "Amf1",
@@ -18,6 +19,7 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 59.24,
     lng: 18.24,
     protectionRadiusKm: 4,
+    areaOfResponsibilityKm: 25,
   },
   {
     id: "Musko",
@@ -27,6 +29,7 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 58.99,
     lng: 17.97,
     protectionRadiusKm: 8,
+    areaOfResponsibilityKm: 50,
   },
   {
     id: "ARN",
@@ -35,6 +38,7 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     type: "airport_civilian",
     lat: 59.6519,
     lng: 17.9237,
+    areaOfResponsibilityKm: 80,
   },
   {
     id: "BMA",
@@ -43,6 +47,7 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     type: "airport_civilian",
     lat: 59.3543,
     lng: 17.9415,
+    areaOfResponsibilityKm: 40,
   },
 ];
 
@@ -56,6 +61,7 @@ export const AMMO_DEPOTS: FixedMilitaryAsset[] = [
     lng: 17.077,
     fillLevel: 75,
     protectionRadiusKm: 3,
+    areaOfResponsibilityKm: 15,
   },
   {
     id: "AMMO_EKSJO",
@@ -66,5 +72,6 @@ export const AMMO_DEPOTS: FixedMilitaryAsset[] = [
     lng: 14.974,
     fillLevel: 60,
     protectionRadiusKm: 3,
+    areaOfResponsibilityKm: 15,
   },
 ];
