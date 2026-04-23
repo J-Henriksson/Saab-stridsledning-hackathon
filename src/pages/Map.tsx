@@ -17,7 +17,7 @@ import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { Base, AircraftStatus } from "@/types/game";
 
 export default function MapPage() {
-  const { state, togglePause, resetGame, dispatch } = useGame();
+  const { state, togglePause, setGameSpeed, resetGame, dispatch } = useGame();
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const mapRef = useRef<MapRef>(null);
@@ -79,7 +79,7 @@ export default function MapPage() {
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
-      <TopBar state={state} onTogglePause={togglePause} onReset={resetGame} />
+      <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
 
       {/* Sub-header */}
       <div className="border-b border-border bg-card px-6 py-2.5 flex items-center gap-3">

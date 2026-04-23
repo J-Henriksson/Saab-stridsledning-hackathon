@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { GameState } from "@/types/game";
 import { PhaseBadge } from "./StatusBadge";
 import { Pause, Play, RotateCcw, LayoutDashboard, Map } from "lucide-react";
@@ -7,28 +7,27 @@ import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
 const WEEKDAYS = ["SÖN", "MÅN", "TIS", "ONS", "TOR", "FRE", "LÖR"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAJ", "JUN", "JUL", "AUG", "SEP", "OKT", "NOV", "DEC"];
+const SPEEDS = [
+  { label: "▶", value: 1 },
+  { label: "▶▶", value: 60 },
+  { label: "▶▶▶", value: 360 },
+  { label: "▶▶▶▶", value: 3600 },
+];
 
-function useRealTimeClock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
 
 interface TopBarProps {
   state: GameState;
   onTogglePause: () => void;
+  onSetSpeed: (speed: number) => void;
   onReset: () => void;
 }
 
-export function TopBar({ state, onTogglePause, onReset }: TopBarProps) {
-  const now = useRealTimeClock();
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-  const dateStr = `${WEEKDAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`;
+export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProps) {
+  const hh = String(state.hour).padStart(2, "0");
+  const mm = String(state.minute).padStart(2, "0");
+  const ss = String(state.second).padStart(2, "0");
+  const today = useMemo(() => new Date(), []);
+  const dateStr = `${WEEKDAYS[today.getDay()]} ${today.getDate()} ${MONTHS[today.getMonth()]}`;
 
   const totalAircraft = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
   const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
@@ -115,10 +114,10 @@ export function TopBar({ state, onTogglePause, onReset }: TopBarProps) {
         </div>
       </div>
 
-      {/* Right: Date + clock + pause + reset */}
+      {/* Right: Date + clock + speed + pause + reset */}
       <div className="flex items-center gap-3">
         {/* Date */}
-        <span className="font-mono text-[11px] font-semibold tracking-widest" style={{ color: "hsl(200 12% 60%)" }}>
+        <span className="font-mono text-sm font-semibold tracking-widest" style={{ color: "hsl(200 12% 70%)" }}>
           {dateStr}
         </span>
 
@@ -126,6 +125,23 @@ export function TopBar({ state, onTogglePause, onReset }: TopBarProps) {
         <div className="flex items-baseline gap-0.5 font-mono font-black tabular-nums" style={{ color: "hsl(42 64% 62%)" }}>
           <span className="text-3xl leading-none">{hh}:{mm}</span>
           <span className="text-lg leading-none opacity-60">:{ss}</span>
+        </div>
+
+        {/* Speed selector */}
+        <div className="flex items-center gap-0.5 ml-1">
+          {SPEEDS.map(({ label, value }) => (
+            <button
+              key={value}
+              onClick={() => onSetSpeed(value)}
+              className="px-2 py-1 text-[10px] font-mono font-bold rounded transition-all duration-100"
+              style={state.gameSpeed === value
+                ? { background: "hsl(42 64% 53% / 0.3)", color: "hsl(42 64% 70%)", border: "1px solid hsl(42 64% 53% / 0.6)" }
+                : { background: "transparent", color: "hsl(200 12% 50%)", border: "1px solid hsl(200 12% 28%)" }
+              }
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Pause / Resume */}
