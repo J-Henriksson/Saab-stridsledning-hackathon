@@ -7,6 +7,10 @@ import { generateATOOrders } from "@/data/initialGameState";
 import { generateRecommendations } from "./recommendations";
 import { validateAction } from "./validators";
 import { uuid } from "./uuid";
+import type { Unit } from "@/types/units";
+import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
+import { setAffiliationOnSidc } from "@/core/units/sidc";
+import { enforceAirborneInvariant, advanceMovement, perHourFuelDrain } from "@/core/units/movement";
 
 function assessRisk(health: number): RiskLevel {
   if (health < 20) return "catastrophic";
@@ -16,17 +20,67 @@ function assessRisk(health: number): RiskLevel {
 }
 
 function addEvent(state: GameState, event: Omit<GameEvent, "id" | "timestamp">): GameState {
+  const mirrored: Omit<GameEvent, "id" | "timestamp"> = { ...event };
+  if (mirrored.unitId && mirrored.unitCategory === "aircraft" && !mirrored.aircraftId) {
+    mirrored.aircraftId = mirrored.unitId;
+  }
+  if (mirrored.aircraftId && !mirrored.unitId) {
+    mirrored.unitId = mirrored.aircraftId;
+    mirrored.unitCategory = "aircraft";
+  }
   return {
     ...state,
     events: [
       {
-        ...event,
+        ...mirrored,
         id: uuid(),
         timestamp: `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:00`,
       },
       ...state.events,
     ].slice(0, 200),
   };
+}
+
+interface UnitLocation {
+  unit: Unit;
+  baseId: BaseType | null; // null = deployedUnits
+}
+
+function findUnit(state: GameState, unitId: string): UnitLocation | null {
+  for (const base of state.bases) {
+    const u = base.units.find((u) => u.id === unitId);
+    if (u) return { unit: u, baseId: base.id };
+  }
+  const u = state.deployedUnits.find((u) => u.id === unitId);
+  if (u) return { unit: u, baseId: null };
+  return null;
+}
+
+function removeUnitFromState(state: GameState, unitId: string): GameState {
+  return {
+    ...state,
+    bases: state.bases.map((b) =>
+      b.units.some((u) => u.id === unitId)
+        ? recomputeZoneOccupancy({ ...b, units: b.units.filter((u) => u.id !== unitId) })
+        : b
+    ),
+    deployedUnits: state.deployedUnits.filter((u) => u.id !== unitId),
+  };
+}
+
+function putUnitAtBase(state: GameState, unit: Unit, baseId: BaseType): GameState {
+  return {
+    ...state,
+    bases: state.bases.map((b) =>
+      b.id === baseId
+        ? recomputeZoneOccupancy({ ...b, units: [...b.units, unit] })
+        : b
+    ),
+  };
+}
+
+function putUnitInField(state: GameState, unit: Unit): GameState {
+  return { ...state, deployedUnits: [...state.deployedUnits, unit] };
 }
 
 /** Pure reducer: gameReducer(state, action) => newState */
@@ -160,6 +214,190 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "REBASE_AIRCRAFT":
       return handleRebaseAircraft(state, action.aircraftId, action.fromBase, action.toBase);
+
+    case "DEPLOY_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc) return state;
+      const { unit, baseId } = loc;
+      if (baseId === null) return state;
+      const newUnit: Unit = enforceAirborneInvariant(
+        {
+          ...unit,
+          lastBase: unit.currentBase,
+          movement: {
+            state: unit.category === "aircraft" ? "airborne" : "moving",
+            speed: action.speed ?? 60,
+            destination: action.destination,
+          },
+          deployedAt: { day: state.day, hour: state.hour },
+        } as Unit,
+        false
+      );
+      const s1 = removeUnitFromState(state, unit.id);
+      const s2 = putUnitInField(s1, newUnit);
+      return addEvent(s2, {
+        type: "info",
+        message: `${unit.name} deployed from ${baseId} to (${action.destination.lat.toFixed(2)}, ${action.destination.lng.toFixed(2)})`,
+        base: baseId,
+        unitId: unit.id,
+        unitCategory: unit.category,
+        actionType: "UNIT_DEPLOYED",
+      });
+    }
+
+    case "TRANSFER_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc) return state;
+      const { unit, baseId } = loc;
+      if (baseId === action.toBaseId) return state;
+      const destBase = state.bases.find((b) => b.id === action.toBaseId);
+      if (!destBase) return state;
+      const check = canStoreUnit(destBase, unit);
+      if (!check.ok) {
+        return addEvent(state, {
+          type: "warning",
+          message: `Transfer blocked: ${check.reason}`,
+          unitId: unit.id,
+          unitCategory: unit.category,
+        });
+      }
+      const traveling: Unit = {
+        ...unit,
+        lastBase: unit.currentBase,
+        currentBase: action.toBaseId,
+        movement: {
+          state: unit.category === "aircraft" ? "airborne" : "moving",
+          speed: 120,
+          destination: action.toBaseId,
+        },
+        deployedAt: { day: state.day, hour: state.hour },
+      } as Unit;
+      const s1 = removeUnitFromState(state, unit.id);
+      const s2 = putUnitInField(s1, traveling);
+      return addEvent(s2, {
+        type: "info",
+        message: `${unit.name} transferring ${baseId ?? "field"} → ${action.toBaseId}`,
+        base: action.toBaseId,
+        unitId: unit.id,
+        unitCategory: unit.category,
+        actionType: "UNIT_TRANSFERRED",
+      });
+    }
+
+    case "RECALL_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc) return state;
+      const { unit, baseId } = loc;
+      if (baseId !== null) return state;
+      const homeId = action.toBaseId ?? unit.currentBase ?? unit.lastBase;
+      if (!homeId) return state;
+      const destBase = state.bases.find((b) => b.id === homeId);
+      if (!destBase) return state;
+      const check = canStoreUnit(destBase, unit);
+      if (!check.ok) {
+        return addEvent(state, {
+          type: "warning",
+          message: `Recall blocked: ${check.reason}`,
+          unitId: unit.id,
+          unitCategory: unit.category,
+        });
+      }
+      const basePos = destBase.units[0]?.position ?? unit.position;
+      const stored: Unit = {
+        ...unit,
+        lastBase: unit.currentBase,
+        currentBase: homeId,
+        position: basePos,
+        movement: { state: "stationary", speed: 0 },
+      } as Unit;
+      const s1 = removeUnitFromState(state, unit.id);
+      const s2 = putUnitAtBase(s1, stored, homeId);
+      return addEvent(s2, {
+        type: "success",
+        message: `${unit.name} recalled to ${homeId}`,
+        base: homeId,
+        unitId: unit.id,
+        unitCategory: unit.category,
+        actionType: "UNIT_RECALLED",
+      });
+    }
+
+    case "RELOCATE_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.baseId !== null) return state;
+      const { unit } = loc;
+      const newUnit: Unit = {
+        ...unit,
+        movement: {
+          state: unit.category === "aircraft" ? "airborne" : "moving",
+          speed: 60,
+          destination: action.destination,
+        },
+      } as Unit;
+      const s1 = removeUnitFromState(state, unit.id);
+      const s2 = putUnitInField(s1, newUnit);
+      return addEvent(s2, {
+        type: "info",
+        message: `${unit.name} relocating to (${action.destination.lat.toFixed(2)}, ${action.destination.lng.toFixed(2)})`,
+        unitId: unit.id,
+        unitCategory: unit.category,
+        actionType: "UNIT_RELOCATED",
+      });
+    }
+
+    case "CLASSIFY_CONTACT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc) return state;
+      const { unit, baseId } = loc;
+      const prior = unit.affiliation;
+      if (prior === action.affiliation) return state;
+      const updated: Unit = {
+        ...unit,
+        affiliation: action.affiliation,
+        sidc: setAffiliationOnSidc(unit.sidc, action.affiliation),
+      } as Unit;
+      const s1 = removeUnitFromState(state, unit.id);
+      const s2 = baseId === null ? putUnitInField(s1, updated) : putUnitAtBase(s1, updated, baseId);
+      return addEvent(s2, {
+        type: "info",
+        message: `Contact ${unit.name} classified: ${prior} → ${action.affiliation}`,
+        unitId: unit.id,
+        unitCategory: unit.category,
+        actionType: "CONTACT_CLASSIFIED",
+      });
+    }
+
+    case "STORE_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.baseId !== null) return state;
+      const destBase = state.bases.find((b) => b.id === action.baseId);
+      if (!destBase) return state;
+      const check = canStoreUnit(destBase, loc.unit);
+      if (!check.ok) return state;
+      const stored: Unit = {
+        ...loc.unit,
+        currentBase: action.baseId,
+        movement: { state: "stationary", speed: 0 },
+      } as Unit;
+      const s1 = removeUnitFromState(state, loc.unit.id);
+      return putUnitAtBase(s1, stored, action.baseId);
+    }
+
+    case "SET_AD_STATE": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.unit.category !== "air_defense") return state;
+      const updated: Unit = { ...loc.unit, deployedState: action.deployedState };
+      const s1 = removeUnitFromState(state, loc.unit.id);
+      return loc.baseId === null ? putUnitInField(s1, updated) : putUnitAtBase(s1, updated, loc.baseId);
+    }
+
+    case "SET_RADAR_EMITTING": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.unit.category !== "radar") return state;
+      const updated: Unit = { ...loc.unit, emitting: action.emitting };
+      const s1 = removeUnitFromState(state, loc.unit.id);
+      return loc.baseId === null ? putUnitInField(s1, updated) : putUnitAtBase(s1, updated, loc.baseId);
+    }
 
     default:
       return state;
@@ -397,12 +635,29 @@ function handleAdvanceHour(state: GameState): GameState {
     baseId: r.baseId as BaseType,
   }));
 
+  // ── Unit tick: movement + airborne invariant + per-category fuel drain ────
+  const tickUnit = (u: Unit, isAtBase: boolean): Unit => {
+    let updated = enforceAirborneInvariant(u, isAtBase);
+    updated = advanceMovement(updated);
+    const drain = perHourFuelDrain(updated, nextPhase);
+    if (drain > 0 && "fuel" in updated && typeof updated.fuel === "number") {
+      updated = { ...updated, fuel: Math.max(0, updated.fuel - drain) } as Unit;
+    }
+    return updated;
+  };
+  const basesAfterUnitTick = basesAfterReturn.map((b) => ({
+    ...b,
+    units: b.units.map((u) => tickUnit(u, true)),
+  }));
+  const newDeployedUnits = state.deployedUnits.map((u) => tickUnit(u, false));
+
   const nextStatePreRec: GameState = {
     ...state,
     day: nextDay,
     hour: nextHour,
     phase: nextPhase,
-    bases: basesAfterReturn,
+    bases: basesAfterUnitTick,
+    deployedUnits: newDeployedUnits,
     atoOrders: updatedATOOrders,
     pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],
     events: [...newEvents, ...state.events].slice(0, 200),

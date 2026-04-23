@@ -1,9 +1,15 @@
 import type { GameState, GameAction, AircraftStatus } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
+import type { Unit } from "@/types/units";
+import { canStoreUnit } from "@/core/units/capacity";
 
 export interface ValidationResult {
   valid: boolean;
   reason?: string;
+}
+
+function allUnits(state: GameState): Unit[] {
+  return [...state.bases.flatMap((b) => b.units), ...state.deployedUnits];
 }
 
 // Actions that are always allowed
@@ -89,6 +95,36 @@ export function validateAction(state: GameState, action: GameAction): Validation
       }
       return { valid: true };
     }
+
+    case "DEPLOY_UNIT": {
+      const unit = allUnits(state).find((u) => u.id === action.unitId);
+      if (!unit) return { valid: false, reason: "Unit not found" };
+      const atBase = state.bases.some((b) => b.units.some((u) => u.id === unit.id));
+      if (!atBase) return { valid: false, reason: "Unit already deployed" };
+      return { valid: true };
+    }
+    case "TRANSFER_UNIT": {
+      const unit = allUnits(state).find((u) => u.id === action.unitId);
+      if (!unit) return { valid: false, reason: "Unit not found" };
+      const dest = state.bases.find((b) => b.id === action.toBaseId);
+      if (!dest) return { valid: false, reason: "Destination base not found" };
+      const cap = canStoreUnit(dest, unit);
+      if (!cap.ok) return { valid: false, reason: cap.reason };
+      return { valid: true };
+    }
+    case "RECALL_UNIT": {
+      const unit = allUnits(state).find((u) => u.id === action.unitId);
+      if (!unit) return { valid: false, reason: "Unit not found" };
+      const atBase = state.bases.some((b) => b.units.some((u) => u.id === unit.id));
+      if (atBase) return { valid: false, reason: "Unit already at base" };
+      return { valid: true };
+    }
+    case "RELOCATE_UNIT":
+    case "CLASSIFY_CONTACT":
+    case "SET_AD_STATE":
+    case "SET_RADAR_EMITTING":
+    case "STORE_UNIT":
+      return { valid: true };
 
     case "CREATE_ATO_ORDER":
     case "EDIT_ATO_ORDER":
