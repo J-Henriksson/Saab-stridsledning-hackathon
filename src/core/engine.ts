@@ -11,6 +11,7 @@ import type { Unit } from "@/types/units";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
 import { enforceAirborneInvariant, advanceMovement, perHourFuelDrain } from "@/core/units/movement";
+import { BASE_COORDS } from "@/pages/map/constants";
 
 function assessRisk(health: number): RiskLevel {
   if (health < 20) return "catastrophic";
@@ -26,7 +27,7 @@ function addEvent(state: GameState, event: Omit<GameEvent, "id" | "timestamp">):
   }
   if (mirrored.aircraftId && !mirrored.unitId) {
     mirrored.unitId = mirrored.aircraftId;
-    mirrored.unitCategory = "aircraft";
+    if (!mirrored.unitCategory) mirrored.unitCategory = "aircraft";
   }
   return {
     ...state,
@@ -376,14 +377,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           unitCategory: unit.category,
         });
       }
+      const destCoords = BASE_COORDS[action.toBaseId];
+      if (!destCoords) return state;
       const traveling: Unit = {
         ...unit,
         lastBase: unit.currentBase,
         currentBase: action.toBaseId,
+        pendingArrivalBase: action.toBaseId,
         movement: {
           state: unit.category === "aircraft" ? "airborne" : "moving",
           speed: 120,
-          destination: action.toBaseId,
+          destination: destCoords,
         },
         deployedAt: { day: state.day, hour: state.hour },
       } as Unit;
@@ -417,13 +421,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           unitCategory: unit.category,
         });
       }
-      const basePos = destBase.units[0]?.position ?? unit.position;
+      const basePos = BASE_COORDS[homeId] ?? unit.position;
       const stored: Unit = {
         ...unit,
         lastBase: unit.currentBase,
         currentBase: homeId,
         position: basePos,
         movement: { state: "stationary", speed: 0 },
+        pendingArrivalBase: undefined,
       } as Unit;
       const s1 = removeUnitFromState(state, unit.id);
       const s2 = putUnitAtBase(s1, stored, homeId);
@@ -751,12 +756,38 @@ function handleAdvanceHour(state: GameState): GameState {
   }));
 
   // ── Unit tick: movement + airborne invariant + per-category fuel drain ────
+  const ts = `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`;
   const tickUnit = (u: Unit, isAtBase: boolean): Unit => {
     let updated = enforceAirborneInvariant(u, isAtBase);
     updated = advanceMovement(updated);
     const drain = perHourFuelDrain(updated, nextPhase);
     if (drain > 0 && "fuel" in updated && typeof updated.fuel === "number") {
-      updated = { ...updated, fuel: Math.max(0, updated.fuel - drain) } as Unit;
+      const prevFuel = updated.fuel;
+      const nextFuel = Math.max(0, prevFuel - drain);
+      updated = { ...updated, fuel: nextFuel } as Unit;
+      if (prevFuel > 15 && nextFuel <= 15 && nextFuel > 0) {
+        newEvents.push({
+          id: uuid(),
+          timestamp: ts,
+          type: "warning",
+          message: `${updated.name}: låg bränslenivå (${Math.round(nextFuel)}%)`,
+          unitId: updated.id,
+          unitCategory: updated.category,
+          actionType: "UNIT_FUEL_LOW",
+        });
+      }
+      if (prevFuel > 0 && nextFuel === 0 && updated.category === "aircraft") {
+        updated = { ...updated, health: 0 } as Unit;
+        newEvents.push({
+          id: uuid(),
+          timestamp: ts,
+          type: "critical",
+          message: `${updated.name}: bränsle slut — luftfarkost förlorad`,
+          unitId: updated.id,
+          unitCategory: updated.category,
+          actionType: "UNIT_DESTROYED",
+        });
+      }
     }
     return updated;
   };
@@ -764,14 +795,48 @@ function handleAdvanceHour(state: GameState): GameState {
     ...b,
     units: b.units.map((u) => tickUnit(u, true)),
   }));
-  const newDeployedUnits = state.deployedUnits.map((u) => tickUnit(u, false));
+  // Tick deployed units; then detect transfer arrivals and move into base.units.
+  const tickedDeployed = state.deployedUnits.map((u) => tickUnit(u, false));
+  const arrived: Unit[] = [];
+  const stillDeployed: Unit[] = [];
+  for (const u of tickedDeployed) {
+    const justArrived =
+      u.pendingArrivalBase &&
+      u.movement.state === "stationary" &&
+      !u.movement.destination;
+    if (justArrived && u.pendingArrivalBase) {
+      arrived.push({ ...u, pendingArrivalBase: undefined, movement: { state: "stationary", speed: 0 } } as Unit);
+    } else {
+      stillDeployed.push(u);
+    }
+  }
+  const basesAfterArrival = basesAfterUnitTick.map((b) => {
+    const toStoreHere = arrived.filter((u) => u.currentBase === b.id);
+    if (toStoreHere.length === 0) return b;
+    const snapped = toStoreHere.map((u) => ({ ...u, position: BASE_COORDS[b.id] ?? u.position } as Unit));
+    const withNew = { ...b, units: [...b.units, ...snapped] };
+    snapped.forEach((u) => {
+      newEvents.push({
+        id: uuid(),
+        timestamp: ts,
+        type: "success",
+        message: `${u.name} anlände till ${b.id}`,
+        base: b.id,
+        unitId: u.id,
+        unitCategory: u.category,
+        actionType: "UNIT_TRANSFERRED",
+      });
+    });
+    return recomputeZoneOccupancy(withNew);
+  });
+  const newDeployedUnits = stillDeployed;
 
   const nextStatePreRec: GameState = {
     ...state,
     day: nextDay,
     hour: nextHour,
     phase: nextPhase,
-    bases: basesAfterUnitTick,
+    bases: basesAfterArrival,
     deployedUnits: newDeployedUnits,
     atoOrders: updatedATOOrders,
     pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],

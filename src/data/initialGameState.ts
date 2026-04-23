@@ -128,6 +128,7 @@ const createZones = (baseType: "huvudbas" | "sidobas" | "reservbas", baseId: str
 
 const MOB_AIRCRAFT: Aircraft[] = [
   ...createAircraft("MOB", "GripenE", "GE", 12),
+  ...createAircraft("MOB", "GlobalEye", "GE-AEW", 1),
 ];
 
 const MOB: Base = {
