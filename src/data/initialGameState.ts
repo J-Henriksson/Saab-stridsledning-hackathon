@@ -54,6 +54,7 @@ const MOB: Base = {
   aircraft: [
     ...createAircraft("MOB", "GripenE", "GE", 12),
   ],
+  units: [],
   spareParts: createSpareParts(),
   personnel: createPersonnel(1),
   fuel: 95,
@@ -76,6 +77,7 @@ const FOB_N: Base = {
     ...createAircraft("FOB_N", "GripenE", "GE", 12),
     ...createAircraft("FOB_N", "LOTUS", "LO", 2),
   ],
+  units: [],
   spareParts: createSpareParts().map((p) => ({
     ...p,
     quantity: Math.ceil(p.quantity * 0.6),
@@ -98,6 +100,7 @@ const FOB_S: Base = {
   name: "Sidobas FOB Syd",
   type: "sidobas",
   aircraft: createAircraft("FOB_S", "GripenF_EA", "GF", 6),
+  units: [],
   spareParts: createSpareParts().map((p) => ({
     ...p,
     quantity: Math.ceil(p.quantity * 0.5),
@@ -320,6 +323,7 @@ export const initialGameState: GameState = {
   second: new Date().getSeconds(),
   phase: "FRED",
   bases: [MOB, FOB_N, FOB_S],
+  deployedUnits: [],
   successfulMissions: 0,
   failedMissions: 0,
   atoOrders: initialATOOrders,
