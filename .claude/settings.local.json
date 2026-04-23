@@ -9,7 +9,9 @@
       "Bash(git checkout *)",
       "Bash(git add *)",
       "Bash(echo \"Exit: $?\")",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(ssh *)",
+      "Bash(git push *)"
     ]
   }
 }
