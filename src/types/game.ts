@@ -158,7 +158,11 @@ export type GameAction =
   | { type: "RESET_GAME" }
   | { type: "LOAD_STATE"; payload: GameState }
   | { type: "IMPORT_ATO_BATCH"; orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[]; sourceFile: string; riskCount: number }
-  | { type: "REBASE_AIRCRAFT"; aircraftId: string; fromBase: BaseType; toBase: BaseType };
+  | { type: "REBASE_AIRCRAFT"; aircraftId: string; fromBase: BaseType; toBase: BaseType }
+  | { type: "ADD_TACTICAL_ZONE"; zone: Omit<import("./overlay").TacticalZone, "id" | "createdAtHour" | "createdAtDay"> }
+  | { type: "REMOVE_TACTICAL_ZONE"; zoneId: string }
+  | { type: "SET_OVERLAY_VISIBILITY"; key: keyof import("./overlay").OverlayLayerVisibility; value: boolean }
+  | { type: "ADD_EVENT"; event: Omit<GameEvent, "id" | "timestamp"> };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 export interface Aircraft {
@@ -231,6 +235,8 @@ export interface GameState {
   recommendations: Recommendation[];
   maintenanceTasks: MaintenanceTask[];
   pendingLandingChecks: { aircraftId: string; baseId: BaseType }[];
+  tacticalZones: import("./overlay").TacticalZone[];
+  overlayVisibility: import("./overlay").OverlayLayerVisibility;
 }
 
 export type AARActionType =

@@ -3,6 +3,8 @@ import { Base } from "@/types/game";
 export type SelectedEntity =
   | { kind: "base"; baseId: string }
   | { kind: "aircraft"; baseId: string; aircraftId: string }
+  | { kind: "zone"; zoneId: string }
+  | { kind: "asset"; assetId: string }
   | null;
 
 export function statusColor(base: Base | undefined) {

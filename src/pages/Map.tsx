@@ -7,19 +7,29 @@ import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin } from "lucide-react";
 
-import { BASE_COORDS, SWEDEN_CENTER, INITIAL_ZOOM, MAP_STYLE } from "./map/constants";
+import { BASE_COORDS, STOCKHOLM_CENTER, TACTICAL_ZOOM, MAP_STYLE } from "./map/constants";
 import { SelectedEntity } from "./map/helpers";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
 import { AircraftLayer } from "./map/AircraftLayer";
 import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
+import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
+import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
+import { RegionBordersLayer } from "./map/RegionBordersLayer";
+import { ZoneToolbar } from "./map/ZoneToolbar";
+import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
+import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
+import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus } from "@/types/game";
+import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
+import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 
 export default function MapPage() {
   const { state, togglePause, resetGame, dispatch } = useGame();
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
@@ -44,6 +54,16 @@ export default function MapPage() {
 
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
 
+  const selectedZone =
+    selected?.kind === "zone"
+      ? state.tacticalZones.find((z) => z.id === selected.zoneId)
+      : undefined;
+
+  const selectedAsset =
+    selected?.kind === "asset"
+      ? [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS].find((a) => a.id === selected.assetId)
+      : undefined;
+
   // Reset follow state when selection changes
   useEffect(() => {
     isFollowing.current = false;
@@ -60,7 +80,6 @@ export default function MapPage() {
       map.flyTo({ center: [lng, lat], zoom: 12, duration: 900, pitch: 30 });
       return;
     }
-    // Wait for initial flyTo to complete before smooth-following
     if (now - followStartTime.current < 1000) return;
     map.easeTo({ center: [lng, lat], duration: 150 });
   }, []);
@@ -75,7 +94,60 @@ export default function MapPage() {
     });
   }, [selected, dispatch]);
 
-  const handleMapClick = useCallback(() => setSelected(null), []);
+  const handleMapClick = useCallback(() => {
+    if (drawingMode !== "none") return;
+    setSelected(null);
+  }, [drawingMode]);
+
+  const handleZoneComplete = useCallback(
+    (zoneData: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => {
+      const ttlHours = 8;
+      const rawEndHour = state.hour + ttlHours;
+      const expiresAtDay = rawEndHour >= 24 ? state.day + Math.floor(rawEndHour / 24) : state.day;
+      const expiresAtHour = rawEndHour % 24;
+      dispatch({
+        type: "ADD_TACTICAL_ZONE",
+        zone: { ...zoneData, expiresAtHour, expiresAtDay },
+      });
+      setDrawingMode("none");
+    },
+    [dispatch, state.hour, state.day]
+  );
+
+  const drawState = useZoneDrawing({ mode: drawingMode, onZoneComplete: handleZoneComplete });
+
+  const handleToggleVisibility = useCallback(
+    (key: keyof OverlayLayerVisibility) => {
+      dispatch({
+        type: "SET_OVERLAY_VISIBILITY",
+        key,
+        value: !state.overlayVisibility[key],
+      });
+    },
+    [dispatch, state.overlayVisibility]
+  );
+
+  const handleSelectAsset = useCallback((asset: FixedMilitaryAsset) => {
+    setSelected({ kind: "asset", assetId: asset.id });
+  }, []);
+
+  const userZoneCount = state.tacticalZones.filter((z) => z.category === "user").length;
+
+  // Derive panel title info
+  const panelTitle = (() => {
+    if (selectedAircraft)
+      return { main: selectedAircraft.tailNumber, sub: `${selectedAircraft.type} · ${selectedBase?.name}` };
+    if (selectedZone)
+      return {
+        main: selectedZone.name,
+        sub: selectedZone.category === "fixed" ? "Permanent skyddszon" : "Temporär zon",
+      };
+    if (selectedAsset)
+      return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
+    if (selectedBase)
+      return { main: selectedBase.name ?? selected?.baseId, sub: selectedBase?.type ?? "Reservbas" };
+    return null;
+  })();
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
@@ -106,10 +178,10 @@ export default function MapPage() {
           <MapGL
             ref={mapRef}
             initialViewState={{
-              longitude: BASE_COORDS.MOB.lng,
-              latitude: BASE_COORDS.MOB.lat,
-              zoom: 9,
-              pitch: 30,
+              longitude: STOCKHOLM_CENTER.lng,
+              latitude: STOCKHOLM_CENTER.lat,
+              zoom: TACTICAL_ZOOM,
+              pitch: 0,
             }}
             mapStyle={MAP_STYLE}
             onClick={handleMapClick}
@@ -118,15 +190,35 @@ export default function MapPage() {
           >
             <NavigationControl position="top-right" />
 
+            {/* County/region borders — base geographic reference layer */}
+            <RegionBordersLayer />
+
+            {/* Tactical zone fills (rendered below other layers) */}
+            <TacticalZonesLayer
+              zones={state.tacticalZones}
+              visible={state.overlayVisibility.activeZones}
+            />
+
             <SupplyLinesLayer bases={state.bases} />
+
             <AircraftLayer
               bases={state.bases}
               currentHour={state.hour}
+              currentDay={state.day}
               onSelectAircraft={(baseId, aircraftId) =>
                 setSelected({ kind: "aircraft", baseId, aircraftId })
               }
               selectedAircraftId={selectedAircraftId}
               onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
+              tacticalZones={state.tacticalZones}
+              dispatch={dispatch}
+            />
+
+            {/* Fixed military & civilian asset markers */}
+            <FixedAssetMarkers
+              showMilitary={state.overlayVisibility.militaryAssets}
+              showCivilian={state.overlayVisibility.civilianInfrastructure}
+              onSelectAsset={handleSelectAsset}
             />
 
             {Object.keys(BASE_COORDS).map((id) => (
@@ -134,10 +226,15 @@ export default function MapPage() {
                 key={id}
                 id={id}
                 base={state.bases.find((b) => b.id === id)}
-                isSelected={selected?.baseId === id}
+                isSelected={selected?.kind === "base" || selected?.kind === "aircraft"
+                  ? selected.baseId === id
+                  : false}
                 onClick={() => setSelected({ kind: "base", baseId: id })}
               />
             ))}
+
+            {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
+            <DrawingPreviewOverlay drawState={drawState} />
           </MapGL>
 
           {/* Scanline CRT overlay */}
@@ -147,6 +244,15 @@ export default function MapPage() {
               background:
                 "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.01) 2px, rgba(0,255,100,0.01) 4px)",
             }}
+          />
+
+          {/* Zone toolbar — left edge */}
+          <ZoneToolbar
+            drawingMode={drawingMode}
+            onSetDrawingMode={setDrawingMode}
+            visibility={state.overlayVisibility}
+            onToggleVisibility={handleToggleVisibility}
+            activeZoneCount={userZoneCount}
           />
 
           {/* Active aircraft bar */}
@@ -171,16 +277,15 @@ export default function MapPage() {
               {/* Panel header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
-                  {selectedAircraft ? (
+                  {panelTitle ? (
                     <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedAircraft.tailNumber}</div>
-                      <div className="text-[10px] text-muted-foreground">{selectedAircraft.type} · {selectedBase?.name}</div>
+                      <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
                     </>
                   ) : (
-                    <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedBase?.name ?? selected.baseId}</div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{selectedBase?.type ?? "Reservbas"}</div>
-                    </>
+                    <div className="text-xs font-bold text-foreground font-mono">
+                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
+                    </div>
                   )}
                 </div>
                 <button
@@ -194,14 +299,28 @@ export default function MapPage() {
               {selectedAircraft ? (
                 <AircraftDetailPanel
                   aircraft={selectedAircraft}
-                  onBack={() => setSelected({ kind: "base", baseId: selected.baseId })}
+                  onBack={() => setSelected({ kind: "base", baseId: selected!.kind === "aircraft" ? selected.baseId : "" })}
                   onRecall={handleRecall}
                   currentHour={state.hour}
                 />
+              ) : selectedZone ? (
+                <ZoneDetailPanel
+                  zone={selectedZone}
+                  onDelete={() => {
+                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
+                    setSelected(null);
+                  }}
+                  currentHour={state.hour}
+                  currentDay={state.day}
+                />
+              ) : selectedAsset ? (
+                <AssetInfoPanel asset={selectedAsset} />
               ) : selectedBase ? (
                 <BaseDetailPanel
                   base={selectedBase}
-                  onSelectAircraft={(id) => setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })}
+                  onSelectAircraft={(id) =>
+                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
+                  }
                 />
               ) : (
                 <div className="p-4 text-xs text-muted-foreground">
@@ -211,6 +330,83 @@ export default function MapPage() {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+    </div>
+  );
+}
+
+// ── Asset info panel ───────────────────────────────────────────────────────
+
+function AssetInfoPanel({ asset }: { asset: FixedMilitaryAsset }) {
+  const TYPE_LABELS: Record<string, string> = {
+    army_regiment:    "Armeregementen",
+    marine_regiment:  "Marinregementen",
+    naval_base:       "Marinbas",
+    airport_civilian: "Civilt flygfält",
+    ammo_depot:       "Ammunitionsdepå",
+  };
+
+  return (
+    <div className="flex-1 p-4 space-y-3">
+      <div className="text-[10px] font-mono text-muted-foreground">{TYPE_LABELS[asset.type] ?? asset.type}</div>
+      <div className="space-y-2 text-[10px] font-mono">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Beteckning</span>
+          <span className="font-bold">{asset.shortName}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Position</span>
+          <span className="font-bold">{asset.lat.toFixed(4)}°N {asset.lng.toFixed(4)}°E</span>
+        </div>
+        {asset.fillLevel !== undefined && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Fyllnadsnivå</span>
+              <span
+                className="font-bold"
+                style={{
+                  color:
+                    asset.fillLevel > 60
+                      ? "#22c55e"
+                      : asset.fillLevel > 30
+                      ? "#eab308"
+                      : "#ef4444",
+                }}
+              >
+                {asset.fillLevel}%
+              </span>
+            </div>
+            <div
+              className="rounded-full overflow-hidden"
+              style={{ height: 4, background: "#1e293b" }}
+            >
+              <div
+                style={{
+                  width: `${asset.fillLevel}%`,
+                  height: "100%",
+                  background:
+                    asset.fillLevel > 60
+                      ? "#22c55e"
+                      : asset.fillLevel > 30
+                      ? "#eab308"
+                      : "#ef4444",
+                  borderRadius: "9999px",
+                }}
+              />
+            </div>
+          </>
+        )}
+        {asset.protectionRadiusKm && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Skyddszon</span>
+            <span className="font-bold">{asset.protectionRadiusKm} km</span>
+          </div>
+        )}
+      </div>
+      <div
+        className="text-[9px] font-mono text-muted-foreground border-t border-border pt-2 mt-2"
+      >
+        PERMANENT SKYDDSOBJEKT — ej redigerbar
       </div>
     </div>
   );
@@ -258,7 +454,6 @@ function ActiveAircraftBar({
       className="absolute bottom-0 left-0 right-0 z-10"
       style={{ pointerEvents: "auto" }}
     >
-      {/* Fade-up gradient so the bar blends into the map */}
       <div
         className="h-6 pointer-events-none"
         style={{ background: "linear-gradient(to bottom, transparent, rgba(5,10,20,0.85))" }}
@@ -273,7 +468,6 @@ function ActiveAircraftBar({
           scrollbarWidth: "none",
         }}
       >
-        {/* Label */}
         <div
           className="shrink-0 px-3 py-2 border-r flex items-center gap-1.5"
           style={{ borderColor: "rgba(215,171,58,0.2)" }}
@@ -287,7 +481,6 @@ function ActiveAircraftBar({
           </span>
         </div>
 
-        {/* Aircraft chips */}
         <div className="flex items-center gap-1.5 px-2 py-1.5 flex-nowrap">
           {activeAircraft.map(({ ac, baseId, baseName }) => {
             const isSelected = ac.id === selectedAircraftId;
@@ -307,20 +500,16 @@ function ActiveAircraftBar({
                   transform: isSelected ? "scale(1.05)" : "scale(1)",
                 }}
               >
-                {/* Status dot */}
                 <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
                   style={{ backgroundColor: color, boxShadow: `0 0 4px ${color}` }}
                 />
-                {/* Tail number */}
                 <span className="font-bold" style={{ color: isSelected ? color : "#e2e8f0" }}>
                   {ac.tailNumber}
                 </span>
-                {/* Mission */}
                 {ac.currentMission && (
                   <span style={{ color, opacity: 0.85 }}>{ac.currentMission}</span>
                 )}
-                {/* Status badge */}
                 <span
                   className="text-[8px] px-1 py-0.5 rounded"
                   style={{
@@ -331,7 +520,6 @@ function ActiveAircraftBar({
                 >
                   {label}
                 </span>
-                {/* Base */}
                 <span className="text-[8px] opacity-50">{baseName}</span>
               </button>
             );

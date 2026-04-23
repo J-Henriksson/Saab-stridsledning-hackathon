@@ -18,5 +18,7 @@ export const SUPPLY_LINES: [string, string][] = [
 
 export const SWEDEN_CENTER = { lat: 62, lng: 16 };
 export const INITIAL_ZOOM = 4.0;
+export const STOCKHOLM_CENTER = { lat: 59.33, lng: 18.07 };
+export const TACTICAL_ZOOM = 7.5;
 
 export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";

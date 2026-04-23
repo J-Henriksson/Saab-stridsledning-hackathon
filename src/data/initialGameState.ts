@@ -1,5 +1,7 @@
 import { GameState, Base, Aircraft, SparePartStock, PersonnelGroup, ATOOrder, BaseZone, AircraftType, GameEvent } from "@/types/game";
 import { ZONE_CAPACITIES } from "@/data/config/capacities";
+import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
+import type { TacticalZone } from "@/types/overlay";
 
 const createSpareParts = (): SparePartStock[] => [
   { id: "radar", name: "Radar LRU", category: "Avionik", quantity: 4, maxQuantity: 6, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "base_stock", turnaround: 5, isReusable: true },
@@ -313,6 +315,24 @@ export const generateATOOrders = (day: number, phase: string): ATOOrder[] => {
   return orders;
 };
 
+function generateFixedZones(): TacticalZone[] {
+  return [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS]
+    .filter((a) => a.protectionRadiusKm)
+    .map((asset) => ({
+      id: `fixed-zone-${asset.id}`,
+      name: `Skyddszon ${asset.shortName}`,
+      category: "fixed" as const,
+      shape: "circle" as const,
+      center: { lat: asset.lat, lng: asset.lng },
+      radiusKm: asset.protectionRadiusKm!,
+      fixedType: asset.type === "naval_base" ? ("high_security" as const) : ("no_fly" as const),
+      createdAtHour: 6,
+      createdAtDay: 1,
+      description: `Permanent skyddszon runt ${asset.name}`,
+      createdBy: "SYSTEM",
+    }));
+}
+
 export const initialGameState: GameState = {
   day: 1,
   hour: new Date().getHours(),
@@ -328,4 +348,10 @@ export const initialGameState: GameState = {
   recommendations: [],
   maintenanceTasks: [],
   pendingLandingChecks: [],
+  tacticalZones: generateFixedZones(),
+  overlayVisibility: {
+    militaryAssets: true,
+    civilianInfrastructure: true,
+    activeZones: true,
+  },
 };

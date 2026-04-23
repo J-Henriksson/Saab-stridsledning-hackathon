@@ -1,6 +1,7 @@
 import { useReducer, useCallback, useMemo } from "react";
 import type { GameState, GameAction, BaseType, MissionType, ATOOrder } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
+import type { TacticalZone, OverlayLayerVisibility } from "@/types/overlay";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
 
@@ -34,6 +35,9 @@ export interface GameEngine {
   markFaultNMC: (baseId: string, aircraftId: string, repairTime: number, maintenanceTypeKey: string, actionLabel: string, requiredSparePart?: string) => void;
   consumeSparePart: (baseId: string, sparePartId: string, quantity?: number) => void;
   rebaseAircraft: (aircraftId: string, fromBase: BaseType, toBase: BaseType) => void;
+  addTacticalZone: (zone: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => void;
+  removeTacticalZone: (zoneId: string) => void;
+  setOverlayVisibility: (key: keyof OverlayLayerVisibility, value: boolean) => void;
 }
 
 export function useGameEngine(): GameEngine {
@@ -128,6 +132,24 @@ export function useGameEngine(): GameEngine {
     dispatch({ type: "REBASE_AIRCRAFT", aircraftId, fromBase, toBase });
   }, []);
 
+  const addTacticalZone = useCallback(
+    (zone: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => {
+      dispatch({ type: "ADD_TACTICAL_ZONE", zone });
+    },
+    []
+  );
+
+  const removeTacticalZone = useCallback((zoneId: string) => {
+    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId });
+  }, []);
+
+  const setOverlayVisibility = useCallback(
+    (key: keyof OverlayLayerVisibility, value: boolean) => {
+      dispatch({ type: "SET_OVERLAY_VISIBILITY", key, value });
+    },
+    []
+  );
+
   const importATOBatch = useCallback((
     orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[],
     sourceFile: string,
@@ -181,6 +203,7 @@ export function useGameEngine(): GameEngine {
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
     consumeSparePart, importATOBatch, rebaseAircraft,
+    addTacticalZone, removeTacticalZone, setOverlayVisibility,
   }), [
     state, togglePause, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
@@ -188,5 +211,6 @@ export function useGameEngine(): GameEngine {
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
     consumeSparePart, importATOBatch, rebaseAircraft,
+    addTacticalZone, removeTacticalZone, setOverlayVisibility,
   ]);
 }

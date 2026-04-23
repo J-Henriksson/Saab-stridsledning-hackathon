@@ -155,6 +155,34 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "REBASE_AIRCRAFT":
       return handleRebaseAircraft(state, action.aircraftId, action.fromBase, action.toBase);
 
+    case "ADD_TACTICAL_ZONE": {
+      const newZone = {
+        ...action.zone,
+        id: `zone-${uuid().slice(0, 8)}`,
+        createdAtHour: state.hour,
+        createdAtDay: state.day,
+      };
+      return addEvent(
+        { ...state, tacticalZones: [...state.tacticalZones, newZone] },
+        { type: "info", message: `Ny taktisk zon skapad: "${newZone.name}"` }
+      );
+    }
+
+    case "REMOVE_TACTICAL_ZONE":
+      return {
+        ...state,
+        tacticalZones: state.tacticalZones.filter((z) => z.id !== action.zoneId),
+      };
+
+    case "SET_OVERLAY_VISIBILITY":
+      return {
+        ...state,
+        overlayVisibility: { ...state.overlayVisibility, [action.key]: action.value },
+      };
+
+    case "ADD_EVENT":
+      return addEvent(state, action.event);
+
     default:
       return state;
   }
@@ -374,6 +402,23 @@ function handleAdvanceHour(state: GameState): GameState {
     baseId: r.baseId as BaseType,
   }));
 
+  // Expire TTL-based tactical zones
+  const expiredZones = (state.tacticalZones ?? []).filter((z) => {
+    if (z.category === "fixed" || z.expiresAtDay === undefined) return false;
+    return nextDay > z.expiresAtDay || (nextDay === z.expiresAtDay && nextHour >= (z.expiresAtHour ?? 0));
+  });
+  if (expiredZones.length > 0) {
+    newEvents.push({
+      id: uuid(),
+      timestamp: `Dag ${nextDay} ${String(nextHour).padStart(2, "0")}:00`,
+      type: "info" as const,
+      message: `${expiredZones.length} zon(er) utgångna: ${expiredZones.map((z) => z.name).join(", ")}`,
+    });
+  }
+  const activeTacticalZones = (state.tacticalZones ?? []).filter(
+    (z) => !expiredZones.some((e) => e.id === z.id)
+  );
+
   const nextStatePreRec: GameState = {
     ...state,
     day: nextDay,
@@ -383,6 +428,7 @@ function handleAdvanceHour(state: GameState): GameState {
     atoOrders: updatedATOOrders,
     pendingLandingChecks: [...(state.pendingLandingChecks ?? []), ...newLandingChecks],
     events: [...newEvents, ...state.events].slice(0, 200),
+    tacticalZones: activeTacticalZones,
   };
 
   // Refresh recommendations every 3 game-hours

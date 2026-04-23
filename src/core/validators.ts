@@ -102,6 +102,10 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "ADVANCE_HOUR":
     case "TOGGLE_PAUSE":
     case "RESET_GAME":
+    case "ADD_TACTICAL_ZONE":
+    case "REMOVE_TACTICAL_ZONE":
+    case "SET_OVERLAY_VISIBILITY":
+    case "ADD_EVENT":
       return { valid: true };
 
     case "REBASE_AIRCRAFT": {
