@@ -77,46 +77,50 @@ function getAircraftColor(ac: Aircraft): string {
   return "#16a34a";
 }
 
-// Reusable Gripen top-down silhouette, facing LEFT (nose at cx-x), centered at (cx,cy)
-function GripenShape({ cx, cy, color, opacity = 1 }: { cx: number; cy: number; color: string; opacity?: number }) {
+// Converts hex color to [r, g, b] floats in [0, 1]
+function hexToRgb(hex: string): [number, number, number] {
+  return [
+    parseInt(hex.slice(1, 3), 16) / 255,
+    parseInt(hex.slice(3, 5), 16) / 255,
+    parseInt(hex.slice(5, 7), 16) / 255,
+  ];
+}
+
+const JAS_COLORS = ["#16a34a", "#d97706", "#dc2626", "#2563eb", "#005AA0"];
+
+/** SVG filter defs — colorizes the JAS-E PNG silhouette regardless of background */
+function JasFilterDefs() {
   return (
-    <g opacity={opacity}>
-      {/* Main fuselage — long needle shape */}
-      <path
-        d={`M ${cx-15},${cy}
-            L ${cx-11},${cy-2}
-            L ${cx-6},${cy-2.5}
-            L ${cx+1},${cy-2}
-            L ${cx+11},${cy-1.5}
-            L ${cx+14},${cy}
-            L ${cx+11},${cy+1.5}
-            L ${cx+1},${cy+2}
-            L ${cx-6},${cy+2.5}
-            L ${cx-11},${cy+2} Z`}
-        fill={color}
-      />
-      {/* Left main delta wing — sweeps back from mid-fuselage */}
-      <polygon
-        points={`${cx-4},${cy-2} ${cx-1},${cy-14} ${cx+8},${cy-13} ${cx+10},${cy-2}`}
-        fill={color} opacity="0.9"
-      />
-      {/* Right main delta wing */}
-      <polygon
-        points={`${cx-4},${cy+2} ${cx-1},${cy+14} ${cx+8},${cy+13} ${cx+10},${cy+2}`}
-        fill={color} opacity="0.9"
-      />
-      {/* Left forward canard — sweeps forward */}
-      <polygon
-        points={`${cx-9},${cy-2} ${cx-13},${cy-6} ${cx-8},${cy-5} ${cx-7},${cy-2}`}
-        fill={color} opacity="0.85"
-      />
-      {/* Right forward canard */}
-      <polygon
-        points={`${cx-9},${cy+2} ${cx-13},${cy+6} ${cx-8},${cy+5} ${cx-7},${cy+2}`}
-        fill={color} opacity="0.85"
-      />
-      {/* Engine nozzle circle at tail */}
-      <circle cx={cx+14} cy={cy} r="2.5" fill={color} opacity="0.65" />
+    <defs>
+      {JAS_COLORS.map((hex) => {
+        // suppress unused warning; value is used inside the values string
+        void hexToRgb(hex);
+        return (
+          <filter key={hex} id={`jas-${hex.slice(1)}`} colorInterpolationFilters="sRGB">
+            {/* Luminance → alpha: black pixels become opaque, white pixels become transparent */}
+            <feColorMatrix
+              type="matrix"
+              values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -0.2126 -0.7152 -0.0722 0 1"
+              result="mask"
+            />
+            <feFlood floodColor={hex} floodOpacity="1" result="col" />
+            <feComposite in="col" in2="mask" operator="in" />
+          </filter>
+        );
+      })}
+    </defs>
+  );
+}
+
+/** JAS 39E top-down icon, facing LEFT (nose at cx − half-width), centered at (cx, cy) */
+function JasEToken({ cx, cy, color, opacity = 1 }: { cx: number; cy: number; color: string; opacity?: number }) {
+  return (
+    <g
+      transform={`translate(${cx}, ${cy}) scale(-1, 1)`}
+      opacity={opacity}
+      filter={`url(#jas-${color.slice(1)})`}
+    >
+      <image href="/jas_e.png" x="-15" y="-14" width="30" height="28" />
     </g>
   );
 }
@@ -202,6 +206,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
           onPointerUp={handleSVGPointerUp}
           onPointerLeave={cancelDrag}
         >
+          <JasFilterDefs />
           {/* Grass background */}
           <rect width="900" height="500" fill="#dceadc" />
 
@@ -242,7 +247,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 onMouseEnter={() => setHoveredAc(ac.id)}
                 onMouseLeave={() => setHoveredAc(null)}
               >
-                <GripenShape cx={rx} cy={ry} color={color} />
+                <JasEToken cx={rx} cy={ry} color={color} />
                 {/* Speed lines */}
                 <line x1={rx+15} y1={ry-1} x2={rx+22} y2={ry-1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
                 <line x1={rx+15} y1={ry+1} x2={rx+22} y2={ry+1} stroke="#93c5fd" strokeWidth="0.7" opacity="0.6" />
@@ -302,8 +307,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 )}
                 {/* Drop shadow */}
                 <ellipse cx={cx} cy={cy + 1.5} rx="13" ry="5" fill="rgba(0,0,0,0.12)" />
-                {/* Gripen silhouette */}
-                <GripenShape cx={cx} cy={cy} color={color} />
+                {/* JAS 39E silhouette */}
+                <JasEToken cx={cx} cy={cy} color={color} />
 
                 {/* ── Battery indicator ── */}
                 {(() => {
@@ -393,7 +398,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                 onMouseEnter={() => setHoveredAc(ac.id)}
                 onMouseLeave={() => setHoveredAc(null)}
               >
-                <GripenShape cx={mx} cy={my} color="#d97706" opacity={0.7} />
+                <JasEToken cx={mx} cy={my} color="#d97706" opacity={0.7} />
                 {hoveredAc === ac.id && (
                   <g>
                     <rect x={mx-18} y={my-20} width="36" height="11" rx="2" fill="#92400e" opacity="0.95" />
@@ -463,8 +468,6 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
                   </circle>
                 )}
                 <text x="494" y="368" textAnchor="middle" fontSize="7" fill="#92400e" fontFamily="monospace">AMMO DEPOT</text>
-                {/* connecting taxiway to ammo */}
-                <line x1="494" y1="320" x2="494" y2="308" stroke="#b0b8c8" strokeWidth="8" />
               </g>
             );
           })()}
@@ -536,18 +539,6 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             <text x="410" y="120" textAnchor="middle" fontSize="7" fill="#0f766e" fontFamily="monospace">FÖRLÄGGNING</text>
           </g>
 
-          {/* ── Road network ── */}
-          {/* Main road along north edge */}
-          <rect x="20" y="130" width="860" height="10" fill="#9ca3af" opacity="0.6" />
-          {/* Road to HQ */}
-          <rect x="110" y="110" width="10" height="60" fill="#9ca3af" opacity="0.5" />
-          {/* Road to spare parts */}
-          <rect x="255" y="110" width="10" height="60" fill="#9ca3af" opacity="0.5" />
-          {/* Service road south */}
-          <rect x="20" y="310" width="860" height="8" fill="#9ca3af" opacity="0.5" />
-          {/* Cross roads */}
-          <rect x="420" y="130" width="10" height="125" fill="#9ca3af" opacity="0.4" />
-          <rect x="270" y="130" width="10" height="125" fill="#9ca3af" opacity="0.4" />
 
           {/* ── Legend ── */}
           <g>
@@ -618,7 +609,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome }: BaseMapProps)
             return (
               <g opacity="0.8" style={{ pointerEvents: "none" }}>
                 <ellipse cx={gx} cy={gy + 1.5} rx="14" ry="6" fill="rgba(0,0,0,0.2)" />
-                <GripenShape cx={gx} cy={gy} color={gc} />
+                <JasEToken cx={gx} cy={gy} color={gc} />
                 {/* Tail number label on ghost */}
                 <rect x={gx-16} y={gy-28} width="32" height="10" rx="2" fill={gc} opacity="0.9" />
                 <text x={gx} y={gy-21} textAnchor="middle" fontSize="7" fill="white" fontFamily="monospace" fontWeight="bold">
