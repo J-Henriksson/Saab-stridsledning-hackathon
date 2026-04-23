@@ -57,7 +57,7 @@ function Panel({ title, icon: Icon, children }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 const Index = () => {
   const {
-    state, togglePause, setGameSpeed, startMaintenance, sendOnMission, resetGame,
+    state, togglePause, startMaintenance, sendOnMission, resetGame,
     moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome,
     completeLandingCheck, applyRecommendation, dismissRecommendation,
     hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart,
@@ -190,7 +190,7 @@ const Index = () => {
 
   return (
     <div className="flex flex-col h-screen font-mono" style={{ background: "hsl(0 0% 100%)" }}>
-      <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
+      <TopBar state={state} onTogglePause={togglePause} onReset={resetGame} />
 
       {/* ── COMMAND STRIP ── */}
       <div className="flex items-center gap-3 px-5 py-2 flex-shrink-0 border-b"

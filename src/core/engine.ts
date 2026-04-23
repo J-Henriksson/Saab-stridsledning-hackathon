@@ -48,9 +48,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "ADVANCE_HOUR":
       return handleAdvanceHour(state);
 
-    case "SET_GAME_SPEED":
-      return { ...state, gameSpeed: action.speed };
-
     case "TOGGLE_PAUSE":
       return { ...state, isRunning: !state.isRunning };
 

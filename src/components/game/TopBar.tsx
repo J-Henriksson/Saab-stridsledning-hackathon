@@ -1,19 +1,35 @@
+import { useState, useEffect } from "react";
 import { GameState } from "@/types/game";
 import { PhaseBadge } from "./StatusBadge";
-import { Clock, RotateCcw, LayoutDashboard, Map, ChevronRight, Play, Pause } from "lucide-react";
+import { Pause, Play, RotateCcw, LayoutDashboard, Map } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
-const SPEEDS = [1, 2, 5, 10];
+const WEEKDAYS = ["SÖN", "MÅN", "TIS", "ONS", "TOR", "FRE", "LÖR"];
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAJ", "JUN", "JUL", "AUG", "SEP", "OKT", "NOV", "DEC"];
+
+function useRealTimeClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
 
 interface TopBarProps {
   state: GameState;
   onTogglePause: () => void;
-  onSetSpeed: (speed: number) => void;
   onReset: () => void;
 }
 
-export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProps) {
+export function TopBar({ state, onTogglePause, onReset }: TopBarProps) {
+  const now = useRealTimeClock();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const dateStr = `${WEEKDAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`;
+
   const totalAircraft = state.bases.reduce((s, b) => s + b.aircraft.length, 0);
   const mcAircraft = state.bases.reduce((s, b) => s + b.aircraft.filter((a) => a.status === "ready").length, 0);
   const mcPct = totalAircraft > 0 ? Math.round((mcAircraft / totalAircraft) * 100) : 0;
@@ -28,7 +44,7 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
         minHeight: "52px",
       }}
     >
-      {/* Brand */}
+      {/* Brand + Nav */}
       <div className="flex items-center gap-5">
         <NavLink to="/" className="flex items-center gap-3" title="Basöversikt">
           <div className="relative flex items-center justify-center w-9 h-9 rounded-lg overflow-hidden"
@@ -52,7 +68,6 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
           </div>
         </NavLink>
 
-        {/* Nav */}
         <nav className="flex items-center gap-0.5 ml-2">
           {[
             { to: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" />, label: "DASHBOARD" },
@@ -64,9 +79,7 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
               end={to === "/"}
               className={({ isActive }) =>
                 `flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-semibold rounded transition-all duration-150 tracking-wider ${
-                  isActive
-                    ? "text-white"
-                    : "hover:text-white"
+                  isActive ? "text-white" : "hover:text-white"
                 }`
               }
               style={({ isActive }) => isActive
@@ -81,16 +94,8 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
         </nav>
       </div>
 
-      {/* Center stats */}
+      {/* Center: MC stats + phase */}
       <div className="flex items-center gap-6">
-        <div className="flex items-center gap-2 text-sm">
-          <Clock className="h-3.5 w-3.5" style={{ color: "hsl(42 64% 53%)" }} />
-          <span className="font-mono font-semibold" style={{ color: "hsl(200 12% 86%)" }}>
-            DAG&nbsp;{state.day}
-          </span>
-          <ChevronRight className="h-3 w-3 opacity-30" style={{ color: "hsl(200 12% 86%)" }} />
-          <span className="font-mono font-bold text-white">{String(state.hour).padStart(2, "0")}:00</span>
-        </div>
         <PhaseBadge phase={state.phase} />
         <div className="flex items-center gap-2">
           <div className="text-right">
@@ -110,39 +115,30 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
-        {/* Speed selector */}
-        <div className="flex items-center gap-0.5">
-          {SPEEDS.map((s) => (
-            <button
-              key={s}
-              onClick={() => onSetSpeed(s)}
-              className="px-2 py-1 text-[10px] font-mono font-bold rounded transition-all duration-100"
-              style={state.gameSpeed === s
-                ? { background: "hsl(42 64% 53% / 0.3)", color: "hsl(42 64% 70%)", border: "1px solid hsl(42 64% 53% / 0.6)" }
-                : { background: "transparent", color: "hsl(200 12% 55%)", border: "1px solid hsl(200 12% 30%)" }
-              }
-            >
-              {s}×
-            </button>
-          ))}
+      {/* Right: Date + clock + pause + reset */}
+      <div className="flex items-center gap-3">
+        {/* Date */}
+        <span className="font-mono text-[11px] font-semibold tracking-widest" style={{ color: "hsl(200 12% 60%)" }}>
+          {dateStr}
+        </span>
+
+        {/* Time */}
+        <div className="flex items-baseline gap-0.5 font-mono font-black tabular-nums" style={{ color: "hsl(42 64% 62%)" }}>
+          <span className="text-3xl leading-none">{hh}:{mm}</span>
+          <span className="text-lg leading-none opacity-60">:{ss}</span>
         </div>
-        {/* Play / Pause */}
+
+        {/* Pause / Resume */}
         <button
           onClick={onTogglePause}
-          className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-bold rounded-lg transition-all duration-150 hover:opacity-90 active:scale-95"
-          style={{
-            background: state.isRunning ? "hsl(353 74% 60% / 0.2)" : "var(--gradient-gold)",
-            color: state.isRunning ? "hsl(353 74% 70%)" : "hsl(220 63% 14%)",
-            border: state.isRunning ? "1px solid hsl(353 74% 60% / 0.5)" : "none",
-            boxShadow: state.isRunning ? "none" : "0 2px 12px hsl(42 64% 53% / 0.4)",
-            letterSpacing: "0.12em",
-          }}
+          className="p-2 rounded-lg transition-all hover:bg-white/10 active:scale-95"
+          title={state.isRunning ? "Pausa" : "Fortsätt"}
+          style={{ color: state.isRunning ? "hsl(42 64% 62%)" : "hsl(152 60% 52%)" }}
         >
-          {state.isRunning ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          {state.isRunning ? "PAUSA" : "STARTA"}
+          {state.isRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </button>
+
+        {/* Reset */}
         <button
           onClick={onReset}
           className="p-2 rounded-lg transition-all hover:bg-white/10"

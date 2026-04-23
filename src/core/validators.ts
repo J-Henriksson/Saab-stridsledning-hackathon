@@ -9,7 +9,6 @@ export interface ValidationResult {
 // Actions that are always allowed
 const ALWAYS_ALLOWED: GameAction["type"][] = [
   "ADVANCE_HOUR",
-  "SET_GAME_SPEED",
   "TOGGLE_PAUSE",
   "RESET_GAME",
   "SEND_MISSION_DROP",
@@ -101,7 +100,6 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "MARK_FAULT_NMC":
     case "CONSUME_SPARE_PART":
     case "ADVANCE_HOUR":
-    case "SET_GAME_SPEED":
     case "TOGGLE_PAUSE":
     case "RESET_GAME":
       return { valid: true };

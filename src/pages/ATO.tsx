@@ -66,7 +66,7 @@ function formatHour(h: number) {
 }
 
 export function ATOBody({ embedded = false }: { embedded?: boolean }) {
-  const { state, togglePause, setGameSpeed, resetGame, assignAircraftToOrder, dispatchOrder, createATOOrder, editATOOrder, deleteATOOrder } = useGame();
+  const { state, togglePause, resetGame, assignAircraftToOrder, dispatchOrder, createATOOrder, editATOOrder, deleteATOOrder } = useGame();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedAircraft, setSelectedAircraft] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "dispatched" | "completed">("all");
@@ -152,7 +152,7 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className={embedded ? "flex flex-col flex-1 overflow-hidden bg-background" : "flex flex-col h-screen bg-background"}>
-      {!embedded && <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />}
+      {!embedded && <TopBar state={state} onTogglePause={togglePause} onReset={resetGame} />}
 
       {/* Sub-header */}
       <div className="border-b border-border bg-card px-6 py-2.5 flex items-center justify-between">
