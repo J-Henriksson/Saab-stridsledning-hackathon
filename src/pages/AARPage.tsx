@@ -5,6 +5,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useGame } from "../context/GameContext";
 import type { AARActionType, RiskLevel } from "../types/game";
+import type { UnitCategory } from "@/types/units";
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
 
@@ -34,6 +35,13 @@ const ACTION_BADGES: Record<AARActionType, { label: string; color: string; bg: s
   LANDING_RECEIVED:  { label: "LANDNING",   color: "#22c55e", bg: "rgba(34,197,94,0.18)"  },
   SPARE_PART_USED:   { label: "RESERVDEL",  color: "#22d3ee", bg: "rgba(34,211,238,0.18)" },
   HANGAR_CONFIRM:    { label: "HANGAR",     color: "#a78bfa", bg: "rgba(139,92,246,0.18)" },
+  UNIT_DEPLOYED:      { label: "DEPLOY",      color: "#22d3ee", bg: "rgba(34,211,238,0.18)" },
+  UNIT_RECALLED:      { label: "RETUR",       color: "#22c55e", bg: "rgba(34,197,94,0.18)"  },
+  UNIT_TRANSFERRED:   { label: "ÖVERFÖRING",  color: "#a78bfa", bg: "rgba(139,92,246,0.18)" },
+  UNIT_DESTROYED:     { label: "FÖRSTÖRD",    color: "#ef4444", bg: "rgba(239,68,68,0.20)"  },
+  CONTACT_CLASSIFIED: { label: "KLASS",       color: "#D7AB3A", bg: "rgba(215,171,58,0.18)" },
+  UNIT_RELOCATED:     { label: "FLYTT",       color: "#60a5fa", bg: "rgba(96,165,250,0.18)" },
+  UNIT_FUEL_LOW:      { label: "BRÄNSLE",     color: "#fb923c", bg: "rgba(249,115,22,0.18)" },
 };
 
 const RISK_FILTER_MAP: Record<string, RiskLevel> = {
@@ -51,6 +59,20 @@ const TYPE_FILTER_MAP: Record<string, AARActionType> = {
   "NMC":       "FAULT_NMC",
   "Landning":  "LANDING_RECEIVED",
   "Reservdel": "SPARE_PART_USED",
+  "Deploy":    "UNIT_DEPLOYED",
+  "Retur":     "UNIT_RECALLED",
+  "Överföring":"UNIT_TRANSFERRED",
+  "Klass":     "CONTACT_CLASSIFIED",
+  "Flytt":     "UNIT_RELOCATED",
+};
+
+const UNIT_CATEGORIES: UnitCategory[] = ["aircraft", "drone", "air_defense", "ground_vehicle", "radar"];
+const CATEGORY_LABEL: Record<UnitCategory, string> = {
+  aircraft: "Flyg",
+  drone: "Drönare",
+  air_defense: "Luftvärn",
+  ground_vehicle: "Markfordon",
+  radar: "Radar",
 };
 
 // ─── Time range helpers ───────────────────────────────────────────────────────
@@ -166,10 +188,10 @@ function EventCard({ event }: { event: ReturnType<typeof useGame>["state"]["even
           <span className="text-[9px] font-mono" style={{ color: "rgba(215,222,225,0.45)", fontFamily: "monospace" }}>
             {event.timestamp}
           </span>
-          {event.aircraftId && (
+          {(event.aircraftId || event.unitId) && (
             <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded"
               style={{ background: DEEP_BLUE, color: AMBER, border: `1px solid rgba(215,171,58,0.3)` }}>
-              {event.aircraftId}
+              {event.aircraftId ?? event.unitId}
             </span>
           )}
           {badge && (
@@ -486,6 +508,7 @@ export default function AARPage({ embedded = false }: { embedded?: boolean }) {
   const [typeFilter, setTypeFilter] = useState<string>("Alla");
   const [timeRange,  setTimeRange]  = useState<"all" | "today" | "yesterday" | "last7" | "last30" | "custom">("today");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
+  const [activeCategories, setActiveCategories] = useState<Set<UnitCategory>>(new Set(UNIT_CATEGORIES));
 
   // Unique aircraft IDs
   const uniqueAcIds = Array.from(
@@ -493,16 +516,19 @@ export default function AARPage({ embedded = false }: { embedded?: boolean }) {
   ).sort();
 
   // Filter
-  const filteredEvents = state.events.filter((e) => {
-    if (acFilter !== "Alla" && e.aircraftId !== acFilter) return false;
-    if (riskFilter !== "Alla") {
-      if (e.riskLevel !== RISK_FILTER_MAP[riskFilter]) return false;
-    }
-    if (typeFilter !== "Alla") {
-      if (e.actionType !== TYPE_FILTER_MAP[typeFilter]) return false;
-    }
-    return true;
-  }).reverse(); // newest first
+  const filteredEvents = state.events
+    .filter((e) => {
+      if (acFilter !== "Alla" && e.aircraftId !== acFilter) return false;
+      if (riskFilter !== "Alla") {
+        if (e.riskLevel !== RISK_FILTER_MAP[riskFilter]) return false;
+      }
+      if (typeFilter !== "Alla") {
+        if (e.actionType !== TYPE_FILTER_MAP[typeFilter]) return false;
+      }
+      return true;
+    })
+    .filter((e) => !e.unitCategory || activeCategories.has(e.unitCategory))
+    .reverse(); // newest first
 
   // Summary stats (filtered by time range)
   const timeFiltered = state.events.filter((e) => isWithinTimeRange(e.timestamp, timeRange, customRange, state.day));
@@ -581,8 +607,27 @@ export default function AARPage({ embedded = false }: { embedded?: boolean }) {
           {/* Row 3 — Type filter */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[9px] font-mono uppercase tracking-widest mr-1" style={{ color: "rgba(215,222,225,0.35)" }}>Typ:</span>
-            {["Alla", "Uppdrag", "Underhåll", "Pause", "Utfall", "NMC", "Landning", "Reservdel"].map((t) => (
+            {["Alla", "Uppdrag", "Underhåll", "Pause", "Utfall", "NMC", "Landning", "Reservdel", "Deploy", "Retur", "Överföring", "Klass", "Flytt"].map((t) => (
               <FilterPill key={t} label={t} active={typeFilter === t} onClick={() => setTypeFilter(t)} />
+            ))}
+          </div>
+
+          {/* Row 4 — Unit category filter */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[9px] font-mono uppercase tracking-widest mr-1" style={{ color: "rgba(215,222,225,0.35)" }}>Kategori:</span>
+            {UNIT_CATEGORIES.map((cat) => (
+              <FilterPill
+                key={cat}
+                label={CATEGORY_LABEL[cat]}
+                active={activeCategories.has(cat)}
+                onClick={() => {
+                  setActiveCategories((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(cat)) next.delete(cat); else next.add(cat);
+                    return next;
+                  });
+                }}
+              />
             ))}
           </div>
         </div>

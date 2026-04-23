@@ -9,6 +9,7 @@ import ATO from "./pages/ATO.tsx";
 import MapPage from "./pages/Map.tsx";
 import AircraftDashboard from "./pages/AircraftDashboard.tsx";
 import AARPage from "./pages/AARPage";
+import UnitDashboard from "./pages/UnitDashboard.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/map" element={<MapPage />} />
             <Route path="/aircraft/:tailNumber" element={<AircraftDashboard />} />
             <Route path="/aar" element={<AARPage />} />
+            <Route path="/units/:id" element={<UnitDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
