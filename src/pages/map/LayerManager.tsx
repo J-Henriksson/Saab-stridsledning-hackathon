@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin, Mountain } from "lucide-react";
+import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin, Mountain, Radio } from "lucide-react";
 import type { DrawingMode, OverlayLayerVisibility } from "@/types/overlay";
 
 const MILITARY_GREEN = "#2D5A27";
+const RADAR_TEAL = "#00E5C7";
 
 const DRAW_TOOLS: { mode: DrawingMode; label: string; color: string }[] = [
   { mode: "circle_restricted",   label: "Restriktionszon", color: "#D9192E" },
@@ -22,6 +23,7 @@ const LAYER_ITEMS: {
   { key: "militaryBases", label: "Militära baser",          Icon: Shield,      color: MILITARY_GREEN },
   { key: "criticalInfra", label: "Kritisk infrastruktur",   Icon: Building2,   color: "#708090" },
   { key: "skyddsobjekt",  label: "Skyddsobjekt",            Icon: ShieldAlert, color: "#D97706" },
+  { key: "radarUnits",    label: "Radarstationer",          Icon: Radio,       color: RADAR_TEAL },
   { key: "activeZones",   label: "Aktiva zoner",            Icon: MapPin,      color: "#2563eb" },
 ];
 

@@ -11,6 +11,7 @@ import type { Unit, AircraftUnit } from "@/types/units";
 import { BASE_COORDS } from "@/pages/map/constants";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import type { TacticalZone } from "@/types/overlay";
+import { DEMO_RADAR_UNITS } from "./radarUnits";
 
 const createSpareParts = (): SparePartStock[] => [
   { id: "radar", name: "Radar LRU", category: "Avionik", quantity: 4, maxQuantity: 6, reservedQuantity: 0, resupplyDays: 5, onOrder: 0, leadTime: 5, source: "base_stock", turnaround: 5, isReusable: true },
@@ -419,7 +420,7 @@ export const initialGameState: GameState = {
   second: new Date().getSeconds(),
   phase: "FRED",
   bases: [MOB, FOB_N, FOB_S],
-  deployedUnits: [],
+  deployedUnits: [...DEMO_RADAR_UNITS],
   successfulMissions: 0,
   failedMissions: 0,
   atoOrders: initialATOOrders,
@@ -444,5 +445,6 @@ export const initialGameState: GameState = {
     militaryBases: true,
     criticalInfra: true,
     skyddsobjekt: true,
+    radarUnits: true,
   },
 };

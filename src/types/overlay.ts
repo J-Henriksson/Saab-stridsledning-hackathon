@@ -66,4 +66,6 @@ export interface OverlayLayerVisibility {
   criticalInfra: boolean;
   /** Non-military protected objects */
   skyddsobjekt: boolean;
+  /** Radar station markers and sweeps */
+  radarUnits: boolean;
 }
