@@ -40,8 +40,10 @@ export const RadarSweep: React.FC<RadarSweepProps> = ({
       style={{
         width: size,
         height: size,
-        left: -radiusPx,
-        top: -radiusPx,
+        left: '50%',
+        top: '50%',
+        marginLeft: -radiusPx,
+        marginTop: -radiusPx,
         animation: `radar-sweep ${duration}s linear infinite`,
         transformOrigin: 'center center',
         willChange: 'transform',
