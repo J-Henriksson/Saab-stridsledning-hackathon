@@ -36,6 +36,10 @@ import { RoadBaseMarker } from "./map/RoadBaseMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
+import { UnitPathTrailsLayer } from "./map/UnitPathTrailsLayer";
+import { NavalUnitsLayer } from "./map/NavalUnitsLayer";
+import { NavalDetailPanel } from "./map/NavalDetailPanel";
+import { computeFriendlySensorCoverage, detectNavalUnits, detectEnemyBases, detectEnemyEntities } from "@/core/intel/visibility";
 import { RadarLayer, RadarControlPanel } from "@/components/radar";
 import type { ExtendedRadarUnit } from "@/components/radar";
 import { useRadarDetection } from "@/hooks/useRadarDetection";
@@ -70,6 +74,7 @@ type SelectedEntity =
   | { kind: "zone"; zoneId: string }
   | { kind: "asset"; assetId: string }
   | { kind: "road_base"; id: string }
+  | { kind: "naval"; id: string }
   | null;
 
 type MapViewKey = "satelliter" | "vind" | "moln" | "hotzoner";
@@ -303,6 +308,20 @@ export default function MapPage() {
     return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
   }, [allUnits, state?.overlayVisibility?.drones]);
 
+  // ── Fog-of-war: compute friendly sensor discs, then classify hostile ships
+  // and enemy bases/entities as visible / last-known / hidden. Friendlies in
+  // `navalUnits` bypass the filter via `detectNavalUnits`.
+  const sensorDiscs = useMemo(() => computeFriendlySensorCoverage(state), [state]);
+  const navalVisibility = useMemo(() => detectNavalUnits(state, sensorDiscs), [state, sensorDiscs]);
+  const enemyBaseVisibility = useMemo(() => detectEnemyBases(state, sensorDiscs), [state, sensorDiscs]);
+  const enemyEntityVisibility = useMemo(() => detectEnemyEntities(state, sensorDiscs), [state, sensorDiscs]);
+
+  // Units whose path-history trail should render (airborne/moving friendlies).
+  const trailUnits = useMemo(
+    () => state.deployedUnits.filter((u) => u.pathHistory && u.pathHistory.length > 1),
+    [state.deployedUnits],
+  );
+
   useEffect(() => {
     const onDragStart = (event: DragEvent) => {
       const target = event.target;
@@ -357,6 +376,11 @@ export default function MapPage() {
   const selectedRoadBase =
     selected?.kind === "road_base"
       ? state.roadBases.find((rb) => rb.id === selected.id)
+      : undefined;
+
+  const selectedNaval =
+    selected?.kind === "naval"
+      ? state.navalUnits.find((n) => n.id === selected.id)
       : undefined;
 
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
@@ -570,6 +594,7 @@ export default function MapPage() {
     if (selected?.kind === "enemy_base" && selectedEnemyBase) return { main: selectedEnemyBase.name, sub: "Fiendens bas" };
     if (selected?.kind === "enemy_entity" && selectedEnemyEntity) return { main: selectedEnemyEntity.name, sub: "Fiendens enhet" };
     if (selected?.kind === "road_base" && selectedRoadBase) return { main: selectedRoadBase.name, sub: "Vägbas" };
+    if (selected?.kind === "naval" && selectedNaval) return { main: selectedNaval.name, sub: selectedNaval.affiliation === "hostile" ? "Fiendens fartyg" : "Svenskt fartyg" };
     return null;
   })();
 
@@ -803,10 +828,31 @@ export default function MapPage() {
               onSelectAsset={handleSelectAsset}
             />
 
+            {/* Breadcrumb trails (rendered BEFORE unit markers so they sit underneath).
+                The selected unit gets a FlightRadar-style bright gradient trail. */}
+            <UnitPathTrailsLayer
+              units={trailUnits}
+              selectedUnitId={
+                selected?.kind === "unit"
+                  ? selected.unitId
+                  : selected?.kind === "aircraft"
+                    ? selected.aircraftId
+                    : null
+              }
+            />
+
             <UnitsLayer
               units={visibleUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+            />
+
+            {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}
+            <NavalUnitsLayer
+              visible={navalVisibility.visible}
+              lastKnown={navalVisibility.lastKnown}
+              onSelect={(id) => setSelected({ kind: "naval", id })}
+              selectedId={selected?.kind === "naval" ? selected.id : null}
             />
 
             {state.overlayVisibility.drones && (
@@ -889,7 +935,8 @@ export default function MapPage() {
                 </div>
               </Marker>
             ))}
-            {state.enemyBases.map((eb) => (
+            {/* Enemy bases — only shown when inside a friendly sensor disc */}
+            {enemyBaseVisibility.visible.map((eb) => (
               <EnemyMarker
                 key={eb.id}
                 base={eb}
@@ -897,7 +944,7 @@ export default function MapPage() {
                 onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
               />
             ))}
-            {state.enemyEntities.map((ee) => (
+            {enemyEntityVisibility.visible.map((ee) => (
               <EnemyEntityMarker
                 key={ee.id}
                 entity={ee}
@@ -1342,6 +1389,7 @@ export default function MapPage() {
               ) : selected?.kind === "base" && selectedBase ? (
                 <BaseDetailPanel
                   base={selectedBase}
+                  deployedUnits={state.deployedUnits}
                   onSelectAircraft={(id) =>
                     setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
                   }
@@ -1362,9 +1410,14 @@ export default function MapPage() {
                   rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
                 />
               ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
-                <EnemyBaseDetailPanel base={selectedEnemyBase} />
+                <EnemyBaseDetailPanel
+                  base={selectedEnemyBase}
+                  report={state.intelReports?.[selectedEnemyBase.id]}
+                />
               ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
                 <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
+              ) : selected?.kind === "naval" && selectedNaval ? (
+                <NavalDetailPanel unit={selectedNaval} />
               ) : null}
             </motion.div>
           )}

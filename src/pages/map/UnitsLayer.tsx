@@ -5,10 +5,18 @@ import { isAircraft, isAirDefense } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 import { useGame } from "@/context/GameContext";
 
-// How long, in wall-ms, we expect a single engine tick to take at 1× game speed.
-// This is the lerp window. If the next tick lands sooner, the next render snaps
-// to the new target and starts a fresh lerp.
-const EXPECTED_TICK_MS = 1000;
+// Matches useGameClock: tickMs = max(1000 / gameSpeed, FRAME_MS).
+// The lerp window tracks the actual wall-time between ticks so the marker
+// catches up. A floor of LERP_WINDOW_MIN_MS keeps motion smooth at high game
+// speeds — otherwise the ~60ms tick cadence at 16× leaves only 3-4 RAF frames
+// per segment and the marker visibly stair-steps. With the floor the visual
+// lags game-state by at most a few hundred ms, which is imperceptible at
+// map scale but eliminates the jumps.
+const FRAME_MS = 1000 / 60;
+const LERP_WINDOW_MIN_MS = 220;
+function expectedTickMs(gameSpeed: number): number {
+  return Math.max(1000 / Math.max(1, gameSpeed), FRAME_MS, LERP_WINDOW_MIN_MS);
+}
 
 // Keep the @keyframes once per mount
 const PULSE_STYLE = `
@@ -30,33 +38,28 @@ interface UnitsLayerProps {
   selectedUnitId?: string | null;
 }
 
-function MovementTrails({ units }: { units: Unit[] }) {
+function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnitId?: string | null }) {
   const features = useMemo(() => {
-    return units
-      .filter((u) => {
-        const m = u.movement;
-        return (
-          (m.state === "moving" || m.state === "airborne") &&
-          !!m.destination &&
-          typeof m.destination === "object" &&
-          "lat" in m.destination
-        );
-      })
-      .map((u) => {
-        const dest = u.movement.destination as GeoPosition;
-        return {
-          type: "Feature" as const,
-          properties: { id: u.id, affiliation: u.affiliation },
-          geometry: {
-            type: "LineString" as const,
-            coordinates: [
-              [u.position.lng, u.position.lat],
-              [dest.lng, dest.lat],
-            ],
-          },
-        };
-      });
-  }, [units]);
+    // Only the selected unit's heading vector is drawn — keeps the map clean.
+    if (!selectedUnitId) return [] as GeoJSON.Feature<GeoJSON.LineString>[];
+    const u = units.find((x) => x.id === selectedUnitId);
+    if (!u) return [];
+    const m = u.movement;
+    if (!(m.state === "moving" || m.state === "airborne")) return [];
+    if (!m.destination || typeof m.destination !== "object" || !("lat" in m.destination)) return [];
+    const dest = m.destination as GeoPosition;
+    return [{
+      type: "Feature" as const,
+      properties: { id: u.id, affiliation: u.affiliation },
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [u.position.lng, u.position.lat],
+          [dest.lng, dest.lat],
+        ],
+      },
+    }];
+  }, [units, selectedUnitId]);
 
   const data = {
     type: "FeatureCollection" as const,
@@ -80,7 +83,8 @@ function MovementTrails({ units }: { units: Unit[] }) {
 }
 
 export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
-  const { dispatch } = useGame();
+  const { state, dispatch } = useGame();
+  const tickMs = expectedTickMs(state.gameSpeed);
   // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
   // plus all other unit categories to render through the shared unit layer.
   const renderable = useMemo(
@@ -113,7 +117,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         prev.currPos.lng !== u.position.lng
       ) {
         // Compute where we visually are right now, use that as the new prevPos
-        const ratio = Math.min(1, (now - prev.observedAtMs) / EXPECTED_TICK_MS);
+        const ratio = Math.min(1, (now - prev.observedAtMs) / tickMs);
         const currentVisualPos = {
           lat: prev.prevPos.lat + (prev.currPos.lat - prev.prevPos.lat) * ratio,
           lng: prev.prevPos.lng + (prev.currPos.lng - prev.prevPos.lng) * ratio,
@@ -142,12 +146,12 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
   return (
     <>
       <style>{PULSE_STYLE}</style>
-      <MovementTrails units={renderable} />
+      <MovementTrails units={renderable} selectedUnitId={selectedUnitId} />
       {renderable.map((unit) => {
         const snap = snapshotsRef.current.get(unit.id);
         let pos: GeoPosition = unit.position;
         if (snap) {
-          const ratio = Math.min(1, (now - snap.observedAtMs) / EXPECTED_TICK_MS);
+          const ratio = Math.min(1, (now - snap.observedAtMs) / tickMs);
           pos = {
             lat: snap.prevPos.lat + (snap.currPos.lat - snap.prevPos.lat) * ratio,
             lng: snap.prevPos.lng + (snap.currPos.lng - snap.prevPos.lng) * ratio,
@@ -160,7 +164,9 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const destIsGeo = !!dest && typeof dest === "object" && "lat" in dest;
 
         const isAD = isAirDefense(unit);
-        const isDraggable = unit.currentBase === null;
+        // Pre-placed static Lv batteries never accept drag, even when deployed.
+        const isStaticAD = isAD && (unit as import("@/types/units").AirDefenseUnit).isStatic === true;
+        const isDraggable = unit.currentBase === null && !isStaticAD;
         const glowFilter = selectedUnitId === unit.id
           ? isAD
             ? "drop-shadow(0 0 6px #DC2626)"

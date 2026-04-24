@@ -36,6 +36,23 @@ export interface Movement {
   etaHour?: number;
 }
 
+/** Autonomous patrol configuration — the unit cycles a deterministic racetrack
+ *  orbit around `center`. Realistic CAP / AEW patterns instead of random legs. */
+export interface PatrolConfig {
+  center: GeoPosition;
+  /** Half-length of the orbit's major axis, km. */
+  radiusKm: number;
+  /** Cruise / loiter speed, knots. */
+  speedKts: number;
+  /** Major-axis bearing in degrees (0 = N-S orbit, 90 = E-W orbit). Defaults to 0. */
+  axisDeg?: number;
+  /** Orbit direction. Defaults to true (clockwise). */
+  clockwise?: boolean;
+  /** Ellipse aspect ratio — minor axis = radiusKm * aspect. Defaults to 0.45
+   *  which yields a CAP-style racetrack. */
+  aspect?: number;
+}
+
 export interface UnitBase {
   id: string;
   category: UnitCategory;
@@ -50,6 +67,15 @@ export interface UnitBase {
   deployedAt?: { day: number; hour: number };
   /** Set during TRANSFER_UNIT; the engine STOREs the unit here on arrival. */
   pendingArrivalBase?: BaseType;
+  /** Logistics link: which base provisioned / owns this unit. */
+  parentBaseId?: BaseType;
+  /** Recent breadcrumb trail (capped); used by the map to draw path history. */
+  pathHistory?: GeoPosition[];
+  /** When set, the engine steers the unit around a deterministic racetrack
+   *  orbit defined by the patrol config (CAP / AEW behaviour). */
+  patrol?: PatrolConfig;
+  /** Current index along the pre-computed patrol orbit (looped). */
+  patrolLegIdx?: number;
 }
 
 export interface AircraftUnit extends UnitBase {
@@ -113,6 +139,8 @@ export interface AirDefenseUnit extends UnitBase {
   detectionRange: number;
   operationalStatus: ADOperationalStatus;
   assignedTargetId?: string;
+  /** Pre-placed strategic battery — never draggable, never relocatable. */
+  isStatic?: boolean;
 }
 
 export type GroundVehicleType = "LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER";

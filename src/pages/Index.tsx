@@ -13,6 +13,7 @@ import { FlygschemaTidslinje } from "@/components/dashboard/FlygschemaTidslinje"
 import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
 import { ResursPage } from "@/components/dashboard/ResursPage";
+import { AktivaEnheterPanel } from "@/components/dashboard/AktivaEnheterPanel";
 import { ATOBody } from "./ATO";
 import AARPage from "./AARPage";
 import { IntelligenceSidebar } from "@/components/dashboard/IntelligenceSidebar";
@@ -361,6 +362,9 @@ const Index = () => {
 
                 return (
                 <>
+                  {/* ── Theater-wide roster (Air/Land/Sea × In-flight/On-base/Maint) ── */}
+                  <AktivaEnheterPanel state={state} />
+
                   {/* ── Command readiness panel ── */}
                   <div className="rounded-xl overflow-hidden"
                     style={{ background: "#0C234C", border: "1px solid rgba(215,222,225,0.08)", boxShadow: "0 4px 24px rgba(12,35,76,0.18)" }}>
