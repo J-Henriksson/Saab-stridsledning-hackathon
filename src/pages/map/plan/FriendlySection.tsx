@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Fuel, Zap, Wrench, Plus, Trash2, MapPin } from "lucide-react";
 import type { Base, BaseType, FriendlyMarker, FriendlyMarkerCategory, FriendlyEntity, FriendlyEntityCategory, GameAction } from "@/types/game";
 import { Slider } from "@/components/ui/slider";
+import { getAircraft } from "@/core/units/helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -45,8 +46,9 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
   const [bays, setBays] = useState(base.maintenanceBays.total);
   const [ammo, setAmmo] = useState(base.ammunition.map((a) => ({ type: a.type, quantity: a.quantity })));
 
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const ratio = mc / (base.aircraft.length || 1);
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready").length;
+  const ratio = mc / (aircraft.length || 1);
   const readinessColor = ratio >= 0.7 ? "text-green-400" : ratio >= 0.4 ? "text-yellow-400" : "text-red-400";
   const fuelColor = fuel >= 60 ? "text-green-400" : fuel >= 30 ? "text-yellow-400" : "text-red-400";
 
@@ -61,7 +63,7 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
           <span className="text-xs font-mono font-bold text-foreground">{base.id}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{base.name}</span>
         </div>
-        <span className={`text-[10px] font-mono ${readinessColor}`}>{mc}/{base.aircraft.length} MC</span>
+        <span className={`text-[10px] font-mono ${readinessColor}`}>{mc}/{aircraft.length} MC</span>
         {open ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
       </button>
 
