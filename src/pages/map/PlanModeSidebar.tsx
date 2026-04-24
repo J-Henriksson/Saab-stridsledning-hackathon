@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Shield, Crosshair, ChevronDown, ChevronRight } from "lucide-react";
+import { Shield, Crosshair, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import type { GameState, GameAction } from "@/types/game";
 import { FriendlySection } from "./plan/FriendlySection";
 import { EnemySection } from "./plan/EnemySection";
@@ -15,13 +15,20 @@ interface Props {
   state: GameState;
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
+  onFinalizePlan: () => void;
 }
 
 export type { PlacingPayload, PlacingKind };
 
-export function PlanModeSidebar({ state, dispatch, onStartPlacement }: Props) {
+export function PlanModeSidebar({ state, dispatch, onStartPlacement, onFinalizePlan }: Props) {
   const [friendlyOpen, setFriendlyOpen] = useState(true);
   const [enemyOpen, setEnemyOpen] = useState(true);
+
+  const hasAnyPlanData =
+    state.enemyBases.length > 0 ||
+    state.enemyEntities.length > 0 ||
+    state.friendlyMarkers.length > 0 ||
+    state.deployedUnits.some((u) => u.affiliation === "friend");
 
   return (
     <div className="flex flex-col h-full">
@@ -92,6 +99,29 @@ export function PlanModeSidebar({ state, dispatch, onStartPlacement }: Props) {
             />
           )}
         </div>
+      </div>
+
+      {/* Finalize plan button */}
+      <div className="shrink-0 p-4 border-t border-border">
+        <button
+          onClick={onFinalizePlan}
+          disabled={!hasAnyPlanData}
+          className="w-full h-10 rounded-lg font-mono font-bold text-[11px] uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+          style={{
+            background: hasAnyPlanData ? "rgba(215,171,58,0.15)" : "rgba(100,116,139,0.08)",
+            border: `1px solid ${hasAnyPlanData ? "#D7AB3A" : "rgba(100,116,139,0.25)"}`,
+            color: hasAnyPlanData ? "#D7AB3A" : "#475569",
+            cursor: hasAnyPlanData ? "pointer" : "not-allowed",
+          }}
+        >
+          <Sparkles size={13} />
+          Godkänn plan
+        </button>
+        {!hasAnyPlanData && (
+          <p className="text-center text-[9px] font-mono mt-1.5" style={{ color: "#475569" }}>
+            Lägg till minst en enhet eller bas
+          </p>
+        )}
       </div>
     </div>
   );
