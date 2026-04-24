@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -26,7 +26,9 @@ const App = () => (
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Suspense fallback={<div className="min-h-screen bg-background text-foreground flex items-center justify-center font-mono text-sm">Laddar karta...</div>}>
             <Routes>
-              <Route path="/" element={<Index />} />
+              <Route path="/" element={<Navigate to="/map" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/dashboard/MOB" replace />} />
+              <Route path="/dashboard/:baseId" element={<Index />} />
               <Route path="/ato" element={<ATO />} />
               <Route path="/map" element={<MapPage />} />
               <Route path="/aircraft/:tailNumber" element={<AircraftDashboard />} />

@@ -44,7 +44,7 @@ export default function DroneDashboard() {
       <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
 
       <div className="border-b border-border bg-card px-6 py-3 flex items-center gap-3">
-        <Link to="/" className="text-muted-foreground hover:text-foreground">
+        <Link to="/dashboard/MOB" className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <Radio className="h-4 w-4 text-purple-400" />

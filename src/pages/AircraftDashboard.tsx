@@ -788,15 +788,16 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
   const [rebaseOpen, setRebaseOpen] = useState(false);
   const [pendingToBase, setPendingToBase] = useState<BaseType | null>(null);
   const [pendingRebaseCheck, setPendingRebaseCheck] = useState(false);
+  const dashboardHref = `/dashboard/${aircraft?.currentBase ?? "MOB"}`;
 
   if (!aircraft) {
     return (
       <div className="min-h-full flex items-center justify-center font-mono" style={{ background: "#0C234C" }}>
-        <div className="text-center space-y-3">
+          <div className="text-center space-y-3">
           <div className="text-2xl font-black text-[#D7DEE1]">Flygplan ej hittat</div>
           <div className="text-[11px] text-[#D7DEE1]/50">Svansnummer "{tailNumber}" existerar inte i nuvarande speltillstånd.</div>
           {!embedded && (
-            <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] text-[#D7DEE1]/50 hover:text-[#D7DEE1] mt-4">
+            <Link to="/dashboard/MOB" className="inline-flex items-center gap-1.5 text-[10px] text-[#D7DEE1]/50 hover:text-[#D7DEE1] mt-4">
               <ArrowLeft className="h-3 w-3" /> Tillbaka till huvudbas
             </Link>
           )}
@@ -865,7 +866,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
             {/* Left: identity */}
             <div className="flex-1 space-y-2 min-w-0">
               {!embedded && (
-                <Link to="/" className="inline-flex items-center gap-1.5 text-[10px] font-mono text-[#D7DEE1]/40 hover:text-[#D7DEE1] transition-colors">
+                <Link to={dashboardHref} className="inline-flex items-center gap-1.5 text-[10px] font-mono text-[#D7DEE1]/40 hover:text-[#D7DEE1] transition-colors">
                   <ArrowLeft className="h-3 w-3" /> TILLBAKA TILL HUVUDBAS
                 </Link>
               )}
@@ -1566,7 +1567,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
               toast.success(`${ac.tailNumber} ombaserad till ${destName}`);
               setPendingRebaseCheck(false);
               setPendingToBase(null);
-              if (!embedded) navigate("/");
+              if (!embedded) navigate(`/dashboard/${pendingToBase ?? ac.currentBase}`);
             }}
             onMaintenance={(repairTime, typeKey, weaponLoss, label, requiredSparePart) => {
               applyUtfallOutcome(ac.currentBase, ac.id, repairTime, typeKey, weaponLoss, label, requiredSparePart);

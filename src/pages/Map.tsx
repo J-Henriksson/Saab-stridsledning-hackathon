@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import MapGL, { Marker, NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -182,6 +182,7 @@ function isMarineLabelLayer(layer: {
 export default function MapPage() {
   const { state, togglePause, setGameSpeed, resetGame, dispatch, recallDrone, updateDroneWaypoints, setDroneOverlay } = useGame();
   const location = useLocation();
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -910,15 +911,15 @@ export default function MapPage() {
               enemyBases={state.enemyBases}
             />
 
-            {Object.keys(BASE_COORDS).map((id) => (
+            {state.bases.map((base) => (
               <BaseMarker
-                key={id}
-                id={id}
-                base={state.bases.find((b) => b.id === id)}
+                key={base.id}
+                id={base.id}
+                base={base}
                 isSelected={
-                  (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === id
+                  (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === base.id
                 }
-                onClick={() => setSelected({ kind: "base", baseId: id })}
+                onClick={() => setSelected({ kind: "base", baseId: base.id })}
                 flygvapnetMode={state.overlayVisibility.flygvapnet}
                 showAirbases={true}
               />
@@ -1333,6 +1334,24 @@ export default function MapPage() {
                         <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
                       </div>
                       <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
+                      {selected?.kind === "base" && selectedBase && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/dashboard/${selectedBase.id}`)}
+                          className="mt-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-wider transition-all hover:brightness-105"
+                          style={{
+                            color: "#0C234C",
+                            background: "rgba(215,171,58,0.14)",
+                            borderColor: "rgba(215,171,58,0.42)",
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <LayoutDashboard className="h-3.5 w-3.5" />
+                            Visa i dashboarden
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </>
                   ) : (
                     <div className="text-xs font-bold text-foreground font-mono">

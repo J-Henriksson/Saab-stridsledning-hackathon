@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
@@ -65,6 +65,7 @@ const Index = () => {
     hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart,
   } = useGame();
   const navigate = useNavigate();
+  const { baseId: routeBaseId } = useParams<{ baseId: string }>();
 
   const [selectedBaseId, setSelectedBaseId]           = useState<BaseType>("MOB");
   const [activeSection, setActiveSection]             = useState<Section>("base");
@@ -78,6 +79,19 @@ const Index = () => {
   const [pendingUtfallFull, setPendingUtfallFull]     = useState<{
     aircraftId: string; repairTime: number; typeKey: string; weaponLoss: number; label: string; requiredSparePart?: string;
   } | null>(null);
+
+  useEffect(() => {
+    const nextBaseId = state.bases.some((base) => base.id === routeBaseId)
+      ? routeBaseId as BaseType
+      : "MOB";
+
+    setSelectedBaseId(nextBaseId);
+  }, [routeBaseId, state.bases]);
+
+  useEffect(() => {
+    if (routeBaseId === selectedBaseId) return;
+    navigate(`/dashboard/${selectedBaseId}`, { replace: true });
+  }, [navigate, routeBaseId, selectedBaseId]);
 
   const selectedBase     = state.bases.find((b) => b.id === selectedBaseId)!;
   const selectedAircraftList = getAircraft(selectedBase);
