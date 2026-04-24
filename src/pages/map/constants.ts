@@ -69,11 +69,10 @@ export const SATELLITE_STYLE = {
   layers: [{ id: "esri_satellite", type: "raster" as const, source: "esri_satellite" }],
 };
 
-export const HILLSHADE_TILES = [
-  "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
-];
+// Terrarium DEM tiles — RGB-encoded elevation data (r*256 + g + b/256 − 32768 = metres)
+export const TERRARIUM_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
 
-export const BUILDINGS_TILES = [
-  "https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
-  "https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
+// Esri World Ocean Base — used for open-water / flight-corridor overlay
+export const OCEAN_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
 ];

@@ -2,23 +2,32 @@ import { useState, useCallback } from "react";
 
 export type BaseMapType = "dark" | "topo" | "satellite" | "minimal";
 
+export interface OverlayConfig {
+  active: boolean;
+  opacity: number; // 0–100
+}
+
 export interface MapLayerState {
   baseMap: BaseMapType;
   overlays: {
-    hillshade: boolean;
-    elevationHeatmap: boolean;
-    buildings: boolean;
+    hillshade:   OverlayConfig;
+    radarShadow: OverlayConfig;
+    ocean:       OverlayConfig;
   };
-  overlayOpacity: number;
   dampColors: boolean;
 }
 
-const STORAGE_KEY = "saab-map-layers";
+export type OverlayKey = keyof MapLayerState["overlays"];
+
+const STORAGE_KEY = "saab-map-layers-v2";
 
 const DEFAULT_STATE: MapLayerState = {
   baseMap: "dark",
-  overlays: { hillshade: false, elevationHeatmap: false, buildings: false },
-  overlayOpacity: 60,
+  overlays: {
+    hillshade:   { active: false, opacity: 35 },
+    radarShadow: { active: false, opacity: 25 },
+    ocean:       { active: false, opacity: 30 },
+  },
   dampColors: false,
 };
 
@@ -26,7 +35,12 @@ function loadState(): MapLayerState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_STATE;
-    return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw) as Partial<MapLayerState>;
+    return {
+      ...DEFAULT_STATE,
+      ...parsed,
+      overlays: { ...DEFAULT_STATE.overlays, ...(parsed.overlays ?? {}) },
+    };
   } catch {
     return DEFAULT_STATE;
   }
@@ -36,7 +50,7 @@ function saveState(state: MapLayerState) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
-    // localStorage unavailable — silently ignore
+    // localStorage unavailable
   }
 }
 
@@ -54,13 +68,26 @@ export function useMapLayers() {
   );
 
   const toggleOverlay = useCallback(
-    (key: keyof MapLayerState["overlays"]) =>
-      update({ ...state, overlays: { ...state.overlays, [key]: !state.overlays[key] } }),
+    (key: OverlayKey) =>
+      update({
+        ...state,
+        overlays: {
+          ...state.overlays,
+          [key]: { ...state.overlays[key], active: !state.overlays[key].active },
+        },
+      }),
     [state, update]
   );
 
-  const setOpacity = useCallback(
-    (overlayOpacity: number) => update({ ...state, overlayOpacity }),
+  const setOverlayOpacity = useCallback(
+    (key: OverlayKey, opacity: number) =>
+      update({
+        ...state,
+        overlays: {
+          ...state.overlays,
+          [key]: { ...state.overlays[key], opacity },
+        },
+      }),
     [state, update]
   );
 
@@ -69,5 +96,5 @@ export function useMapLayers() {
     [state, update]
   );
 
-  return { mapLayerState: state, setBaseMap, toggleOverlay, setOpacity, toggleDampColors };
+  return { mapLayerState: state, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors };
 }
