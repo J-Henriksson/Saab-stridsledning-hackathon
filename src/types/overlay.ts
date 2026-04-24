@@ -47,10 +47,23 @@ export interface FixedMilitaryAsset {
   sizeRadiusKm: number;
   /** Default area of responsibility radius in km — drives the dashed outer ring */
   defaultAorRadiusKm: number;
+  icao?: string;
+  runwayStatus?: "operational" | "limited" | "closed";
+  activeUnits?: string[];
+  personnelCount?: number;
+  capacity?: string;
 }
 
 export interface OverlayLayerVisibility {
   militaryAssets: boolean;
   civilianInfrastructure: boolean;
   activeZones: boolean;
+  /** Flygvapnet solo mode — dims all non-airbase assets */
+  flygvapnet: boolean;
+  /** Army, marine, naval fixed asset markers */
+  militaryBases: boolean;
+  /** Civil airports + ammo depots */
+  criticalInfra: boolean;
+  /** Non-military protected objects */
+  skyddsobjekt: boolean;
 }

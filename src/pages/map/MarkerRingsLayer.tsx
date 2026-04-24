@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import { BASE_COORDS, BASE_RINGS } from "./constants";
+import { BASE_COORDS, BASE_RINGS, GIS_COLORS } from "./constants";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { FOOTPRINT_POLYGONS } from "@/data/footprints";
+import type { OverlayLayerVisibility } from "@/types/overlay";
 
 interface MarkerDef {
   id: string;
@@ -10,10 +11,12 @@ interface MarkerDef {
   lat: number;
   sizeRadiusKm: number;
   aorRadiusKm: number;
+  ringColor: string;
 }
 
 interface Props {
   aorOverrides: Record<string, number>;
+  visibleLayers?: OverlayLayerVisibility;
 }
 
 function drawPolygon(
@@ -39,7 +42,14 @@ function drawCircle(
   ctx.arc(cx, cy, radiusPx, 0, 2 * Math.PI);
 }
 
-export function MarkerRingsLayer({ aorOverrides }: Props) {
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -65,76 +75,100 @@ export function MarkerRingsLayer({ aorOverrides }: Props) {
 
     const project = (lngLat: [number, number]) => map.project(lngLat);
 
-    // Collect all markers
     const markers: MarkerDef[] = [];
 
-    Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {
-      const rings = BASE_RINGS[id];
-      if (!rings) return;
-      markers.push({
-        id,
-        lng,
-        lat,
-        sizeRadiusKm: rings.sizeRadiusKm,
-        aorRadiusKm: aorOverrides[id] ?? rings.defaultAorRadiusKm,
+    // Airbases — always Forest Green, shown unless flygvapnet solo hides all (airbases are the stars in flygvapnet mode)
+    const showAirbases = visibleLayers ? visibleLayers.militaryBases !== false : true;
+    if (showAirbases) {
+      Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {
+        const rings = BASE_RINGS[id];
+        if (!rings) return;
+        markers.push({
+          id,
+          lng,
+          lat,
+          sizeRadiusKm: rings.sizeRadiusKm,
+          aorRadiusKm: aorOverrides[id] ?? rings.defaultAorRadiusKm,
+          ringColor: GIS_COLORS.militaryBase,
+        });
       });
-    });
+    }
 
-    [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS].forEach((asset) => {
+    const showMilitaryBases = visibleLayers ? visibleLayers.militaryBases !== false : true;
+    const showCriticalInfra = visibleLayers ? visibleLayers.criticalInfra !== false : true;
+
+    FIXED_MILITARY_ASSETS.forEach((asset) => {
+      const isMilitary = ["army_regiment", "marine_regiment", "naval_base"].includes(asset.type);
+      const isInfra = ["airport_civilian"].includes(asset.type);
+      if (isMilitary && !showMilitaryBases) return;
+      if (isInfra && !showCriticalInfra) return;
       markers.push({
         id: asset.id,
         lng: asset.lng,
         lat: asset.lat,
         sizeRadiusKm: asset.sizeRadiusKm,
         aorRadiusKm: aorOverrides[asset.id] ?? asset.defaultAorRadiusKm,
+        ringColor: isMilitary ? GIS_COLORS.militaryBase : GIS_COLORS.criticalInfra,
       });
     });
+
+    if (showCriticalInfra) {
+      AMMO_DEPOTS.forEach((asset) => {
+        markers.push({
+          id: asset.id,
+          lng: asset.lng,
+          lat: asset.lat,
+          sizeRadiusKm: asset.sizeRadiusKm,
+          aorRadiusKm: aorOverrides[asset.id] ?? asset.defaultAorRadiusKm,
+          ringColor: GIS_COLORS.criticalInfra,
+        });
+      });
+    }
 
     for (const m of markers) {
       const center = project([m.lng, m.lat]);
       const footprint = FOOTPRINT_POLYGONS[m.id];
+      const glowColor = hexToRgba(m.ringColor, 0.08);
+      const outlineColor = hexToRgba(m.ringColor, 0.65);
+      const aorColor = hexToRgba(m.ringColor, 0.55);
 
-      // ── Inner ring: realistic footprint shape (fixed, solid white) ──────────
       ctx.setLineDash([]);
 
       if (footprint) {
-        // Glow pass
         drawPolygon(ctx, footprint, project);
         ctx.lineWidth = 6;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeStyle = glowColor;
         ctx.stroke();
-        // Crisp outline
         drawPolygon(ctx, footprint, project);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+        ctx.strokeStyle = outlineColor;
         ctx.stroke();
       } else {
-        // Fallback circle if no polygon defined
         const sizeEdge = project([m.lng, m.lat + m.sizeRadiusKm / 111.32]);
         const sizePx = Math.max(10, Math.hypot(center.x - sizeEdge.x, center.y - sizeEdge.y));
         drawCircle(ctx, center.x, center.y, sizePx);
         ctx.lineWidth = 6;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.strokeStyle = glowColor;
         ctx.stroke();
         drawCircle(ctx, center.x, center.y, sizePx);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.88)";
+        ctx.strokeStyle = outlineColor;
         ctx.stroke();
       }
 
-      // ── Outer ring: AOR circle (commander-adjustable, gold dashed) ──────────
+      // Outer AOR dashed ring — per-asset color
       const aorEdge = project([m.lng, m.lat + m.aorRadiusKm / 111.32]);
       const aorPx = Math.hypot(center.x - aorEdge.x, center.y - aorEdge.y);
 
       drawCircle(ctx, center.x, center.y, aorPx);
       ctx.setLineDash([10, 6]);
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = "rgba(215, 171, 58, 0.80)";
+      ctx.strokeStyle = aorColor;
       ctx.stroke();
     }
 
     ctx.setLineDash([]);
-  }, [mapRef, aorOverrides]);
+  }, [mapRef, aorOverrides, visibleLayers]);
 
   useEffect(() => {
     const map = mapRef?.getMap();

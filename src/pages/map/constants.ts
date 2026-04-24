@@ -30,4 +30,37 @@ export const BASE_RINGS: Record<string, { sizeRadiusKm: number; defaultAorRadius
   ROB_E: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 70  },  // Söderhamn/F15
 };
 
-export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+
+export const GIS_COLORS = {
+  militaryBase:  "#2D5A27",  // Forest Green — airbases + army/marine/naval
+  criticalInfra: "#708090",  // Slate Gray — civil airports + ammo depots
+  skyddsobjekt:  "#F4D03F",  // Safety Yellow — protected objects
+} as const;
+
+export const BASE_ICAO: Record<string, string> = {
+  MOB:   "ESMQ",  // Malmen
+  FOB_N: "ESPA",  // Luleå/Kallax
+  FOB_S: "ESTA",  // Ängelholm
+  ROB_N: "ESPE",  // Vidsel
+  ROB_S: "ESDF",  // Ronneby/Kallinge
+  ROB_E: "ESSD",  // Söderhamn
+};
+
+export const BASE_RUNWAY_STATUS: Record<string, "operational" | "limited" | "closed"> = {
+  MOB:   "operational",
+  FOB_N: "operational",
+  FOB_S: "operational",
+  ROB_N: "limited",
+  ROB_S: "operational",
+  ROB_E: "limited",
+};
+
+export const BASE_ACTIVE_UNITS: Record<string, string[]> = {
+  MOB:   ["F 3 Östgöta flygflottilj", "TUAV-skvadron"],
+  FOB_N: ["F 21 Norrbottens flygflottilj", "Stril N"],
+  FOB_S: ["F 10 Skånska flygflottilj"],
+  ROB_N: ["FMV Provflygavdelning"],
+  ROB_S: ["F 17 Blekinge flygflottilj"],
+  ROB_E: ["Hälsinge flygflottilj (reserv)"],
+};

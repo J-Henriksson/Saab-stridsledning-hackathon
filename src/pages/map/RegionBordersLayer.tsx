@@ -132,17 +132,16 @@ function RegionLabels() {
               width={44}
               height={15}
               rx={4}
-              fill="rgba(5,10,20,0.75)"
-              stroke={r.color}
+              fill="rgba(255,255,255,0.82)"
+              stroke="rgba(0,0,0,0.10)"
               strokeWidth={0.8}
-              strokeOpacity={0.7}
             />
             {/* Short name */}
             <text
               x={p.x}
               y={p.y + 3}
               textAnchor="middle"
-              fill={r.color}
+              fill="#374151"
               fontSize={fontSize}
               fontFamily="'JetBrains Mono', monospace"
               fontWeight="bold"
@@ -179,7 +178,7 @@ export function RegionBordersLayer() {
           type="fill"
           paint={{
             "fill-color": COLOR_EXPR,
-            "fill-opacity": 0.04,
+            "fill-opacity": 0.02,
           }}
         />
         {/* Distinct county border line */}
@@ -189,7 +188,7 @@ export function RegionBordersLayer() {
           paint={{
             "line-color": COLOR_EXPR,
             "line-width": 1.5,
-            "line-opacity": 0.55,
+            "line-opacity": 0.30,
             "line-dasharray": [5, 3],
           }}
         />

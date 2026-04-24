@@ -1,60 +1,106 @@
+import { useState } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import { Base } from "@/types/game";
 import { statusColor, fuelColor } from "./helpers";
-import { BASE_COORDS } from "./constants";
+import { BASE_COORDS, BASE_ICAO, BASE_RUNWAY_STATUS, BASE_ACTIVE_UNITS } from "./constants";
+
+function readinessPct(base: Base | undefined): number {
+  if (!base || base.aircraft.length === 0) return 0;
+  const mc = base.aircraft.filter((a) => a.status === "ready").length;
+  return Math.round((mc / base.aircraft.length) * 100);
+}
+
+const MILITARY_GREEN = "#2D5A27";
 
 export function BaseMarker({
   id,
   base,
   isSelected,
   onClick,
+  flygvapnetMode = false,
+  showAirbases = true,
 }: {
   id: string;
   base: Base | undefined;
   isSelected: boolean;
   onClick: () => void;
+  flygvapnetMode?: boolean;
+  showAirbases?: boolean;
 }) {
+  const [hovered, setHovered] = useState(false);
   const coords = BASE_COORDS[id];
-  if (!coords) return null;
+  if (!coords || !showAirbases) return null;
 
-  const color = statusColor(base);
+  const readinessColor = statusColor(base);
   const isMainBase = id === "MOB";
   const size = isMainBase ? 46 : 34;
   const mc = base ? base.aircraft.filter((a) => a.status === "ready").length : 0;
   const onMission = base ? base.aircraft.filter((a) => a.status === "on_mission").length : 0;
+  const pct = readinessPct(base);
   const isBottleneck = base && (
     mc / base.aircraft.length < 0.4 ||
     base.maintenanceBays.occupied >= base.maintenanceBays.total ||
     base.fuel < 20
   );
 
+  const icao = BASE_ICAO[id] ?? id;
+  const runwayStatus = BASE_RUNWAY_STATUS[id] ?? "operational";
+  const activeUnits = BASE_ACTIVE_UNITS[id] ?? [];
+
+  const runwayStatusColor = runwayStatus === "operational" ? "#2D5A27" : runwayStatus === "limited" ? "#D97706" : "#DC2626";
+  const runwayStatusLabel = runwayStatus === "operational" ? "Operativ" : runwayStatus === "limited" ? "Begränsad" : "Stängd";
+
   return (
     <Marker longitude={coords.lng} latitude={coords.lat} anchor="center">
       <div
         className="relative flex flex-col items-center"
         style={{ cursor: base ? "pointer" : "default" }}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (base) onClick();
-        }}
+        onClick={(e) => { e.stopPropagation(); if (base) onClick(); }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
-        {/* Outer glow */}
-        {base && (
+        {/* Hover data card */}
+        {hovered && (
           <div
-            className="absolute rounded-full"
+            className="absolute z-50 rounded-xl border border-gray-200 shadow-lg p-3 text-xs font-mono text-gray-800 whitespace-nowrap"
             style={{
-              width: size + 20,
-              height: size + 20,
-              top: "50%",
+              bottom: size + 28,
               left: "50%",
-              transform: "translate(-50%, -50%)",
-              background: `radial-gradient(circle, ${color}33 0%, ${color}11 40%, transparent 70%)`,
-              animation: "pulse 3s ease-in-out infinite",
+              transform: "translateX(-50%)",
+              background: "rgba(255,255,255,0.95)",
+              backdropFilter: "blur(12px)",
+              pointerEvents: "none",
+              minWidth: 180,
             }}
-          />
+          >
+            <div className="font-bold text-[11px] mb-1.5" style={{ color: MILITARY_GREEN }}>{icao} — {id.replace("_", " ")}</div>
+            <div className="space-y-1 text-[10px] text-gray-600">
+              <div className="flex justify-between gap-4">
+                <span>Beredskap</span>
+                <span className="font-bold" style={{ color: readinessColor }}>{pct}%</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span>Bana</span>
+                <span className="font-bold" style={{ color: runwayStatusColor }}>{runwayStatusLabel}</span>
+              </div>
+              {activeUnits.length > 0 && (
+                <div className="pt-1 border-t border-gray-100">
+                  {activeUnits.map((u) => (
+                    <div key={u} className="text-[9px] text-gray-500">{u}</div>
+                  ))}
+                </div>
+              )}
+              {base && (
+                <div className="flex justify-between gap-4 pt-1 border-t border-gray-100">
+                  <span>Bränsle</span>
+                  <span className="font-bold" style={{ color: fuelColor(base.fuel) }}>{base.fuel}%</span>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
-        {/* Bottleneck ring */}
+        {/* Bottleneck dashed warning ring */}
         {isBottleneck && (
           <div
             className="absolute rounded-full"
@@ -64,26 +110,24 @@ export function BaseMarker({
               top: "50%",
               left: "50%",
               transform: "translate(-50%, -50%)",
-              border: "2.5px dashed #ef4444",
-              animation: "pulse 1s ease-in-out infinite",
+              border: "2px dashed #DC2626",
+              animation: "pulse 1.2s ease-in-out infinite",
             }}
           />
         )}
 
         {/* Circle body */}
         <div
-          className="rounded-full flex items-center justify-center"
+          className={`rounded-full flex items-center justify-center ${flygvapnetMode ? "airbase-pulse" : ""}`}
           style={{
             width: size,
             height: size,
-            background: base
-              ? `radial-gradient(circle at 50% 40%, #1a2744, #0f172a)`
-              : "#0a0f1a",
-            border: `${isSelected ? 2.5 : isMainBase ? 2.5 : 1.8}px solid ${base ? color : "#1e293b"}`,
-            opacity: base ? 1 : 0.4,
+            background: "#ffffff",
+            border: `${isSelected ? 3 : isMainBase ? 2.5 : 2}px solid ${base ? readinessColor : MILITARY_GREEN}`,
+            opacity: base ? 1 : 0.5,
             boxShadow: isSelected
-              ? `0 0 18px ${color}88, 0 0 36px ${color}44, inset 0 0 8px ${color}22`
-              : base ? `0 0 8px ${color}44` : "none",
+              ? `0 0 0 3px ${MILITARY_GREEN}33, 0 4px 16px rgba(45,90,39,0.35)`
+              : `0 2px 10px rgba(45,90,39,0.25)`,
             transform: isSelected ? "scale(1.18)" : "scale(1)",
             transition: "transform 0.25s ease-out, box-shadow 0.25s ease-out",
           }}
@@ -91,10 +135,9 @@ export function BaseMarker({
           <span
             className="font-mono font-bold"
             style={{
-              fontSize: isMainBase ? 12 : 9,
-              color: base ? color : "#334155",
-              textShadow: base ? `0 0 6px ${color}88` : "none",
-              letterSpacing: "0.05em",
+              fontSize: isMainBase ? 11 : 8,
+              color: base ? readinessColor : MILITARY_GREEN,
+              letterSpacing: "0.04em",
             }}
           >
             {id.replace("_", " ")}
@@ -106,16 +149,15 @@ export function BaseMarker({
           <div
             className="absolute rounded-full flex items-center justify-center"
             style={{
-              width: 18,
-              height: 18,
-              top: -2,
-              right: -6,
-              background: "#1e3a5f",
-              border: "1px solid #2563eb",
-              boxShadow: "0 0 6px #2563eb66",
+              width: 17,
+              height: 17,
+              top: -3,
+              right: -5,
+              background: "#EFF6FF",
+              border: "1.5px solid #2563eb",
             }}
           >
-            <span className="text-[8px] font-bold text-blue-400 font-mono">{mc}</span>
+            <span className="text-[8px] font-bold text-blue-600 font-mono">{mc}</span>
           </div>
         )}
 
@@ -126,41 +168,40 @@ export function BaseMarker({
             style={{
               width: 16,
               height: 16,
-              top: -2,
-              left: -6,
-              background: "#0f2e1a",
-              border: "1px solid #22c55e",
-              boxShadow: "0 0 6px #22c55e66",
+              top: -3,
+              left: -5,
+              background: "#F0FDF4",
+              border: "1.5px solid #22c55e",
             }}
           >
-            <span className="text-[7px] font-bold text-green-500 font-mono">{onMission}</span>
+            <span className="text-[7px] font-bold text-green-600 font-mono">{onMission}</span>
           </div>
         )}
 
-        {/* Label */}
+        {/* ICAO label */}
         <span
           className="font-mono mt-1"
           style={{
-            fontSize: base ? 10 : 8,
-            color: base ? "#94a3b8" : "#334155",
-            textShadow: base ? "0 0 4px #0008" : "none",
+            fontSize: 9,
+            color: MILITARY_GREEN,
+            fontWeight: 600,
+            letterSpacing: "0.05em",
           }}
         >
-          {id}
+          {icao}
         </span>
 
         {/* Fuel bar */}
         {base && (
           <div
             className="rounded-full overflow-hidden mt-0.5"
-            style={{ width: 36, height: 3, background: "#1e293b" }}
+            style={{ width: 36, height: 3, background: "#E5E7EB" }}
           >
             <div
               className="h-full rounded-full"
               style={{
                 width: `${base.fuel}%`,
                 backgroundColor: fuelColor(base.fuel),
-                boxShadow: `0 0 4px ${fuelColor(base.fuel)}88`,
               }}
             />
           </div>

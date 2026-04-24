@@ -353,5 +353,9 @@ export const initialGameState: GameState = {
     militaryAssets: true,
     civilianInfrastructure: true,
     activeZones: true,
+    flygvapnet: false,
+    militaryBases: true,
+    criticalInfra: true,
+    skyddsobjekt: true,
   },
 };

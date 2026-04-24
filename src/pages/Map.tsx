@@ -18,7 +18,7 @@ import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
-import { ZoneToolbar } from "./map/ZoneToolbar";
+import { LayerManager } from "./map/LayerManager";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
@@ -194,7 +194,7 @@ export default function MapPage() {
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
-            <NavigationControl position="top-right" />
+            <NavigationControl position="bottom-right" />
 
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
@@ -206,7 +206,7 @@ export default function MapPage() {
             />
 
             {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
-            <MarkerRingsLayer aorOverrides={aorOverrides} />
+            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state.overlayVisibility} />
 
             <SupplyLinesLayer bases={state.bases} />
 
@@ -225,8 +225,9 @@ export default function MapPage() {
 
             {/* Fixed military & civilian asset markers */}
             <FixedAssetMarkers
-              showMilitary={state.overlayVisibility.militaryAssets}
-              showCivilian={state.overlayVisibility.civilianInfrastructure}
+              showMilitaryBases={state.overlayVisibility.militaryBases}
+              showCriticalInfra={state.overlayVisibility.criticalInfra}
+              flygvapnetMode={state.overlayVisibility.flygvapnet}
               onSelectAsset={handleSelectAsset}
             />
 
@@ -239,6 +240,8 @@ export default function MapPage() {
                   ? selected.baseId === id
                   : false}
                 onClick={() => setSelected({ kind: "base", baseId: id })}
+                flygvapnetMode={state.overlayVisibility.flygvapnet}
+                showAirbases={true}
               />
             ))}
 
@@ -246,17 +249,55 @@ export default function MapPage() {
             <DrawingPreviewOverlay drawState={drawState} />
           </MapGL>
 
-          {/* Scanline CRT overlay */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background:
-                "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.01) 2px, rgba(0,255,100,0.01) 4px)",
-            }}
-          />
+          {/* Search bar — top left */}
+          <div className="absolute top-3 left-14 z-10" style={{ pointerEvents: "auto" }}>
+            <input
+              type="text"
+              placeholder="Sök position eller enhet..."
+              className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
+              style={{
+                background: "rgba(255,255,255,0.90)",
+                border: "1px solid rgba(45,90,39,0.28)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
+              }}
+            />
+          </div>
 
-          {/* Zone toolbar — left edge */}
-          <ZoneToolbar
+          {/* Legend card — bottom left, above aircraft bar */}
+          <div
+            className="absolute bottom-14 left-3 z-10 p-3 rounded-xl text-xs font-mono pointer-events-none"
+            style={{
+              background: "rgba(255,255,255,0.90)",
+              border: "1px solid rgba(0,0,0,0.08)",
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+            }}
+          >
+            <div className="font-bold text-gray-500 mb-2 text-[9px] tracking-widest">LEGEND</div>
+            <div className="space-y-1.5">
+              {[
+                { color: "#2D5A27", label: "Svenska militära baser", dashed: false },
+                { color: "#708090", label: "Kritisk infrastruktur", dashed: false },
+                { color: "#F4D03F", label: "Skyddsobjekt", dashed: false },
+                { color: "#2D5A27", label: "AOR (ansvarsområde)", dashed: true },
+              ].map(({ color, label, dashed }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span
+                    className="shrink-0 w-5 h-[2px] rounded"
+                    style={{
+                      background: dashed ? "none" : color,
+                      borderTop: dashed ? `2px dashed ${color}` : "none",
+                    }}
+                  />
+                  <span className="text-[10px] text-gray-600">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Layer manager — left edge */}
+          <LayerManager
             drawingMode={drawingMode}
             onSetDrawingMode={setDrawingMode}
             visibility={state.overlayVisibility}

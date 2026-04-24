@@ -9,8 +9,10 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 59.49,
     lng: 17.75,
     protectionRadiusKm: 5,
-    sizeRadiusKm: 0.8,          // ~2 km² compound
+    sizeRadiusKm: 0.8,
     defaultAorRadiusKm: 25,
+    personnelCount: 1800,
+    activeUnits: ["1:a Gardesbataljonen", "2:a Gardesbataljonen"],
   },
   {
     id: "Amf1",
@@ -20,8 +22,10 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 59.24,
     lng: 18.24,
     protectionRadiusKm: 4,
-    sizeRadiusKm: 1.0,          // larger marine base
+    sizeRadiusKm: 1.0,
     defaultAorRadiusKm: 40,
+    personnelCount: 1200,
+    activeUnits: ["1:a Amfibiebataljonen"],
   },
   {
     id: "Musko",
@@ -31,8 +35,10 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lat: 58.99,
     lng: 17.97,
     protectionRadiusKm: 8,
-    sizeRadiusKm: 1.5,          // large rock-carved naval base
+    sizeRadiusKm: 1.5,
     defaultAorRadiusKm: 80,
+    personnelCount: 800,
+    capacity: "Ubåtsdock + ytstridsfartyg",
   },
   {
     id: "ARN",
@@ -41,8 +47,11 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     type: "airport_civilian",
     lat: 59.6519,
     lng: 17.9237,
-    sizeRadiusKm: 2.5,          // large international airport
+    sizeRadiusKm: 2.5,
     defaultAorRadiusKm: 20,
+    icao: "ESSA",
+    runwayStatus: "operational",
+    capacity: "Internationell, 2 banor",
   },
   {
     id: "BMA",
@@ -53,6 +62,9 @@ export const FIXED_MILITARY_ASSETS: FixedMilitaryAsset[] = [
     lng: 17.9415,
     sizeRadiusKm: 1.2,
     defaultAorRadiusKm: 12,
+    icao: "ESSB",
+    runwayStatus: "operational",
+    capacity: "Kortbana, 1 bana",
   },
 ];
 
@@ -67,7 +79,8 @@ export const AMMO_DEPOTS: FixedMilitaryAsset[] = [
     fillLevel: 75,
     protectionRadiusKm: 3,
     sizeRadiusKm: 0.4,
-    defaultAorRadiusKm: 50,     // supply radius
+    defaultAorRadiusKm: 50,
+    capacity: "50 000 ton",
   },
   {
     id: "AMMO_EKSJO",
@@ -80,5 +93,6 @@ export const AMMO_DEPOTS: FixedMilitaryAsset[] = [
     protectionRadiusKm: 3,
     sizeRadiusKm: 0.4,
     defaultAorRadiusKm: 50,
+    capacity: "35 000 ton",
   },
 ];
