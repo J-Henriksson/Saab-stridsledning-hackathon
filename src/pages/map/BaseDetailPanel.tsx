@@ -2,6 +2,7 @@ import { Base } from "@/types/game";
 import { fuelColor, getReadiness } from "./helpers";
 import { getAircraft } from "@/core/units/helpers";
 import { isAirDefense, isRadar } from "@/types/units";
+import type { Unit } from "@/types/units";
 import { StatBox } from "./StatBox";
 import {
   Plane,
@@ -14,16 +15,22 @@ import {
   MapPin,
   ChevronRight,
   Radio,
+  Boxes,
+  Send,
 } from "lucide-react";
 
 export function BaseDetailPanel({
   base,
+  deployedUnits,
   onSelectAircraft,
   onSelectUnit,
   aorRadiusKm,
   onSetAor,
 }: {
   base: Base;
+  /** Full deployedUnits array from GameState — used to compute parent-base-linked
+   *  inventory decrements (aircraft / drones deployed from this base). */
+  deployedUnits?: Unit[];
   onSelectAircraft: (id: string) => void;
   onSelectUnit?: (id: string) => void;
   aorRadiusKm: number;
@@ -39,6 +46,14 @@ export function BaseDetailPanel({
   const totalPersonnel = base.personnel.reduce((s, p) => s + p.total, 0);
   const availPersonnel = base.personnel.reduce((s, p) => s + p.available, 0);
 
+  // ── Parent-base inventory rollup ────────────────────────────────────────
+  const staticAd = base.units.filter((u) => isAirDefense(u) && (u as any).isStatic).length;
+  const deployedFromHere = (deployedUnits ?? []).filter((u) => u.parentBaseId === base.id);
+  const aircraftOnBase = aircraftList.length;
+  const aircraftDeployed = deployedFromHere.filter((u) => u.category === "aircraft").length;
+  const dronesOnBase = base.units.filter((u) => u.category === "drone").length;
+  const dronesDeployed = deployedFromHere.filter((u) => u.category === "drone").length;
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
@@ -46,6 +61,32 @@ export function BaseDetailPanel({
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono ${readiness.cls}`}>
         <Shield className="h-4 w-4" />
         BEREDSKAP: {readiness.label}
+      </div>
+
+      {/* Parent-base inventory — decrements automatically as units deploy */}
+      <div className="rounded-lg border border-border bg-muted/20 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Boxes className="h-3.5 w-3.5 text-foreground" />
+          <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-foreground">
+            INVENTARIE
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[10px] font-mono">
+          <span className="text-muted-foreground">Flygplan vid bas</span>
+          <span className="text-right text-foreground">{aircraftOnBase}</span>
+          <span className="text-muted-foreground flex items-center gap-1">
+            <Send className="h-2.5 w-2.5" /> Flyg deployerade
+          </span>
+          <span className="text-right text-foreground">{aircraftDeployed}</span>
+          <span className="text-muted-foreground">Drönare vid bas</span>
+          <span className="text-right text-foreground">{dronesOnBase}</span>
+          <span className="text-muted-foreground flex items-center gap-1">
+            <Send className="h-2.5 w-2.5" /> Drönare deployerade
+          </span>
+          <span className="text-right text-foreground">{dronesDeployed}</span>
+          <span className="text-muted-foreground">Statiska Lv (SAM)</span>
+          <span className="text-right text-foreground">{staticAd}</span>
+        </div>
       </div>
 
       {/* AOR ring control */}

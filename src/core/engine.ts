@@ -1,4 +1,4 @@
-import type { GameState, GameAction, GameEvent, AircraftStatus, MissionType, RiskLevel, BaseType } from "@/types/game";
+import type { GameState, GameAction, GameEvent, AircraftStatus, MissionType, RiskLevel, BaseType, NavalUnit, IntelActivityEntry } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import { initialGameState } from "@/data/initialGameState";
 import { MAINTENANCE_CREW_PER_AIRCRAFT, FUEL_DRAIN_RATE } from "@/data/config/capacities";
@@ -12,6 +12,10 @@ import { isDrone } from "@/types/units";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
 import { enforceAirborneInvariant, advanceMovement, perMinuteFuelDrain } from "@/core/units/movement";
+import { appendToPathHistory } from "@/core/units/path";
+import { tickPatrol, tickPlainPatrol } from "@/core/units/patrol";
+import { computeFriendlySensorCoverage, isInsideAnyDisc } from "@/core/intel/visibility";
+import { ACTIVITY_TEMPLATES_BY_CATEGORY, pickByHash } from "@/core/intel/activityTemplates";
 import { BASE_COORDS } from "@/pages/map/constants";
 import { getAircraft } from "@/core/units/helpers";
 import { launchDrone, recallDrone, updateDroneWaypoints, setDroneOverlay, advanceAllDrones, advanceDroneMaintenanceTick } from "@/core/drones/droneEngine";
@@ -845,6 +849,17 @@ function handleAdvanceMinute(state: GameState): GameState {
   const tickUnit = (u: Unit, isAtBase: boolean): Unit => {
     let updated = enforceAirborneInvariant(u, isAtBase);
     updated = advanceMovement(updated, HOURS_ELAPSED);
+    // Breadcrumb trail: track only airborne/moving units (no trail while parked).
+    if (!isAtBase && (updated.movement.state === "airborne" || updated.movement.state === "moving")) {
+      const nextHistory = appendToPathHistory(updated.pathHistory, updated.position);
+      if (nextHistory !== updated.pathHistory) {
+        updated = { ...updated, pathHistory: nextHistory } as Unit;
+      }
+    }
+    // Autonomous patrol: re-route when we've arrived at the previous waypoint.
+    if (!isAtBase && updated.patrol) {
+      updated = tickPatrol(updated);
+    }
     const drain = perMinuteFuelDrain(updated, phase);
     if (drain > 0 && "fuel" in updated && typeof updated.fuel === "number") {
       const prevFuel = updated.fuel;
@@ -922,7 +937,97 @@ function handleAdvanceMinute(state: GameState): GameState {
     events: newEvents.length > 0 ? [...newEvents, ...state.events].slice(0, 200) : state.events,
   };
 
-  return advanceAllDrones(afterArrival, 1);
+  // Advance naval units with the same movement + patrol + breadcrumb pipeline,
+  // then update their detection-memory so the fog-of-war can render last-known
+  // positions after a friendly sensor loses contact.
+  const afterNaval = tickNavalUnits(afterArrival, HOURS_ELAPSED);
+
+  return advanceAllDrones(afterNaval, 1);
+}
+
+// ── Naval tick (runs on the dedicated navalUnits collection) ──────────────
+function tickNavalUnits(state: GameState, hoursElapsed: number): GameState {
+  if (!state.navalUnits || state.navalUnits.length === 0) return state;
+  const discs = computeFriendlySensorCoverage(state);
+  const nextNaval = state.navalUnits.map((n) => {
+    // Move along current destination.
+    let moved: NavalUnit = n;
+    if (n.movement.state === "moving" || n.movement.state === "airborne") {
+      const dest = n.movement.destination;
+      if (dest && typeof dest === "object" && "lat" in dest) {
+        // Ships move slowly enough that a simple degree-per-hour proxy is fine.
+        const stepDeg = n.movement.speed * (1 / 60) * hoursElapsed;
+        const dLat = dest.lat - n.position.lat;
+        const dLng = dest.lng - n.position.lng;
+        const remaining = Math.sqrt(dLat * dLat + dLng * dLng);
+        if (stepDeg >= remaining || remaining < 1e-4) {
+          moved = {
+            ...n,
+            position: { lat: dest.lat, lng: dest.lng },
+            movement: { ...n.movement, state: "stationary", speed: 0, destination: undefined },
+          };
+        } else {
+          const ratio = stepDeg / remaining;
+          moved = {
+            ...n,
+            position: {
+              lat: n.position.lat + dLat * ratio,
+              lng: n.position.lng + dLng * ratio,
+            },
+          };
+        }
+      }
+    }
+    // Breadcrumb.
+    const nextHistory = appendToPathHistory(moved.pathHistory, moved.position);
+    if (nextHistory !== moved.pathHistory) {
+      moved = { ...moved, pathHistory: nextHistory };
+    }
+    // Patrol re-routing.
+    moved = tickPlainPatrol(moved, "moving");
+    // Fog-of-war memory (hostile only): if inside any friendly disc, record
+    // last-known position + timestamp. Friendly navals skip this.
+    if (moved.affiliation === "hostile") {
+      if (isInsideAnyDisc(moved.position, discs)) {
+        moved = {
+          ...moved,
+          lastDetectedAt: { day: state.day, hour: state.hour, minute: state.minute },
+          lastKnownPosition: { lat: moved.position.lat, lng: moved.position.lng },
+        };
+      }
+    }
+    return moved;
+  });
+
+  return { ...state, navalUnits: nextNaval };
+}
+
+// ── Intel activity log (called on the hour tick) ──────────────────────────
+function tickIntelActivity(state: GameState): GameState {
+  if (!state.enemyBases || state.enemyBases.length === 0) return state;
+  if (!state.intelReports) return state;
+  // Only add an entry every 2nd hour so logs accumulate at a realistic pace.
+  if (state.hour % 2 !== 0) return state;
+  const reports = { ...state.intelReports };
+  let changed = false;
+  for (const b of state.enemyBases) {
+    const templates = ACTIVITY_TEMPLATES_BY_CATEGORY[b.category] ?? [];
+    if (templates.length === 0) continue;
+    // Only update roughly half the bases per tick so each has its own cadence.
+    const seed = `${b.id}-${state.day}-${state.hour}`;
+    if ((pickByHash(seed, [0, 1, 2, 3]) as number) < 2) continue;
+    const existing = reports[b.id] ?? { stockpile: [], strategicIntent: "", activityLog: [] };
+    const line = pickByHash(seed, templates);
+    const timestamp = `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
+    const entry: IntelActivityEntry = { timestamp, message: line };
+    reports[b.id] = {
+      ...existing,
+      activityLog: [entry, ...existing.activityLog].slice(0, 20),
+    };
+    changed = true;
+  }
+  if (!changed) return state;
+  return { ...state, intelReports: reports };
 }
 
 /**
@@ -1103,12 +1208,13 @@ function handleAdvanceHour(state: GameState): GameState {
   };
 
   const nextStateWithDrones = advanceDroneMaintenanceTick(nextStatePreRec);
+  const nextStateWithIntel = tickIntelActivity(nextStateWithDrones);
 
   // Refresh recommendations every 3 game-hours.
   if (nextHour % 3 === 0) {
-    return { ...nextStateWithDrones, recommendations: generateRecommendations(nextStateWithDrones) };
+    return { ...nextStateWithIntel, recommendations: generateRecommendations(nextStateWithIntel) };
   }
-  return nextStateWithDrones;
+  return nextStateWithIntel;
 }
 
 const REBASE_TRANSIT_HOURS = 2;

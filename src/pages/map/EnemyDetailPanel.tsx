@@ -1,5 +1,5 @@
-import { Crosshair, Swords, MapPin, AlertTriangle, FileText, Target } from "lucide-react";
-import type { EnemyBase, EnemyEntity, ThreatLevel, OperationalStatus, EnemyBaseCategory, EnemyEntityCategory } from "@/types/game";
+import { Crosshair, Swords, MapPin, AlertTriangle, FileText, Target, Package, Brain, Activity } from "lucide-react";
+import type { EnemyBase, EnemyEntity, ThreatLevel, OperationalStatus, EnemyBaseCategory, EnemyEntityCategory, IntelReport } from "@/types/game";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",    cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -16,11 +16,12 @@ const STATUS_STYLE: Record<OperationalStatus, { label: string; cls: string }> = 
 };
 
 const BASE_CATEGORY_LABEL: Record<EnemyBaseCategory, string> = {
-  airfield:  "Flygbas",
-  sam_site:  "Luftvärnsposition",
-  command:   "Ledningscentral",
-  logistics: "Logistikpunkt",
-  radar:     "Radarstation",
+  airfield:   "Flygbas",
+  sam_site:   "Luftvärnsposition",
+  command:    "Ledningscentral",
+  logistics:  "Logistikpunkt",
+  radar:      "Radarstation",
+  naval_base: "Marin bas",
 };
 
 const ENTITY_CATEGORY_LABEL: Record<EnemyEntityCategory, string> = {
@@ -45,7 +46,7 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ComponentType<{ cla
   );
 }
 
-export function EnemyBaseDetailPanel({ base }: { base: EnemyBase }) {
+export function EnemyBaseDetailPanel({ base, report }: { base: EnemyBase; report?: IntelReport }) {
   const threat = THREAT_STYLE[base.threatLevel];
   const status = STATUS_STYLE[base.operationalStatus];
 
@@ -75,6 +76,59 @@ export function EnemyBaseDetailPanel({ base }: { base: EnemyBase }) {
           <InfoRow icon={FileText} label="Anteckningar" value={base.notes} />
         )}
       </div>
+
+      {report && (
+        <>
+          {/* 1 — Predicted stockpile */}
+          {report.stockpile.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Package className="h-3.5 w-3.5 text-amber-400" />
+                <div className="text-[9px] font-mono text-amber-400/80 uppercase tracking-widest">Förutsedd resurslagring</div>
+              </div>
+              <div className="space-y-1.5">
+                {report.stockpile.map((row, i) => (
+                  <div key={i} className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-mono text-muted-foreground">{row.label}</span>
+                    <span className="text-[10px] font-mono text-foreground text-right">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 2 — Strategic intent */}
+          {report.strategicIntent && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <Brain className="h-3.5 w-3.5 text-red-400" />
+                <div className="text-[9px] font-mono text-red-400/80 uppercase tracking-widest">Strategisk avsikt</div>
+              </div>
+              <div className="text-xs font-mono text-foreground leading-relaxed">{report.strategicIntent}</div>
+            </div>
+          )}
+
+          {/* 3 — Activity log */}
+          <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="h-3.5 w-3.5 text-sky-400" />
+              <div className="text-[9px] font-mono text-sky-400/80 uppercase tracking-widest">Aktivitetslogg</div>
+            </div>
+            {report.activityLog.length === 0 ? (
+              <div className="text-[10px] font-mono text-muted-foreground italic">Ingen aktivitet registrerad</div>
+            ) : (
+              <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                {report.activityLog.map((entry, i) => (
+                  <div key={i} className="flex gap-2 text-[10px] font-mono border-b border-sky-500/10 pb-1 last:border-0">
+                    <span className="text-sky-400/70 shrink-0">{entry.timestamp}</span>
+                    <span className="text-foreground">{entry.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

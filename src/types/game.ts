@@ -2,10 +2,51 @@
 export type BaseType = "MOB" | "FOB_N" | "FOB_S" | "ROB_N" | "ROB_S" | "ROB_E";
 
 // ── Enemy / plan-mode types ───────────────────────────────────────────────
-export type EnemyBaseCategory = "airfield" | "sam_site" | "command" | "logistics" | "radar";
+export type EnemyBaseCategory = "airfield" | "sam_site" | "command" | "logistics" | "radar" | "naval_base";
 export type EnemyEntityCategory = "fighter" | "transport" | "helicopter" | "apc" | "artillery" | "sam_launcher" | "ship";
 export type ThreatLevel = "low" | "medium" | "high" | "unknown";
 export type OperationalStatus = "active" | "suspected" | "destroyed" | "unknown";
+
+// ── Naval units (both friend + hostile) ───────────────────────────────────
+export type NavalKind = "corvette" | "frigate" | "submarine" | "amphib" | "logistics_ship" | "patrol_boat";
+export type NavalAffiliation = "friend" | "hostile";
+
+export interface NavalUnit {
+  id: string;
+  name: string;
+  kind: NavalKind;
+  affiliation: NavalAffiliation;
+  position: { lat: number; lng: number };
+  /** Deterministic racetrack orbit — see PatrolConfig in units.ts. */
+  patrol: import("./units").PatrolConfig;
+  movement: import("./units").Movement;
+  pathHistory: { lat: number; lng: number }[];
+  /** Current index along the orbit's track (looped). */
+  patrolLegIdx?: number;
+  threatLevel: ThreatLevel;
+  /** Last time a friendly sensor locked this unit. Frozen when out-of-coverage. */
+  lastDetectedAt?: { day: number; hour: number; minute: number };
+  /** Position at last detection — rendered as faded "last known" when out of coverage. */
+  lastKnownPosition?: { lat: number; lng: number };
+}
+
+// ── Intel reports (per enemy base) ────────────────────────────────────────
+export interface IntelStockpileRow {
+  label: string;
+  value: string;
+}
+
+export interface IntelActivityEntry {
+  /** Human timestamp like "Dag 1 08:45". */
+  timestamp: string;
+  message: string;
+}
+
+export interface IntelReport {
+  stockpile: IntelStockpileRow[];
+  strategicIntent: string;
+  activityLog: IntelActivityEntry[];
+}
 
 export interface EnemyBase {
   id: string;
@@ -331,6 +372,10 @@ export interface GameState {
   roadBases: RoadBase[];
   tacticalZones: import("./overlay").TacticalZone[];
   overlayVisibility: import("./overlay").OverlayLayerVisibility;
+  /** Naval units (both friendly pickets and hostile vessels). */
+  navalUnits: NavalUnit[];
+  /** Per-enemy-base predicted stockpile / intent / activity log. */
+  intelReports: Record<string, IntelReport>;
 }
 
 export type AARActionType =
