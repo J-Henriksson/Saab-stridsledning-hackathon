@@ -12,6 +12,7 @@ const TRAIL_POINTS = 80;
 const TRAIL_SPAN = 8;
 const REBASE_TRAIL_SPAN = 8;
 const REBASE_VISUAL_PERIOD = 350;
+const VISIBLE_AIRBORNE_STATUSES = new Set(["on_mission", "returning"]);
 
 interface AircraftPosition {
   id: string;
@@ -71,10 +72,10 @@ export function AircraftLayer({
       const coords = BASE_COORDS[base.id];
       if (!coords) continue;
 
-      const onMission = getAircraft(base).filter((ac) => ac.status === "on_mission");
+      const visibleAircraft = getAircraft(base).filter((ac) => VISIBLE_AIRBORNE_STATUSES.has(ac.status));
 
       let orbitIdx = 0;
-      for (const ac of onMission) {
+      for (const ac of visibleAircraft) {
         const isRebase = ac.currentMission === "REBASE" && !!ac.rebaseTarget;
 
         if (isRebase && ac.rebaseTarget) {
@@ -164,7 +165,7 @@ export function AircraftLayer({
   useIncursionDetection({
     aircraftPoints: aircraftPositions.map((p) => {
       const base = bases.find((b) => b.id === p.baseId);
-      const ac = base?.aircraft.find((a) => a.id === p.id);
+      const ac = base ? getAircraft(base).find((a) => a.id === p.id) : undefined;
       return { id: p.id, tailNumber: ac?.tailNumber ?? p.id, lng: p.lng, lat: p.lat };
     }),
     restrictedZones,
