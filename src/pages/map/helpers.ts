@@ -4,6 +4,9 @@ import { getAircraft } from "@/core/units/helpers";
 export type SelectedEntity =
   | { kind: "base"; baseId: string }
   | { kind: "aircraft"; baseId: string; aircraftId: string }
+  | { kind: "enemy_base"; id: string }
+  | { kind: "enemy_entity"; id: string }
+  | { kind: "unit"; unitId: string }
   | null;
 
 export function statusColor(base: Base | undefined) {

@@ -227,6 +227,121 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "REBASE_AIRCRAFT":
       return handleRebaseAircraft(state, action.aircraftId, action.fromBase, action.toBase);
 
+    case "PLAN_ADD_ENEMY_BASE":
+      return {
+        ...state,
+        enemyBases: [
+          ...state.enemyBases,
+          { ...action.base, id: `eb-${uuid()}`, createdAt: state.day },
+        ],
+      };
+
+    case "PLAN_EDIT_ENEMY_BASE":
+      return {
+        ...state,
+        enemyBases: state.enemyBases.map((b) =>
+          b.id === action.id ? { ...b, ...action.updates } : b
+        ),
+      };
+
+    case "PLAN_DELETE_ENEMY_BASE":
+      return {
+        ...state,
+        enemyBases: state.enemyBases.filter((b) => b.id !== action.id),
+      };
+
+    case "PLAN_ADD_ENEMY_ENTITY":
+      return {
+        ...state,
+        enemyEntities: [
+          ...state.enemyEntities,
+          { ...action.entity, id: `ee-${uuid()}`, createdAt: state.day },
+        ],
+      };
+
+    case "PLAN_EDIT_ENEMY_ENTITY":
+      return {
+        ...state,
+        enemyEntities: state.enemyEntities.map((e) =>
+          e.id === action.id ? { ...e, ...action.updates } : e
+        ),
+      };
+
+    case "PLAN_DELETE_ENEMY_ENTITY":
+      return {
+        ...state,
+        enemyEntities: state.enemyEntities.filter((e) => e.id !== action.id),
+      };
+
+    case "PLAN_UPDATE_BASE_RESOURCES":
+      return {
+        ...state,
+        bases: state.bases.map((b) => {
+          if (b.id !== action.baseId) return b;
+          return {
+            ...b,
+            ...(action.fuel !== undefined ? { fuel: action.fuel } : {}),
+            ...(action.maintenanceBayTotal !== undefined
+              ? { maintenanceBays: { ...b.maintenanceBays, total: action.maintenanceBayTotal } }
+              : {}),
+            ...(action.ammo !== undefined
+              ? {
+                  ammunition: b.ammunition.map((a) => {
+                    const update = action.ammo!.find((u) => u.type === a.type);
+                    return update ? { ...a, quantity: update.quantity } : a;
+                  }),
+                }
+              : {}),
+          };
+        }),
+      };
+
+    case "PLAN_ADD_FRIENDLY_MARKER":
+      return {
+        ...state,
+        friendlyMarkers: [
+          ...state.friendlyMarkers,
+          { ...action.marker, id: `fm-${uuid()}`, createdAt: state.day },
+        ],
+      };
+
+    case "PLAN_EDIT_FRIENDLY_MARKER":
+      return {
+        ...state,
+        friendlyMarkers: state.friendlyMarkers.map((m) =>
+          m.id === action.id ? { ...m, ...action.updates } : m
+        ),
+      };
+
+    case "PLAN_DELETE_FRIENDLY_MARKER":
+      return {
+        ...state,
+        friendlyMarkers: state.friendlyMarkers.filter((m) => m.id !== action.id),
+      };
+
+    case "PLAN_ADD_FRIENDLY_ENTITY":
+      return {
+        ...state,
+        friendlyEntities: [
+          ...state.friendlyEntities,
+          { ...action.entity, id: `fe-${uuid()}`, createdAt: state.day },
+        ],
+      };
+
+    case "PLAN_EDIT_FRIENDLY_ENTITY":
+      return {
+        ...state,
+        friendlyEntities: state.friendlyEntities.map((e) =>
+          e.id === action.id ? { ...e, ...action.updates } : e
+        ),
+      };
+
+    case "PLAN_DELETE_FRIENDLY_ENTITY":
+      return {
+        ...state,
+        friendlyEntities: state.friendlyEntities.filter((e) => e.id !== action.id),
+      };
+
     case "DEPLOY_UNIT": {
       const loc = findUnit(state, action.unitId);
       if (!loc) return state;

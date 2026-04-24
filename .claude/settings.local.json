@@ -10,6 +10,7 @@
       "Bash(git add *)",
       "Bash(echo \"Exit: $?\")",
       "Bash(npx vite *)",
+      "Bash(ssh *)",
       "Bash(git *)",
       "Bash(gh run *)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d.get\\('lockfileVersion'\\), d.get\\('name'\\)\\)\")",

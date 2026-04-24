@@ -149,6 +149,19 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "TOGGLE_PAUSE":
     case "SET_GAME_SPEED":
     case "RESET_GAME":
+    case "PLAN_ADD_ENEMY_BASE":
+    case "PLAN_EDIT_ENEMY_BASE":
+    case "PLAN_DELETE_ENEMY_BASE":
+    case "PLAN_ADD_ENEMY_ENTITY":
+    case "PLAN_EDIT_ENEMY_ENTITY":
+    case "PLAN_DELETE_ENEMY_ENTITY":
+    case "PLAN_UPDATE_BASE_RESOURCES":
+    case "PLAN_ADD_FRIENDLY_MARKER":
+    case "PLAN_EDIT_FRIENDLY_MARKER":
+    case "PLAN_DELETE_FRIENDLY_MARKER":
+    case "PLAN_ADD_FRIENDLY_ENTITY":
+    case "PLAN_EDIT_FRIENDLY_ENTITY":
+    case "PLAN_DELETE_FRIENDLY_ENTITY":
       return { valid: true };
 
     case "REBASE_AIRCRAFT": {
