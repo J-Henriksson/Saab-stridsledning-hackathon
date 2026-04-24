@@ -89,7 +89,7 @@ function subtypeOptions(category: UnitCategory): string[] {
   }
 }
 
-function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAction) => void }) {
+function ExistingBaseRow({ base, allBases, dispatch }: { base: Base; allBases: Base[]; dispatch: (a: GameAction) => void }) {
   const [open, setOpen] = useState(false);
   const [fuel, setFuel] = useState(base.fuel);
   const [bays, setBays] = useState(base.maintenanceBays.total);
@@ -104,6 +104,8 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
   function commit() {
     dispatch({ type: "PLAN_UPDATE_BASE_RESOURCES", baseId: base.id, fuel, ammo, maintenanceBayTotal: bays });
   }
+
+  const otherBases = allBases.filter((b) => b.id !== base.id);
 
   return (
     <div className="border border-border rounded bg-muted/5 overflow-hidden">
@@ -145,6 +147,32 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
               />
             </div>
           ))}
+
+          {/* Unit roster with reassignment */}
+          {aircraft.length > 0 && (
+            <div className="pt-1 border-t border-border/50 space-y-1">
+              <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">Enheter</div>
+              {aircraft.map((ac) => (
+                <div key={ac.id} className="flex items-center gap-1.5 text-[10px] font-mono">
+                  <span className="flex-1 truncate text-foreground/80">{ac.tailNumber ?? ac.name}</span>
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (!e.target.value) return;
+                      dispatch({ type: "PLAN_REASSIGN_UNIT_TO_BASE", unitId: ac.id, fromBaseId: base.id, toBaseId: e.target.value as BaseType });
+                      e.target.value = "";
+                    }}
+                    className="bg-background border border-border rounded px-1 py-0.5 text-[9px] font-mono text-muted-foreground"
+                  >
+                    <option value="">Flytta →</option>
+                    {otherBases.map((b) => (
+                      <option key={b.id} value={b.id}>{b.id}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -182,24 +210,22 @@ function AddForm({ title, onPlace, onCancel, fields }: { title: string; onPlace:
 export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingUnit, setAddingUnit] = useState(false);
-  const [addingRoadBase, setAddingRoadBase] = useState(false);
 
   const [baseName, setBaseName] = useState("");
   const [baseCategory, setBaseCategory] = useState<FriendlyMarkerCategory>("airbase");
   const [baseNotes, setBaseNotes] = useState("");
   const [baseEstimates, setBaseEstimates] = useState("");
 
+  // "vag_bas" is a local sentinel — not a UnitCategory
+  const [unitCategory, setUnitCategory] = useState<UnitCategory | "vag_bas">("drone");
   const [unitName, setUnitName] = useState("");
-  const [unitCategory, setUnitCategory] = useState<UnitCategory>("drone");
   const [unitSubtype, setUnitSubtype] = useState<string>(DRONE_TYPES[0]);
   const [unitBaseId, setUnitBaseId] = useState<BaseType>("MOB");
   const [unitPayload, setUnitPayload] = useState("");
-
-  const [robName, setRobName] = useState("");
-  const [robStatus, setRobStatus] = useState<RoadBaseStatus>("Operativ");
-  const [robEchelon, setRobEchelon] = useState<RoadBaseEchelon>("Platoon");
-  const [robParentBase, setRobParentBase] = useState("F16");
-  const [robRange, setRobRange] = useState(15);
+  // Vägbas-specific fields (shown when unitCategory === "vag_bas")
+  const [vagStatus, setVagStatus] = useState<RoadBaseStatus>("Operativ");
+  const [vagEchelon, setVagEchelon] = useState<RoadBaseEchelon>("Platoon");
+  const [vagRange, setVagRange] = useState(15);
 
   const placedFriendlyUnits = useMemo(
     () => placedUnits.filter((unit) => unit.affiliation === "friend"),
@@ -218,48 +244,46 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
 
   function handlePlaceUnit() {
     if (!unitName.trim()) return;
-    onStartPlacement({
-      kind: "friendly_unit",
-      data: {
-        name: unitName,
-        category: unitCategory,
-        subtype: unitSubtype,
-        baseId: unitBaseId,
-        payload: unitCategory === "drone" ? unitPayload : "",
-      },
-    });
+    if (unitCategory === "vag_bas") {
+      onStartPlacement({
+        kind: "road_base",
+        data: {
+          name: unitName,
+          status: vagStatus,
+          echelon: vagEchelon,
+          parentBaseId: unitBaseId,
+          rangeRadius: String(vagRange),
+        },
+      });
+    } else {
+      onStartPlacement({
+        kind: "friendly_unit",
+        data: {
+          name: unitName,
+          category: unitCategory,
+          subtype: unitSubtype,
+          baseId: unitBaseId,
+          payload: unitCategory === "drone" ? unitPayload : "",
+        },
+      });
+    }
     setAddingUnit(false);
     setUnitName("");
     setUnitCategory("drone");
     setUnitSubtype(DRONE_TYPES[0]);
     setUnitBaseId("MOB");
     setUnitPayload("");
+    setVagStatus("Operativ");
+    setVagEchelon("Platoon");
+    setVagRange(15);
   }
 
-  function handleUnitCategoryChange(value: UnitCategory) {
+  function handleUnitCategoryChange(value: UnitCategory | "vag_bas") {
     setUnitCategory(value);
-    setUnitSubtype(subtypeOptions(value)[0]);
-    if (value !== "drone") setUnitPayload("");
-  }
-
-  function handlePlaceRoadBase() {
-    if (!robName.trim()) return;
-    onStartPlacement({
-      kind: "road_base",
-      data: {
-        name: robName,
-        status: robStatus,
-        echelon: robEchelon,
-        parentBaseId: robParentBase,
-        rangeRadius: String(robRange),
-      },
-    });
-    setAddingRoadBase(false);
-    setRobName("");
-    setRobStatus("Operativ");
-    setRobEchelon("Platoon");
-    setRobParentBase("F16");
-    setRobRange(15);
+    if (value !== "vag_bas") {
+      setUnitSubtype(subtypeOptions(value as UnitCategory)[0]);
+      if (value !== "drone") setUnitPayload("");
+    }
   }
 
   return (
@@ -268,7 +292,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
         Befintliga baser
       </div>
       {bases.map((base) => (
-        <ExistingBaseRow key={base.id} base={base} dispatch={dispatch} />
+        <ExistingBaseRow key={base.id} base={base} allBases={bases} dispatch={dispatch} />
       ))}
 
       {friendlyMarkers.length > 0 && (
@@ -392,7 +416,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
             }
           />
         ) : (
-          <button onClick={() => { setAddingBase(true); setAddingUnit(false); setAddingRoadBase(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
+          <button onClick={() => { setAddingBase(true); setAddingUnit(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
             <Plus className="h-3.5 w-3.5" />
             Ny vänlig bas
           </button>
@@ -407,83 +431,69 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
               <>
                 <input
                   autoFocus
-                  placeholder="Enhetsnamn"
+                  placeholder={unitCategory === "vag_bas" ? "Beteckning (t.ex. ROB-E21)" : "Enhetsnamn"}
                   value={unitName}
                   onChange={(e) => setUnitName(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
                 />
-                <select value={unitCategory} onChange={(e) => handleUnitCategoryChange(e.target.value as UnitCategory)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {UNIT_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                {/* Category selector — includes Vägbas */}
+                <select
+                  value={unitCategory}
+                  onChange={(e) => handleUnitCategoryChange(e.target.value as UnitCategory | "vag_bas")}
+                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground"
+                >
+                  {UNIT_CATEGORIES.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                  <option value="vag_bas">Vägbas</option>
                 </select>
-                <select value={unitSubtype} onChange={(e) => setUnitSubtype(e.target.value)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {subtypeOptions(unitCategory).map((option) => <option key={option} value={option}>{option}</option>)}
-                </select>
-                <select value={unitBaseId} onChange={(e) => setUnitBaseId(e.target.value as BaseType)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {bases.map((base) => <option key={base.id} value={base.id}>{base.id} · {base.name}</option>)}
-                </select>
-                {unitCategory === "drone" && (
-                  <input
-                    placeholder="Last / payload (t.ex. EO/IR, SIGINT, lätt attacklast)"
-                    value={unitPayload}
-                    onChange={(e) => setUnitPayload(e.target.value)}
-                    className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
-                  />
+
+                {unitCategory === "vag_bas" ? (
+                  <>
+                    <select value={vagStatus} onChange={(e) => setVagStatus(e.target.value as RoadBaseStatus)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {ROAD_BASE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <select value={vagEchelon} onChange={(e) => setVagEchelon(e.target.value as RoadBaseEchelon)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {ROAD_BASE_ECHELONS.map((ec) => <option key={ec.value} value={ec.value}>{ec.label}</option>)}
+                    </select>
+                    <select value={unitBaseId} onChange={(e) => setUnitBaseId(e.target.value as BaseType)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {bases.map((base) => <option key={base.id} value={base.id}>{base.id} · {base.name}</option>)}
+                    </select>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-muted-foreground w-20 shrink-0">Räckvidd</span>
+                      <input
+                        type="number" min={1} max={100} value={vagRange}
+                        onChange={(e) => setVagRange(Number(e.target.value))}
+                        className="w-16 bg-background border border-border rounded px-1.5 py-0.5 text-[11px] font-mono text-foreground text-right"
+                      />
+                      <span className="text-[10px] text-muted-foreground">km</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <select value={unitSubtype} onChange={(e) => setUnitSubtype(e.target.value)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {subtypeOptions(unitCategory as UnitCategory).map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                    <select value={unitBaseId} onChange={(e) => setUnitBaseId(e.target.value as BaseType)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {bases.map((base) => <option key={base.id} value={base.id}>{base.id} · {base.name}</option>)}
+                    </select>
+                    {unitCategory === "drone" && (
+                      <input
+                        placeholder="Last / payload (t.ex. EO/IR, SIGINT, lätt attacklast)"
+                        value={unitPayload}
+                        onChange={(e) => setUnitPayload(e.target.value)}
+                        className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
+                      />
+                    )}
+                  </>
                 )}
               </>
             }
           />
         ) : (
-          <button onClick={() => { setAddingUnit(true); setAddingBase(false); setAddingRoadBase(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
+          <button onClick={() => { setAddingUnit(true); setAddingBase(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
             <Plus className="h-3.5 w-3.5" />
             Placera vänlig enhet
-          </button>
-        )}
-
-        {addingRoadBase ? (
-          <AddForm
-            title="Ny vägbas"
-            onPlace={handlePlaceRoadBase}
-            onCancel={() => setAddingRoadBase(false)}
-            fields={
-              <>
-                <input
-                  autoFocus
-                  placeholder="Beteckning (t.ex. ROB-E21)"
-                  value={robName}
-                  onChange={(e) => setRobName(e.target.value)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
-                />
-                <select value={robStatus} onChange={(e) => setRobStatus(e.target.value as RoadBaseStatus)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {ROAD_BASE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-                <select value={robEchelon} onChange={(e) => setRobEchelon(e.target.value as RoadBaseEchelon)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {ROAD_BASE_ECHELONS.map((ec) => <option key={ec.value} value={ec.value}>{ec.label}</option>)}
-                </select>
-                <input
-                  placeholder="Förälderbas (t.ex. F16)"
-                  value={robParentBase}
-                  onChange={(e) => setRobParentBase(e.target.value)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-muted-foreground w-20 shrink-0">Räckvidd</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={robRange}
-                    onChange={(e) => setRobRange(Number(e.target.value))}
-                    className="w-16 bg-background border border-border rounded px-1.5 py-0.5 text-[11px] font-mono text-foreground text-right"
-                  />
-                  <span className="text-[10px] text-muted-foreground">km</span>
-                </div>
-              </>
-            }
-          />
-        ) : (
-          <button onClick={() => { setAddingRoadBase(true); setAddingBase(false); setAddingUnit(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-green-600/30 text-green-400 text-[11px] font-mono hover:bg-green-500/5 transition-colors">
-            <Plus className="h-3.5 w-3.5" />
-            Ny vägbas
           </button>
         )}
       </div>

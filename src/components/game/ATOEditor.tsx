@@ -35,6 +35,9 @@ export function ATOEditor({ order, defaultStartHour, availableAircraft, onSave, 
   const [coordsLng, setCoordsLng] = useState(order?.coords?.lng ?? 18);
   const [missionCallsign, setMissionCallsign] = useState(order?.missionCallsign ?? "");
   const [fuelOnArrival, setFuelOnArrival] = useState(order?.fuelOnArrival ?? 60);
+  const [isPlaceholder, setIsPlaceholder] = useState(order?.isPlaceholder ?? false);
+  const [activationDay, setActivationDay] = useState(order?.activationDay ?? 1);
+  const [activationHour, setActivationHour] = useState(order?.activationHour ?? 6);
 
   const filteredAircraft = availableAircraft?.filter(
     (ac) => !aircraftType || ac.type === aircraftType
@@ -72,6 +75,9 @@ export function ATOEditor({ order, defaultStartHour, availableAircraft, onSave, 
         coords: finalCoords,
         missionCallsign: missionCallsign || undefined,
         fuelOnArrival: destinationName ? fuelOnArrival : undefined,
+        isPlaceholder: isPlaceholder || undefined,
+        activationDay: isPlaceholder ? activationDay : undefined,
+        activationHour: isPlaceholder ? activationHour : undefined,
       },
       selectedAircraftIds
     );
@@ -312,6 +318,51 @@ export function ATOEditor({ order, defaultStartHour, availableAircraft, onSave, 
                 />
               </div>
             </>
+          )}
+
+          {/* Placeholder / ATO scheduling */}
+          <div className="border-t" style={{ borderColor: "hsl(215 14% 88%)" }} />
+          <div className="text-[10px] font-mono font-bold" style={{ color: "hsl(218 15% 45%)" }}>
+            ATO-PLANERING
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isPlaceholder}
+              onChange={(e) => setIsPlaceholder(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-xs font-mono" style={{ color: "hsl(218 15% 40%)" }}>
+              Placeholder (aktiveras vid schemalagd tidpunkt)
+            </span>
+          </label>
+          {isPlaceholder && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-mono font-bold block mb-1" style={{ color: "hsl(218 15% 45%)" }}>AKTIVERINGSDAG</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={activationDay}
+                  onChange={(e) => setActivationDay(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+                  style={fieldStyle}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono font-bold block mb-1" style={{ color: "hsl(218 15% 45%)" }}>AKTIVERINGSTIMME</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={activationHour}
+                  onChange={(e) => setActivationHour(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-mono"
+                  style={fieldStyle}
+                />
+              </div>
+            </div>
           )}
 
           {/* Aircraft selection (only when creating new) */}

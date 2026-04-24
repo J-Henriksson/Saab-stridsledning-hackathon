@@ -248,7 +248,10 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   onClick={() => handleSelectOrder(order)}
+                  style={order.isPlaceholder ? { borderStyle: "dashed" } : undefined}
                   className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    order.isPlaceholder ? "opacity-50 grayscale-[60%]" : ""
+                  } ${
                     isSelected
                       ? "border-primary/60 bg-primary/10"
                       : "border-border bg-card hover:border-border hover:bg-muted/30"
@@ -264,9 +267,15 @@ export function ATOBody({ embedded = false }: { embedded?: boolean }) {
                         <div>
                         <div className="text-xs font-bold text-foreground">
                           {order.missionType} — {order.label}
+                          {order.isPlaceholder && (
+                            <span className="ml-2 text-[9px] font-mono text-muted-foreground border border-dashed border-muted-foreground/40 rounded px-1 py-0.5">PLACEHOLDER</span>
+                          )}
                           </div>
                         <div className="text-[10px] font-mono text-muted-foreground mt-0.5">
                           {formatHour(order.startHour)}–{formatHour(order.endHour)} · {order.requiredCount} fpl
+                          {order.isPlaceholder && order.activationDay !== undefined && (
+                            <span className="ml-2 text-amber-500/70">Aktiveras: Dag {order.activationDay} {order.activationHour !== undefined ? `${String(order.activationHour).padStart(2, "0")}:00` : ""}</span>
+                          )}
                         </div>
                       </div>
                     </div>
