@@ -21,4 +21,13 @@ export const INITIAL_ZOOM = 4.0;
 export const STOCKHOLM_CENTER = { lat: 59.33, lng: 18.07 };
 export const TACTICAL_ZOOM = 7.5;
 
+export const BASE_RINGS: Record<string, { sizeRadiusKm: number; defaultAorRadiusKm: number }> = {
+  MOB:   { sizeRadiusKm: 3.0, defaultAorRadiusKm: 80  },  // Malmen — main ops base
+  FOB_N: { sizeRadiusKm: 2.0, defaultAorRadiusKm: 120 },  // Luleå/Kallax
+  FOB_S: { sizeRadiusKm: 1.5, defaultAorRadiusKm: 80  },  // Ängelholm/F10
+  ROB_N: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 100 },  // Vidsel
+  ROB_S: { sizeRadiusKm: 1.5, defaultAorRadiusKm: 80  },  // Ronneby/F17
+  ROB_E: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 70  },  // Söderhamn/F15
+};
+
 export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";

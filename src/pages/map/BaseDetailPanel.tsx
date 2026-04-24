@@ -11,14 +11,19 @@ import {
   AlertTriangle,
   MapPin,
   ChevronRight,
+  Radio,
 } from "lucide-react";
 
 export function BaseDetailPanel({
   base,
   onSelectAircraft,
+  aorRadiusKm,
+  onSetAor,
 }: {
   base: Base;
   onSelectAircraft: (id: string) => void;
+  aorRadiusKm: number;
+  onSetAor: (km: number) => void;
 }) {
   const mc = base.aircraft.filter((a) => a.status === "ready");
   const nmc = base.aircraft.filter((a) => a.status === "unavailable");
@@ -35,6 +40,32 @@ export function BaseDetailPanel({
       <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono ${readiness.cls}`}>
         <Shield className="h-4 w-4" />
         BEREDSKAP: {readiness.label}
+      </div>
+
+      {/* AOR ring control */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[10px] font-mono text-muted-foreground flex items-center gap-1">
+            <Radio className="h-3 w-3" /> ANSVARSOMRÅDE (AOR)
+          </span>
+          <span className="text-[10px] font-mono font-bold" style={{ color: "#D7AB3A" }}>
+            {aorRadiusKm} km
+          </span>
+        </div>
+        <input
+          type="range"
+          min={10}
+          max={200}
+          step={5}
+          value={aorRadiusKm}
+          onChange={(e) => onSetAor(Number(e.target.value))}
+          className="w-full h-1.5 cursor-pointer"
+          style={{ accentColor: "#D7AB3A" }}
+        />
+        <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-0.5">
+          <span>10 km</span>
+          <span>200 km</span>
+        </div>
       </div>
 
       {/* Stats grid */}

@@ -7,7 +7,8 @@ import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin } from "lucide-react";
 
-import { BASE_COORDS, STOCKHOLM_CENTER, TACTICAL_ZOOM, MAP_STYLE } from "./map/constants";
+import { BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM, MAP_STYLE } from "./map/constants";
+import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
 import { SelectedEntity } from "./map/helpers";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
@@ -30,6 +31,7 @@ export default function MapPage() {
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
+  const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
@@ -127,6 +129,10 @@ export default function MapPage() {
     [dispatch, state.overlayVisibility]
   );
 
+  const handleSetAor = useCallback((markerId: string, km: number) => {
+    setAorOverrides((prev) => ({ ...prev, [markerId]: km }));
+  }, []);
+
   const handleSelectAsset = useCallback((asset: FixedMilitaryAsset) => {
     setSelected({ kind: "asset", assetId: asset.id });
   }, []);
@@ -145,7 +151,7 @@ export default function MapPage() {
     if (selectedAsset)
       return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
     if (selectedBase)
-      return { main: selectedBase.name ?? selected?.baseId, sub: selectedBase?.type ?? "Reservbas" };
+      return { main: selectedBase.name ?? (selected?.kind === "base" || selected?.kind === "aircraft" ? selected.baseId : ""), sub: selectedBase?.type ?? "Reservbas" };
     return null;
   })();
 
@@ -193,11 +199,14 @@ export default function MapPage() {
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
 
-            {/* Tactical zone fills (rendered below other layers) */}
+            {/* Tactical zone fills */}
             <TacticalZonesLayer
               zones={state.tacticalZones}
               visible={state.overlayVisibility.activeZones}
             />
+
+            {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
+            <MarkerRingsLayer aorOverrides={aorOverrides} />
 
             <SupplyLinesLayer bases={state.bases} />
 
@@ -314,13 +323,19 @@ export default function MapPage() {
                   currentDay={state.day}
                 />
               ) : selectedAsset ? (
-                <AssetInfoPanel asset={selectedAsset} />
+                <AssetInfoPanel
+                  asset={selectedAsset}
+                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
+                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
+                />
               ) : selectedBase ? (
                 <BaseDetailPanel
                   base={selectedBase}
                   onSelectAircraft={(id) =>
                     setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
                   }
+                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
+                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
                 />
               ) : (
                 <div className="p-4 text-xs text-muted-foreground">
@@ -337,7 +352,15 @@ export default function MapPage() {
 
 // ── Asset info panel ───────────────────────────────────────────────────────
 
-function AssetInfoPanel({ asset }: { asset: FixedMilitaryAsset }) {
+function AssetInfoPanel({
+  asset,
+  aorRadiusKm,
+  onSetAor,
+}: {
+  asset: FixedMilitaryAsset;
+  aorRadiusKm: number;
+  onSetAor: (km: number) => void;
+}) {
   const TYPE_LABELS: Record<string, string> = {
     army_regiment:    "Armeregementen",
     marine_regiment:  "Marinregementen",
@@ -402,6 +425,27 @@ function AssetInfoPanel({ asset }: { asset: FixedMilitaryAsset }) {
             <span className="font-bold">{asset.protectionRadiusKm} km</span>
           </div>
         )}
+        {/* AOR slider */}
+        <div className="pt-1">
+          <div className="flex justify-between mb-1">
+            <span className="text-muted-foreground">Ansvarsområde (AOR)</span>
+            <span className="font-bold" style={{ color: "#D7AB3A" }}>{aorRadiusKm} km</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            value={aorRadiusKm}
+            onChange={(e) => onSetAor(Number(e.target.value))}
+            className="w-full h-1.5 cursor-pointer"
+            style={{ accentColor: "#D7AB3A" }}
+          />
+          <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-0.5">
+            <span>1 km</span>
+            <span>100 km</span>
+          </div>
+        </div>
       </div>
       <div
         className="text-[9px] font-mono text-muted-foreground border-t border-border pt-2 mt-2"
