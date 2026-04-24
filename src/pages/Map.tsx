@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -34,6 +34,10 @@ import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
+import { RadarLayer, RadarControlPanel } from "@/components/radar";
+import type { ExtendedRadarUnit } from "@/components/radar";
+import { useRadarDetection } from "@/hooks/useRadarDetection";
+import { useRadarEngine } from "@/hooks/useRadarEngine";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
@@ -52,6 +56,7 @@ type SelectedEntity =
   | { kind: "enemy_base"; id: string }
   | { kind: "enemy_entity"; id: string }
   | { kind: "unit"; unitId: string }
+  | { kind: "radar"; radarId: string }
   | { kind: "zone"; zoneId: string }
   | { kind: "asset"; assetId: string }
   | null;
@@ -82,11 +87,14 @@ const MAP_MODE_OPTIONS: {
   { id: "hotzoner", label: "Hotzoner", icon: TriangleAlert, available: false },
 ];
 
+const MILITARY_GREEN = "#2D5A27";
+const RADAR_TEAL = "#00E5C7";
+
 const DRAW_TOOLS: { mode: DrawingMode; label: string; color: string }[] = [
   { mode: "circle_restricted", label: "Restriktionszon", color: "#D9192E" },
   { mode: "circle_surveillance", label: "Övervakningszon", color: "#D97706" },
-  { mode: "circle_logistics", label: "Logistikzon", color: "#2563eb" },
-  { mode: "polygon_roadstrip", label: "Vägstripzon", color: "#0891b2" },
+  { mode: "circle_logistics",    label: "Logistikzon",     color: "#2563eb" },
+  { mode: "polygon_roadstrip",   label: "Vägstripzon",     color: "#0891b2" },
 ];
 
 const LAYER_ITEMS: {
@@ -96,12 +104,14 @@ const LAYER_ITEMS: {
   color: string;
   solo?: boolean;
 }[] = [
-  { key: "flygvapnet", label: "Flygvapnet / Flygbaser", Icon: Plane, color: "#2D5A27", solo: true },
-  { key: "militaryBases", label: "Militära baser", Icon: Shield, color: "#2D5A27" },
+  { key: "flygvapnet", label: "Flygvapnet / Flygbaser", Icon: Plane, color: MILITARY_GREEN, solo: true },
+  { key: "militaryBases", label: "Militära baser", Icon: Shield, color: MILITARY_GREEN },
   { key: "criticalInfra", label: "Kritisk infrastruktur", Icon: Building2, color: "#708090" },
   { key: "skyddsobjekt", label: "Skyddsobjekt", Icon: ShieldAlert, color: "#D97706" },
-  { key: "activeZones", label: "Aktiva zoner", Icon: MapPin, color: "#2563eb" },
+  { key: "radarUnits", label: "Radarstationer", Icon: Radio as any, color: RADAR_TEAL },
+  { key: "activeZones", label: "Aktiva zoner", Icon: MapPin as any, color: "#2563eb" },
 ];
+
 
 const SEA_LABELS = [
   { id: "nordsjon", label: "Nordsjön", lat: 58.7, lng: 3.6 },
@@ -195,6 +205,49 @@ export default function MapPage() {
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
+  const [zoom, setZoom] = useState(TACTICAL_ZOOM);
+  const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
+
+  const allUnits = useMemo(
+    () => {
+      if (!state || !state.bases) return [];
+      return [...state.bases.flatMap((b) => b.units), ...state.deployedUnits];
+    },
+    [state]
+  );
+
+  // Filter for radar units
+  const radarUnits = useMemo(
+    () => allUnits.filter((u) => u.category === "radar") as ExtendedRadarUnit[],
+    [allUnits]
+  );
+
+  // Radar detection local state for UI (since we don't have a global contact state)
+  const [radarContacts, setRadarContacts] = useState<Record<string, string[]>>({});
+  
+  const handleUpdateRadarContacts = useCallback((radarId: string, contactIds: string[]) => {
+    setRadarContacts(prev => ({ ...prev, [radarId]: contactIds }));
+  }, []);
+
+  // Enriched units with detected contact info
+  const enrichedRadarUnits = useMemo(() => 
+    radarUnits.map(u => ({
+      ...u,
+      detectedContactIds: radarContacts[u.id] ?? []
+    })),
+    [radarUnits, radarContacts]
+  );
+
+  useRadarDetection(enrichedRadarUnits, handleUpdateRadarContacts);
+
+  const handleUpdateRadar = useCallback((id: string, updates: Partial<ExtendedRadarUnit>) => {
+    if (updates.status) {
+      updateRadarStatus(id, updates.status);
+    }
+    if (updates.position) {
+      updateRadarPosition(id, updates.position);
+    }
+  }, [updateRadarStatus, updateRadarPosition]);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
 
@@ -221,11 +274,6 @@ export default function MapPage() {
     if (isDropdownOpen) document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [isDropdownOpen]);
-
-  const allUnits = useMemo(
-    () => [...state.bases.flatMap((b) => b.units), ...state.deployedUnits],
-    [state.bases, state.deployedUnits]
-  );
 
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
@@ -265,6 +313,11 @@ export default function MapPage() {
   const selectedAsset =
     selected?.kind === "asset"
       ? [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS].find((a) => a.id === selected.assetId)
+      : undefined;
+
+  const selectedRadar =
+    selected?.kind === "radar"
+      ? enrichedRadarUnits.find((r) => r.id === selected.radarId)
       : undefined;
 
 
@@ -385,6 +438,11 @@ export default function MapPage() {
     [dispatch, state.hour, state.day]
   );
 
+  const nonRadarUnits = useMemo(
+    () => allUnits.filter((u) => u.category !== "radar"),
+    [allUnits]
+  );
+
   const drawState = useZoneDrawing({ mode: drawingMode, onZoneComplete: handleZoneComplete });
 
   const handleToggleVisibility = useCallback(
@@ -413,6 +471,7 @@ export default function MapPage() {
     if (selectedAircraft) return { main: selectedAircraft.tailNumber, sub: `${selectedAircraft.type} · ${selectedBase?.name}` };
     if (selectedZone) return { main: selectedZone.name, sub: selectedZone.category === "fixed" ? "Permanent skyddszon" : "Temporär zon" };
     if (selectedAsset) return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
+    if (selectedRadar) return { main: selectedRadar.name, sub: "Taktisk Radarstation" };
     if (selected?.kind === "base") return { main: selectedBase?.name ?? selected.baseId, sub: selectedBase?.type ?? "Reservbas" };
     if (selected?.kind === "enemy_base" && selectedEnemyBase) return { main: selectedEnemyBase.name, sub: "Fiendens bas" };
     if (selected?.kind === "enemy_entity" && selectedEnemyEntity) return { main: selectedEnemyEntity.name, sub: "Fiendens enhet" };
@@ -499,6 +558,7 @@ export default function MapPage() {
             }
             onClick={handleMapClick}
             onLoad={handleMapLoad}
+            onZoom={(e) => setZoom(e.viewState.zoom)}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
@@ -562,14 +622,15 @@ export default function MapPage() {
 
             {/* Tactical zone fills */}
             <TacticalZonesLayer
-              zones={state.tacticalZones}
-              visible={state.overlayVisibility.activeZones}
+              zones={state?.tacticalZones ?? []}
+              visible={state?.overlayVisibility?.activeZones ?? false}
             />
 
             {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
-            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state.overlayVisibility} />
+            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state?.overlayVisibility ?? ({} as any)} />
 
-            <SupplyLinesLayer bases={state.bases} />
+            <SupplyLinesLayer bases={state?.bases ?? []} />
+
             {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
             {visibleViews.satelliter && (
               <SatelliteLayer
@@ -580,9 +641,9 @@ export default function MapPage() {
               />
             )}
             <AircraftLayer
-              bases={state.bases}
-              currentHour={state.hour}
-              currentDay={state.day}
+              bases={state?.bases ?? []}
+              currentHour={state?.hour ?? 0}
+              currentDay={state?.day ?? 1}
               onSelectAircraft={(baseId, aircraftId) =>
                 setSelected({ kind: "aircraft", baseId, aircraftId })
               }
@@ -601,7 +662,7 @@ export default function MapPage() {
             />
 
             <UnitsLayer
-              units={allUnits}
+              units={nonRadarUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
@@ -662,6 +723,16 @@ export default function MapPage() {
 
             {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
             <DrawingPreviewOverlay drawState={drawState} />
+
+            {state?.overlayVisibility?.radarUnits && (
+              <RadarLayer
+                units={enrichedRadarUnits}
+                zoom={zoom}
+                onUpdateUnit={handleUpdateRadar}
+                selectedId={selected?.kind === "radar" ? selected.radarId : null}
+                onSelect={(id) => setSelected(id ? { kind: "radar", radarId: id } : null)}
+              />
+            )}
           </MapGL>
 
           {/* Placement mode banner */}
@@ -904,8 +975,10 @@ export default function MapPage() {
                 { color: "#2D5A27", label: "Svenska militära baser", dashed: false },
                 { color: "#708090", label: "Kritisk infrastruktur", dashed: false },
                 { color: "#F4D03F", label: "Skyddsobjekt", dashed: false },
+                { color: RADAR_TEAL, label: "Radarstationer", dashed: false },
                 { color: "#2D5A27", label: "AOR (ansvarsområde)", dashed: true },
               ].map(({ color, label, dashed }) => (
+
                 <div key={label} className="flex items-center gap-2">
                   <span
                     className="shrink-0 w-5 h-[2px] rounded"
@@ -1005,13 +1078,20 @@ export default function MapPage() {
               ) : selectedSatellite ? (
                 <SatelliteDetailPanel satellite={selectedSatellite} />
               ) : selectedAircraft && selected.kind === "aircraft" ? (
-                <AircraftDetailPanel
-                  aircraft={selectedAircraft}
-                  onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
-                  onRecall={handleRecall}
-                  currentHour={state.hour}
-                />
-              ) : selectedZone ? (
+                 <AircraftDetailPanel
+                   aircraft={selectedAircraft}
+                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
+                   onRecall={handleRecall}
+                   currentHour={state.hour}
+                 />
+               ) : selectedRadar ? (
+                 <RadarControlPanel
+                   unit={selectedRadar}
+                   onClose={() => setSelected(null)}
+                   onUpdate={(updates) => handleUpdateRadar(selectedRadar.id, updates)}
+                 />
+               ) : selectedZone ? (
+
                 <ZoneDetailPanel
                   zone={selectedZone}
                   onDelete={() => {
