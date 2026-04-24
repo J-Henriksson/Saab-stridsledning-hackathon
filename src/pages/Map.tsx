@@ -284,7 +284,7 @@ export default function MapPage() {
       if (match(nu.name)) results.push({ label: nu.name, sublabel: "Marinstyrkа", lat: nu.position.lat, lng: nu.position.lng });
     });
     allUnits.forEach((u) => {
-      if (match(u.unitName)) results.push({ label: u.unitName, sublabel: u.category, lat: u.position.lat, lng: u.position.lng });
+      if (match(u.name)) results.push({ label: u.name, sublabel: u.category, lat: u.position.lat, lng: u.position.lng });
     });
     return results.slice(0, 10);
   }, [searchQuery, state, allUnits]);
