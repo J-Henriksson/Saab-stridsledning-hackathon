@@ -990,14 +990,6 @@ export default function MapPage() {
             )}
           </MapGL>
 
-          <CoordinateHUD
-            cursor={hudCursor}
-            day={state.day}
-            hour={state.hour}
-            minute={state.minute}
-            second={state.second}
-          />
-
           {/* Placement mode banner */}
           {placingMode && (
             <div className="absolute inset-0 z-10 flex items-start justify-center pointer-events-none">
@@ -1242,38 +1234,42 @@ export default function MapPage() {
             );
           })()}
 
-          {/* Legend card — bottom left, above aircraft bar */}
-          <div
-            className="absolute bottom-14 left-3 z-10 p-3 rounded-xl text-xs font-mono pointer-events-none"
-            style={{
-              background: "rgba(255,255,255,0.90)",
-              border: "1px solid rgba(0,0,0,0.08)",
-              backdropFilter: "blur(10px)",
-              boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
-            }}
-          >
-            <div className="font-bold text-gray-500 mb-2 text-[9px] tracking-widest">LEGEND</div>
-            <div className="space-y-1.5">
-              {[
-                { color: "#2D5A27", label: "Svenska militära baser", dashed: false },
-                { color: "#708090", label: "Kritisk infrastruktur", dashed: false },
-                { color: "#F4D03F", label: "Skyddsobjekt", dashed: false },
-                { color: RADAR_TEAL, label: "Radarstationer", dashed: false },
-                { color: "#2D5A27", label: "AOR (ansvarsområde)", dashed: true },
-              ].map(({ color, label, dashed }) => (
+          {/* Legend + coordinate HUD — bottom left, above aircraft bar */}
+          <div className="absolute bottom-14 left-3 z-10 flex flex-col gap-2">
+            <div
+              className="p-3 rounded-xl text-xs font-mono pointer-events-none"
+              style={{
+                background: "rgba(255,255,255,0.90)",
+                border: "1px solid rgba(0,0,0,0.08)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+              }}
+            >
+              <div className="font-bold text-gray-500 mb-2 text-[9px] tracking-widest">LEGEND</div>
+              <div className="space-y-1.5">
+                {[
+                  { color: "#2D5A27", label: "Svenska militära baser", dashed: false },
+                  { color: "#708090", label: "Kritisk infrastruktur", dashed: false },
+                  { color: "#F4D03F", label: "Skyddsobjekt", dashed: false },
+                  { color: RADAR_TEAL, label: "Radarstationer", dashed: false },
+                  { color: "#2D5A27", label: "AOR (ansvarsområde)", dashed: true },
+                ].map(({ color, label, dashed }) => (
 
-                <div key={label} className="flex items-center gap-2">
-                  <span
-                    className="shrink-0 w-5 h-[2px] rounded"
-                    style={{
-                      background: dashed ? "none" : color,
-                      borderTop: dashed ? `2px dashed ${color}` : "none",
-                    }}
-                  />
-                  <span className="text-[10px] text-gray-600">{label}</span>
-                </div>
-              ))}
+                  <div key={label} className="flex items-center gap-2">
+                    <span
+                      className="shrink-0 w-5 h-[2px] rounded"
+                      style={{
+                        background: dashed ? "none" : color,
+                        borderTop: dashed ? `2px dashed ${color}` : "none",
+                      }}
+                    />
+                    <span className="text-[10px] text-gray-600">{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
+
+            <CoordinateHUD cursor={hudCursor} />
           </div>
 
           {/* Terrain filter panel */}
