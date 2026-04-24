@@ -8,11 +8,15 @@ import { generateRecommendations } from "./recommendations";
 import { validateAction } from "./validators";
 import { uuid } from "./uuid";
 import type { Unit, AircraftUnit } from "@/types/units";
+import { isDrone } from "@/types/units";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
 import { enforceAirborneInvariant, advanceMovement, perMinuteFuelDrain } from "@/core/units/movement";
 import { BASE_COORDS } from "@/pages/map/constants";
 import { getAircraft } from "@/core/units/helpers";
+import { launchDrone, recallDrone, updateDroneWaypoints, setDroneOverlay, advanceAllDrones, advanceDroneMaintenanceTick } from "@/core/drones/droneEngine";
+import { createAircraftUnit, createAirDefenseUnit, createGroundVehicleUnit, normalizeActiveDeployedDroneUnit } from "@/core/units/factory";
+import type { FriendlyEntity } from "@/types/game";
 
 /**
  * Returns a new `units` array where each aircraft is replaced by the result
@@ -95,11 +99,76 @@ function putUnitInField(state: GameState, unit: Unit): GameState {
   return { ...state, deployedUnits: [...state.deployedUnits, unit] };
 }
 
+function migrateFriendlyEntityToUnit(entity: FriendlyEntity): Unit {
+  const common = {
+    id: entity.id,
+    name: entity.name,
+    position: entity.coords,
+    currentBase: null,
+    affiliation: "friend" as const,
+  };
+
+  switch (entity.category) {
+    case "aircraft":
+      return {
+        ...createAircraftUnit({
+          ...common,
+          type: "GripenE",
+          tailNumber:
+            entity.name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) ||
+            `LEG${entity.id.replace(/[^A-Z0-9]/gi, "").slice(0, 6).toUpperCase()}`,
+        }),
+        status: "on_mission" as const,
+        currentMission: "RECCE" as const,
+        movement: { state: "airborne" as const, speed: 0 },
+      };
+    case "air_defense":
+      return createAirDefenseUnit({ ...common, type: "SAM_MEDIUM" });
+    case "armor":
+      return createGroundVehicleUnit({ ...common, type: "ARMORED_TRANSPORT" });
+    case "artillery":
+      return createGroundVehicleUnit({ ...common, type: "ARMORED_TRANSPORT" });
+    case "infantry":
+      return createGroundVehicleUnit({ ...common, type: "LOGISTICS_TRUCK" });
+    case "support":
+      return createGroundVehicleUnit({ ...common, type: "LOGISTICS_TRUCK" });
+  }
+}
+
+function migrateLegacyFriendlyEntities(state: GameState): GameState {
+  const normalizedDeployedUnits = state.deployedUnits.map((unit) =>
+    isDrone(unit) ? normalizeActiveDeployedDroneUnit(unit) : unit
+  );
+
+  if (!state.friendlyEntities.length) {
+    return { ...state, deployedUnits: normalizedDeployedUnits };
+  }
+
+  const existingIds = new Set(normalizedDeployedUnits.map((unit) => unit.id));
+  const migratedUnits = state.friendlyEntities
+    .filter((entity) => !existingIds.has(entity.id))
+    .map((entity) =>
+      enforceAirborneInvariant(
+        {
+          ...migrateFriendlyEntityToUnit(entity),
+          deployedAt: { day: state.day, hour: state.hour },
+        },
+        false
+      )
+    );
+
+  return {
+    ...state,
+    deployedUnits: [...normalizedDeployedUnits, ...migratedUnits],
+    friendlyEntities: [],
+  };
+}
+
 /** Pure reducer: gameReducer(state, action) => newState */
 export function gameReducer(state: GameState, action: GameAction): GameState {
   // Reset / load are always valid
-  if (action.type === "RESET_GAME") return initialGameState;
-  if (action.type === "LOAD_STATE") return action.payload;
+  if (action.type === "RESET_GAME") return migrateLegacyFriendlyEntities(initialGameState);
+  if (action.type === "LOAD_STATE") return migrateLegacyFriendlyEntities(action.payload);
 
   // Validate action
   const validation = validateAction(state, action);
@@ -320,13 +389,31 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
 
     case "PLAN_ADD_FRIENDLY_ENTITY":
-      return {
-        ...state,
-        friendlyEntities: [
-          ...state.friendlyEntities,
-          { ...action.entity, id: `fe-${uuid()}`, createdAt: state.day },
-        ],
-      };
+      return addEvent(
+        putUnitInField(
+          state,
+          enforceAirborneInvariant(
+            {
+              ...migrateFriendlyEntityToUnit({
+                ...action.entity,
+                id: `fe-${uuid()}`,
+                createdAt: state.day,
+              }),
+              deployedAt: { day: state.day, hour: state.hour },
+            },
+            false
+          )
+        ),
+        {
+          type: "info",
+          message: `${action.entity.name} konverterad från äldre planmarkör till operativ enhet`,
+          unitCategory: migrateFriendlyEntityToUnit({
+            ...action.entity,
+            id: "preview",
+            createdAt: state.day,
+          }).category,
+        }
+      );
 
     case "PLAN_EDIT_FRIENDLY_ENTITY":
       return {
@@ -341,6 +428,36 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         friendlyEntities: state.friendlyEntities.filter((e) => e.id !== action.id),
       };
+
+    case "PLAN_ADD_FRIENDLY_UNIT": {
+      const placedUnit = enforceAirborneInvariant(
+        {
+          ...action.unit,
+          deployedAt: { day: state.day, hour: state.hour },
+        },
+        false
+      );
+      return addEvent(putUnitInField(state, placedUnit), {
+        type: "info",
+        message: `${placedUnit.name} placerad på kartan`,
+        base: placedUnit.currentBase ?? placedUnit.lastBase ?? undefined,
+        unitId: placedUnit.id,
+        unitCategory: placedUnit.category,
+        actionType: "UNIT_DEPLOYED",
+      });
+    }
+
+    case "PLAN_DELETE_FRIENDLY_UNIT": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.unit.affiliation !== "friend") return state;
+      return addEvent(removeUnitFromState(state, action.unitId), {
+        type: "warning",
+        message: `${loc.unit.name} borttagen från kartan`,
+        base: loc.unit.currentBase ?? loc.unit.lastBase ?? undefined,
+        unitId: loc.unit.id,
+        unitCategory: loc.unit.category,
+      });
+    }
 
     case "DEPLOY_UNIT": {
       const loc = findUnit(state, action.unitId);
@@ -558,6 +675,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "ADD_EVENT":
       return addEvent(state, action.event);
 
+    case "LAUNCH_DRONE":
+      return launchDrone(state, action.droneId, action.waypoints);
+
+    case "RECALL_DRONE":
+      return recallDrone(state, action.droneId);
+
+    case "UPDATE_DRONE_WAYPOINTS":
+      return updateDroneWaypoints(state, action.droneId, action.waypoints);
+
+    case "SET_DRONE_OVERLAY":
+      return setDroneOverlay(state, action.droneId, action.rangeRadiusVisible, action.connectionLineVisible);
+
     default:
       return state;
   }
@@ -749,12 +878,14 @@ function handleAdvanceMinute(state: GameState): GameState {
     return recomputeZoneOccupancy(withNew);
   });
 
-  return {
+  const afterArrival: GameState = {
     ...state,
     bases: basesAfterArrival,
     deployedUnits: stillDeployed,
     events: newEvents.length > 0 ? [...newEvents, ...state.events].slice(0, 200) : state.events,
   };
+
+  return advanceAllDrones(afterArrival, 1);
 }
 
 /**
@@ -934,11 +1065,13 @@ function handleAdvanceHour(state: GameState): GameState {
     tacticalZones: activeTacticalZones,
   };
 
+  const nextStateWithDrones = advanceDroneMaintenanceTick(nextStatePreRec);
+
   // Refresh recommendations every 3 game-hours.
   if (nextHour % 3 === 0) {
-    return { ...nextStatePreRec, recommendations: generateRecommendations(nextStatePreRec) };
+    return { ...nextStateWithDrones, recommendations: generateRecommendations(nextStateWithDrones) };
   }
-  return nextStatePreRec;
+  return nextStateWithDrones;
 }
 
 const REBASE_TRANSIT_HOURS = 2;

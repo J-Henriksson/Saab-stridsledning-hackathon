@@ -53,7 +53,7 @@ export interface FriendlyEntity {
   createdAt: number;
 }
 export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS";
-export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE";
+export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE" | "ISR_DRONE";
 export type ScenarioPhase = "FRED" | "KRIS" | "KRIG";
 export type MaintenanceType = "quick_lru" | "complex_lru" | "direct_repair" | "troubleshooting" | "scheduled_service";
 
@@ -226,6 +226,8 @@ export type GameAction =
   | { type: "PLAN_ADD_FRIENDLY_ENTITY"; entity: Omit<FriendlyEntity, "id" | "createdAt"> }
   | { type: "PLAN_EDIT_FRIENDLY_ENTITY"; id: string; updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">> }
   | { type: "PLAN_DELETE_FRIENDLY_ENTITY"; id: string }
+  | { type: "PLAN_ADD_FRIENDLY_UNIT"; unit: import("./units").Unit }
+  | { type: "PLAN_DELETE_FRIENDLY_UNIT"; unitId: string }
   | { type: "DEPLOY_UNIT"; unitId: string; destination: import("./units").GeoPosition; speed?: number }
   | { type: "TRANSFER_UNIT"; unitId: string; toBaseId: BaseType }
   | { type: "RECALL_UNIT"; unitId: string; toBaseId?: BaseType }
@@ -237,7 +239,11 @@ export type GameAction =
   | { type: "ADD_TACTICAL_ZONE"; zone: Omit<import("./overlay").TacticalZone, "id" | "createdAtHour" | "createdAtDay"> }
   | { type: "REMOVE_TACTICAL_ZONE"; zoneId: string }
   | { type: "SET_OVERLAY_VISIBILITY"; key: keyof import("./overlay").OverlayLayerVisibility; value: boolean }
-  | { type: "ADD_EVENT"; event: Omit<GameEvent, "id" | "timestamp"> };
+  | { type: "ADD_EVENT"; event: Omit<GameEvent, "id" | "timestamp"> }
+  | { type: "LAUNCH_DRONE"; droneId: string; waypoints: import("./units").DroneWaypoint[] }
+  | { type: "RECALL_DRONE"; droneId: string }
+  | { type: "UPDATE_DRONE_WAYPOINTS"; droneId: string; waypoints: import("./units").DroneWaypoint[] }
+  | { type: "SET_DRONE_OVERLAY"; droneId: string; rangeRadiusVisible?: boolean; connectionLineVisible?: boolean };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 // `Aircraft` is now an alias for the unit-model variant. Kept as an alias
@@ -368,4 +374,4 @@ export interface ATOOrder {
   fuelOnArrival?: number;
 }
 
-export type { Unit, UnitCategory, Affiliation, AircraftUnit, DroneUnit, AirDefenseUnit, GroundVehicleUnit, RadarUnit, GeoPosition, Movement, MovementState } from "./units";
+export type { Unit, UnitCategory, Affiliation, AircraftUnit, DroneUnit, DroneWaypoint, AirDefenseUnit, GroundVehicleUnit, RadarUnit, GeoPosition, Movement, MovementState } from "./units";

@@ -4,7 +4,7 @@ import type { GameState, GameAction } from "@/types/game";
 import { FriendlySection } from "./plan/FriendlySection";
 import { EnemySection } from "./plan/EnemySection";
 
-type PlacingKind = "friendly_base" | "friendly_entity" | "enemy_base" | "enemy_entity";
+type PlacingKind = "friendly_base" | "friendly_unit" | "enemy_base" | "enemy_entity";
 
 interface PlacingPayload {
   kind: PlacingKind;
@@ -47,7 +47,7 @@ export function PlanModeSidebar({ state, dispatch, onStartPlacement }: Props) {
               Vänliga
             </span>
             <span className="text-[10px] font-mono text-muted-foreground">
-              {state.bases.length + state.friendlyMarkers.length} baser · {state.friendlyEntities.length} enheter
+              {state.bases.length + state.friendlyMarkers.length} baser · {state.deployedUnits.filter((u) => u.affiliation === "friend").length} enheter
             </span>
             {friendlyOpen
               ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -57,7 +57,7 @@ export function PlanModeSidebar({ state, dispatch, onStartPlacement }: Props) {
             <FriendlySection
               bases={state.bases}
               friendlyMarkers={state.friendlyMarkers}
-              friendlyEntities={state.friendlyEntities}
+              placedUnits={state.deployedUnits}
               dispatch={dispatch}
               onStartPlacement={onStartPlacement}
             />

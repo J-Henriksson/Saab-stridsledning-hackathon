@@ -2,6 +2,7 @@ import { useReducer, useCallback, useMemo } from "react";
 import type { GameState, GameAction, BaseType, MissionType, ATOOrder, EnemyBase, EnemyEntity, FriendlyMarker, FriendlyEntity } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import type { TacticalZone, OverlayLayerVisibility } from "@/types/overlay";
+import type { DroneWaypoint } from "@/types/units";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
 import { getAircraft } from "@/core/units/helpers";
@@ -53,6 +54,10 @@ export interface GameEngine {
   addTacticalZone: (zone: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => void;
   removeTacticalZone: (zoneId: string) => void;
   setOverlayVisibility: (key: keyof OverlayLayerVisibility, value: boolean) => void;
+  launchDrone: (droneId: string, waypoints: DroneWaypoint[]) => void;
+  recallDrone: (droneId: string) => void;
+  updateDroneWaypoints: (droneId: string, waypoints: DroneWaypoint[]) => void;
+  setDroneOverlay: (droneId: string, rangeRadiusVisible?: boolean, connectionLineVisible?: boolean) => void;
 }
 
 export function useGameEngine(): GameEngine {
@@ -218,6 +223,22 @@ export function useGameEngine(): GameEngine {
     []
   );
 
+  const launchDroneAction = useCallback((droneId: string, waypoints: DroneWaypoint[]) => {
+    dispatch({ type: "LAUNCH_DRONE", droneId, waypoints });
+  }, []);
+
+  const recallDroneAction = useCallback((droneId: string) => {
+    dispatch({ type: "RECALL_DRONE", droneId });
+  }, []);
+
+  const updateDroneWaypointsAction = useCallback((droneId: string, waypoints: DroneWaypoint[]) => {
+    dispatch({ type: "UPDATE_DRONE_WAYPOINTS", droneId, waypoints });
+  }, []);
+
+  const setDroneOverlayAction = useCallback((droneId: string, rangeRadiusVisible?: boolean, connectionLineVisible?: boolean) => {
+    dispatch({ type: "SET_DRONE_OVERLAY", droneId, rangeRadiusVisible, connectionLineVisible });
+  }, []);
+
   const importATOBatch = useCallback((
     orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[],
     sourceFile: string,
@@ -278,6 +299,10 @@ export function useGameEngine(): GameEngine {
     addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
     addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
     addTacticalZone, removeTacticalZone, setOverlayVisibility,
+    launchDrone: launchDroneAction,
+    recallDrone: recallDroneAction,
+    updateDroneWaypoints: updateDroneWaypointsAction,
+    setDroneOverlay: setDroneOverlayAction,
   }), [
     state, togglePause, setGameSpeed, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
@@ -291,5 +316,6 @@ export function useGameEngine(): GameEngine {
     addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
     addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
     addTacticalZone, removeTacticalZone, setOverlayVisibility,
+    launchDroneAction, recallDroneAction, updateDroneWaypointsAction, setDroneOverlayAction,
   ]);
 }

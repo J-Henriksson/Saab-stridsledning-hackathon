@@ -79,8 +79,12 @@ function MovementTrails({ units }: { units: Unit[] }) {
 }
 
 export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
-  // Skip aircraft — they're rendered by AircraftLayer with flight animations
-  const renderable = useMemo(() => units.filter((u) => !isAircraft(u)), [units]);
+  // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
+  // plus all other unit categories to render through the shared unit layer.
+  const renderable = useMemo(
+    () => units.filter((u) => !isAircraft(u) || u.movement.state !== "stationary"),
+    [units]
+  );
 
   // Snapshot history keyed by unit id
   const snapshotsRef = useRef<Map<string, Snapshot>>(new Map());
@@ -159,13 +163,12 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
             longitude={pos.lng}
             latitude={pos.lat}
             anchor="center"
-            onClick={(e) => {
-              // Prevent the map's onClick from deselecting
-              e.originalEvent.stopPropagation();
-              onSelectUnit?.(unit.id);
-            }}
           >
             <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectUnit?.(unit.id);
+              }}
               style={{
                 cursor: "pointer",
                 filter:

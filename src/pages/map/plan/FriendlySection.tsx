@@ -1,11 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Fuel, Zap, Wrench, Plus, Trash2, MapPin } from "lucide-react";
-import type { Base, BaseType, FriendlyMarker, FriendlyMarkerCategory, FriendlyEntity, FriendlyEntityCategory, GameAction } from "@/types/game";
+import type { Base, BaseType, FriendlyMarker, FriendlyMarkerCategory, GameAction, AircraftType } from "@/types/game";
+import type {
+  Unit,
+  UnitCategory,
+  DroneType,
+  GroundRadarType,
+  AirDefenseType,
+  GroundVehicleType,
+} from "@/types/units";
 import { Slider } from "@/components/ui/slider";
+import { getAircraft } from "@/core/units/helpers";
 
-// ── Types ─────────────────────────────────────────────────────────────────
-
-type PlacingKind = "friendly_base" | "friendly_entity";
+type PlacingKind = "friendly_base" | "friendly_unit";
 
 interface PlacingPayload {
   kind: PlacingKind;
@@ -15,29 +22,47 @@ interface PlacingPayload {
 interface Props {
   bases: Base[];
   friendlyMarkers: FriendlyMarker[];
-  friendlyEntities: FriendlyEntity[];
+  placedUnits: Unit[];
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
 }
 
-// ── Existing base editor ──────────────────────────────────────────────────
-
 const BASE_CATEGORIES: { value: FriendlyMarkerCategory; label: string }[] = [
-  { value: "airbase",   label: "Flygbas" },
+  { value: "airbase", label: "Flygbas" },
   { value: "logistics", label: "Logistikpunkt" },
-  { value: "command",   label: "Ledningscentral" },
-  { value: "army",      label: "Arméenhet" },
-  { value: "navy",      label: "Marinenhet" },
+  { value: "command", label: "Ledningscentral" },
+  { value: "army", label: "Arméenhet" },
+  { value: "navy", label: "Marinenhet" },
 ];
 
-const ENTITY_CATEGORIES: { value: FriendlyEntityCategory; label: string }[] = [
-  { value: "aircraft",    label: "Luftfart" },
-  { value: "infantry",    label: "Infanteri" },
-  { value: "armor",       label: "Pansarfordon" },
-  { value: "artillery",   label: "Artilleri" },
+const UNIT_CATEGORIES: { value: UnitCategory; label: string }[] = [
+  { value: "drone", label: "Drönare" },
+  { value: "aircraft", label: "Flygplan" },
+  { value: "radar", label: "Radar" },
   { value: "air_defense", label: "Luftvärn" },
-  { value: "support",     label: "Stödenhet" },
+  { value: "ground_vehicle", label: "Markfordon" },
 ];
+
+const AIRCRAFT_TYPES: AircraftType[] = ["GripenE", "GripenF_EA", "GlobalEye", "VLO_UCAV", "LOTUS"];
+const DRONE_TYPES: DroneType[] = ["ISR_DRONE", "STRIKE_DRONE"];
+const RADAR_TYPES: GroundRadarType[] = ["SEARCH_RADAR", "TRACKING_RADAR"];
+const AIR_DEFENSE_TYPES: AirDefenseType[] = ["SAM_SHORT", "SAM_MEDIUM", "SAM_LONG"];
+const GROUND_VEHICLE_TYPES: GroundVehicleType[] = ["LOGISTICS_TRUCK", "ARMORED_TRANSPORT", "FUEL_BOWSER"];
+
+function subtypeOptions(category: UnitCategory): string[] {
+  switch (category) {
+    case "aircraft":
+      return AIRCRAFT_TYPES;
+    case "drone":
+      return DRONE_TYPES;
+    case "radar":
+      return RADAR_TYPES;
+    case "air_defense":
+      return AIR_DEFENSE_TYPES;
+    case "ground_vehicle":
+      return GROUND_VEHICLE_TYPES;
+  }
+}
 
 function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAction) => void }) {
   const [open, setOpen] = useState(false);
@@ -45,8 +70,9 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
   const [bays, setBays] = useState(base.maintenanceBays.total);
   const [ammo, setAmmo] = useState(base.ammunition.map((a) => ({ type: a.type, quantity: a.quantity })));
 
-  const mc = base.aircraft.filter((a) => a.status === "ready").length;
-  const ratio = mc / (base.aircraft.length || 1);
+  const aircraft = getAircraft(base);
+  const mc = aircraft.filter((a) => a.status === "ready").length;
+  const ratio = mc / (aircraft.length || 1);
   const readinessColor = ratio >= 0.7 ? "text-green-400" : ratio >= 0.4 ? "text-yellow-400" : "text-red-400";
   const fuelColor = fuel >= 60 ? "text-green-400" : fuel >= 30 ? "text-yellow-400" : "text-red-400";
 
@@ -61,7 +87,7 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
           <span className="text-xs font-mono font-bold text-foreground">{base.id}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{base.name}</span>
         </div>
-        <span className={`text-[10px] font-mono ${readinessColor}`}>{mc}/{base.aircraft.length} MC</span>
+        <span className={`text-[10px] font-mono ${readinessColor}`}>{mc}/{aircraft.length} MC</span>
         {open ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
       </button>
 
@@ -125,8 +151,6 @@ function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAct
   );
 }
 
-// ── Add form ──────────────────────────────────────────────────────────────
-
 function AddForm({
   title,
   fields,
@@ -161,40 +185,64 @@ function AddForm({
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────
-
-export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, dispatch, onStartPlacement }: Props) {
+export function FriendlySection({ bases, friendlyMarkers, placedUnits, dispatch, onStartPlacement }: Props) {
   const [addingBase, setAddingBase] = useState(false);
-  const [addingEntity, setAddingEntity] = useState(false);
+  const [addingUnit, setAddingUnit] = useState(false);
 
-  // Add base form state
   const [baseName, setBaseName] = useState("");
   const [baseCategory, setBaseCategory] = useState<FriendlyMarkerCategory>("airbase");
   const [baseNotes, setBaseNotes] = useState("");
   const [baseEstimates, setBaseEstimates] = useState("");
 
-  // Add entity form state
-  const [entityName, setEntityName] = useState("");
-  const [entityCategory, setEntityCategory] = useState<FriendlyEntityCategory>("infantry");
-  const [entityNotes, setEntityNotes] = useState("");
+  const [unitName, setUnitName] = useState("");
+  const [unitCategory, setUnitCategory] = useState<UnitCategory>("drone");
+  const [unitSubtype, setUnitSubtype] = useState<string>(DRONE_TYPES[0]);
+  const [unitBaseId, setUnitBaseId] = useState<BaseType>("MOB");
+  const [unitPayload, setUnitPayload] = useState("");
+
+  const placedFriendlyUnits = useMemo(
+    () => placedUnits.filter((unit) => unit.affiliation === "friend"),
+    [placedUnits]
+  );
 
   function handlePlaceBase() {
     if (!baseName.trim()) return;
     onStartPlacement({ kind: "friendly_base", data: { name: baseName, category: baseCategory, notes: baseNotes, estimates: baseEstimates } });
     setAddingBase(false);
-    setBaseName(""); setBaseCategory("airbase"); setBaseNotes(""); setBaseEstimates("");
+    setBaseName("");
+    setBaseCategory("airbase");
+    setBaseNotes("");
+    setBaseEstimates("");
   }
 
-  function handlePlaceEntity() {
-    if (!entityName.trim()) return;
-    onStartPlacement({ kind: "friendly_entity", data: { name: entityName, category: entityCategory, notes: entityNotes } });
-    setAddingEntity(false);
-    setEntityName(""); setEntityCategory("infantry"); setEntityNotes("");
+  function handlePlaceUnit() {
+    if (!unitName.trim()) return;
+    onStartPlacement({
+      kind: "friendly_unit",
+      data: {
+        name: unitName,
+        category: unitCategory,
+        subtype: unitSubtype,
+        baseId: unitBaseId,
+        payload: unitCategory === "drone" ? unitPayload : "",
+      },
+    });
+    setAddingUnit(false);
+    setUnitName("");
+    setUnitCategory("drone");
+    setUnitSubtype(DRONE_TYPES[0]);
+    setUnitBaseId("MOB");
+    setUnitPayload("");
+  }
+
+  function handleUnitCategoryChange(value: UnitCategory) {
+    setUnitCategory(value);
+    setUnitSubtype(subtypeOptions(value)[0]);
+    if (value !== "drone") setUnitPayload("");
   }
 
   return (
     <div className="p-3 space-y-3">
-      {/* Existing game bases */}
       <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1">
         Befintliga baser
       </div>
@@ -202,7 +250,6 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
         <ExistingBaseRow key={base.id} base={base} dispatch={dispatch} />
       ))}
 
-      {/* Custom friendly markers */}
       {friendlyMarkers.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-3 mb-1">
@@ -212,7 +259,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
             <div key={m.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-mono font-bold text-blue-300">{m.name}</span>
-                <span className="text-[10px] text-muted-foreground ml-2">{BASE_CATEGORIES.find(c => c.value === m.category)?.label}</span>
+                <span className="text-[10px] text-muted-foreground ml-2">{BASE_CATEGORIES.find((c) => c.value === m.category)?.label}</span>
                 {m.estimates && <div className="text-[10px] text-muted-foreground/70">{m.estimates}</div>}
               </div>
               <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_MARKER", id: m.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
@@ -223,19 +270,26 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
         </>
       )}
 
-      {/* Custom friendly entities */}
-      {friendlyEntities.length > 0 && (
+      {placedFriendlyUnits.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-3 mb-1">
-            Planlagda enheter
+            Placerade enheter
           </div>
-          {friendlyEntities.map((e) => (
-            <div key={e.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
+          {placedFriendlyUnits.map((unit) => (
+            <div key={unit.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
               <div className="flex-1 min-w-0">
-                <span className="text-xs font-mono font-bold text-blue-300">{e.name}</span>
-                <span className="text-[10px] text-muted-foreground ml-2">{ENTITY_CATEGORIES.find(c => c.value === e.category)?.label}</span>
+                <span className="text-xs font-mono font-bold text-blue-300">{unit.name}</span>
+                <span className="text-[10px] text-muted-foreground ml-2">{UNIT_CATEGORIES.find((c) => c.value === unit.category)?.label}</span>
+                <div className="text-[10px] text-muted-foreground/70">
+                  {unit.type} · Hemabas {unit.currentBase ?? unit.lastBase ?? "—"}
+                </div>
+                {unit.category === "drone" && unit.payload && (
+                  <div className="text-[10px] text-muted-foreground/70">
+                    Last: {unit.payload}
+                  </div>
+                )}
               </div>
-              <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_ENTITY", id: e.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
+              <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: unit.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -243,7 +297,6 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
         </>
       )}
 
-      {/* Add buttons */}
       <div className="pt-2 space-y-2">
         {addingBase ? (
           <AddForm
@@ -253,19 +306,25 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
             fields={
               <>
                 <input
-                  autoFocus placeholder="Basnamn" value={baseName}
+                  autoFocus
+                  placeholder="Basnamn"
+                  value={baseName}
                   onChange={(e) => setBaseName(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
                 />
-                <select value={baseCategory} onChange={(e) => setBaseCategory(e.target.value as FriendlyMarkerCategory)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {BASE_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                <select value={baseCategory} onChange={(e) => setBaseCategory(e.target.value as FriendlyMarkerCategory)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                  {BASE_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-                <input placeholder="Uppskattade resurser (t.ex. ~12 Gripen)" value={baseEstimates}
+                <input
+                  placeholder="Uppskattade resurser (t.ex. ~12 Gripen)"
+                  value={baseEstimates}
                   onChange={(e) => setBaseEstimates(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
                 />
-                <textarea placeholder="Anteckningar..." value={baseNotes} rows={2}
+                <textarea
+                  placeholder="Anteckningar..."
+                  value={baseNotes}
+                  rows={2}
                   onChange={(e) => setBaseNotes(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground resize-none"
                 />
@@ -273,39 +332,50 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
             }
           />
         ) : (
-          <button onClick={() => { setAddingBase(true); setAddingEntity(false); }}
-            className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-blue-500/40 rounded text-[11px] font-mono text-blue-400 hover:border-blue-500/70 hover:bg-blue-500/5 transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Lägg till bas
+          <button onClick={() => { setAddingBase(true); setAddingUnit(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
+            <Plus className="h-3.5 w-3.5" />
+            Ny vänlig bas
           </button>
         )}
 
-        {addingEntity ? (
+        {addingUnit ? (
           <AddForm
             title="Ny vänlig enhet"
-            onPlace={handlePlaceEntity}
-            onCancel={() => setAddingEntity(false)}
+            onPlace={handlePlaceUnit}
+            onCancel={() => setAddingUnit(false)}
             fields={
               <>
                 <input
-                  autoFocus placeholder="Enhetsbeteckning" value={entityName}
-                  onChange={(e) => setEntityName(e.target.value)}
+                  autoFocus
+                  placeholder="Enhetsnamn"
+                  value={unitName}
+                  onChange={(e) => setUnitName(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
                 />
-                <select value={entityCategory} onChange={(e) => setEntityCategory(e.target.value as FriendlyEntityCategory)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                  {ENTITY_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                <select value={unitCategory} onChange={(e) => handleUnitCategoryChange(e.target.value as UnitCategory)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                  {UNIT_CATEGORIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
-                <textarea placeholder="Anteckningar..." value={entityNotes} rows={2}
-                  onChange={(e) => setEntityNotes(e.target.value)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground resize-none"
-                />
+                <select value={unitSubtype} onChange={(e) => setUnitSubtype(e.target.value)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                  {subtypeOptions(unitCategory).map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+                <select value={unitBaseId} onChange={(e) => setUnitBaseId(e.target.value as BaseType)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                  {bases.map((base) => <option key={base.id} value={base.id}>{base.id} · {base.name}</option>)}
+                </select>
+                {unitCategory === "drone" && (
+                  <input
+                    placeholder="Last / payload (t.ex. EO/IR, SIGINT, lätt attacklast)"
+                    value={unitPayload}
+                    onChange={(e) => setUnitPayload(e.target.value)}
+                    className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
+                  />
+                )}
               </>
             }
           />
         ) : (
-          <button onClick={() => { setAddingEntity(true); setAddingBase(false); }}
-            className="w-full flex items-center justify-center gap-1.5 py-2 border border-dashed border-blue-500/40 rounded text-[11px] font-mono text-blue-400 hover:border-blue-500/70 hover:bg-blue-500/5 transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Lägg till enhet
+          <button onClick={() => { setAddingUnit(true); setAddingBase(false); }} className="w-full flex items-center justify-center gap-2 py-2 rounded border border-blue-500/30 text-blue-400 text-[11px] font-mono hover:bg-blue-500/5 transition-colors">
+            <Plus className="h-3.5 w-3.5" />
+            Placera vänlig enhet
           </button>
         )}
       </div>

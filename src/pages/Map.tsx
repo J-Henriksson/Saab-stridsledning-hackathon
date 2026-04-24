@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -30,10 +30,13 @@ import { WindLayer } from "./map/WindLayer";
 import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSidebar";
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
-import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
+import { FriendlyMarkerPin } from "./map/FriendlyPlanMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
+import { DroneRangeOverlay } from "./map/drones/DroneRangeOverlay";
+import { DroneConnectionLine } from "./map/drones/DroneConnectionLine";
+import { DroneDetailPanel } from "./map/drones/DroneDetailPanel";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
@@ -42,8 +45,10 @@ import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
+import { isDrone, type UnitCategory } from "@/types/units";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { getAircraft } from "@/core/units/helpers";
+import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -65,7 +70,7 @@ interface PlacingMode {
 
 const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_base:   "vänlig bas",
-  friendly_entity: "vänlig enhet",
+  friendly_unit:   "vänlig enhet",
   enemy_base:      "fiendens bas",
   enemy_entity:    "fiendens enhet",
 };
@@ -101,6 +106,7 @@ const LAYER_ITEMS: {
   { key: "criticalInfra", label: "Kritisk infrastruktur", Icon: Building2, color: "#708090" },
   { key: "skyddsobjekt", label: "Skyddsobjekt", Icon: ShieldAlert, color: "#D97706" },
   { key: "activeZones", label: "Aktiva zoner", Icon: MapPin, color: "#2563eb" },
+  { key: "drones", label: "Drönare (UAV)", Icon: Radio, color: "#a855f7" },
 ];
 
 const SEA_LABELS = [
@@ -146,7 +152,7 @@ function isMarineLabelLayer(layer: {
 }
 
 export default function MapPage() {
-  const { state, togglePause, setGameSpeed, resetGame, dispatch } = useGame();
+  const { state, togglePause, setGameSpeed, resetGame, dispatch, recallDrone, updateDroneWaypoints, setDroneOverlay } = useGame();
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -222,9 +228,17 @@ export default function MapPage() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [isDropdownOpen]);
 
+  const [planningMode, setPlanningMode] = useState(false);
+
   const allUnits = useMemo(
     () => [...state.bases.flatMap((b) => b.units), ...state.deployedUnits],
     [state.bases, state.deployedUnits]
+  );
+
+  const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
+  const visibleUnits = useMemo(
+    () => state.overlayVisibility.drones ? allUnits : allUnits.filter((unit) => !isDrone(unit)),
+    [allUnits, state.overlayVisibility.drones]
   );
 
   const selectedBase =
@@ -253,6 +267,7 @@ export default function MapPage() {
   const selectedUnit = selected?.kind === "unit"
     ? allUnits.find((u) => u.id === selected.unitId)
     : undefined;
+
   const selectedSatellite = selected?.kind === "satellite"
     ? liveSatellites.find((satellite) => satellite.id === selected.satelliteId)
     : undefined;
@@ -337,9 +352,36 @@ export default function MapPage() {
         case "friendly_base":
           dispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker: { name: d.name, category: d.category as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
           break;
-        case "friendly_entity":
-          dispatch({ type: "PLAN_ADD_FRIENDLY_ENTITY", entity: { name: d.name, category: d.category as any, notes: d.notes ?? "", coords } });
+        case "friendly_unit": {
+          const baseId = d.baseId as import("@/types/game").BaseType;
+          const category = d.category as UnitCategory;
+          const subtype = d.subtype;
+          const common = { name: d.name, position: coords, currentBase: baseId };
+          const unit =
+            category === "drone"
+              ? createDeployedDroneUnit({
+                  ...common,
+                  type: subtype as "ISR_DRONE" | "STRIKE_DRONE",
+                  payload: d.payload?.trim() || undefined,
+                })
+              : category === "aircraft"
+                ? {
+                    ...createAircraftUnit({
+                      ...common,
+                      type: subtype as import("@/types/game").AircraftType,
+                      tailNumber: d.name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || `AC${crypto.randomUUID().slice(0, 4).toUpperCase()}`,
+                    }),
+                    status: "on_mission" as const,
+                    movement: { state: "airborne" as const, speed: 0 },
+                  }
+                : category === "radar"
+                  ? createRadarUnit({ ...common, type: subtype as "SEARCH_RADAR" | "TRACKING_RADAR" })
+                  : category === "air_defense"
+                    ? createAirDefenseUnit({ ...common, type: subtype as "SAM_SHORT" | "SAM_MEDIUM" | "SAM_LONG" })
+                    : createGroundVehicleUnit({ ...common, type: subtype as "LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER" });
+          dispatch({ type: "PLAN_ADD_FRIENDLY_UNIT", unit });
           break;
+        }
       }
       setPlacingMode(null);
       return;
@@ -411,6 +453,7 @@ export default function MapPage() {
   // Panel header content
   const panelTitle = (() => {
     if (selectedAircraft) return { main: selectedAircraft.tailNumber, sub: `${selectedAircraft.type} · ${selectedBase?.name}` };
+    if (selected?.kind === "unit" && selectedUnit) return { main: selectedUnit.name, sub: `${selectedUnit.category} · ${selectedUnit.affiliation}` };
     if (selectedZone) return { main: selectedZone.name, sub: selectedZone.category === "fixed" ? "Permanent skyddszon" : "Temporär zon" };
     if (selectedAsset) return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
     if (selected?.kind === "base") return { main: selectedBase?.name ?? selected.baseId, sub: selectedBase?.type ?? "Reservbas" };
@@ -447,6 +490,17 @@ export default function MapPage() {
           >
             <PenLine className="h-3.5 w-3.5" />
             PLANLÄGE {isPlanMode ? "PÅ" : "AV"}
+          </button>
+          <button
+            onClick={() => setPlanningMode((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+              planningMode
+                ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
+                : "border-green-600/40 bg-green-600/10 text-green-400"
+            }`}
+          >
+            <Radio className="h-3 w-3" />
+            {planningMode ? "PLANERING" : "SKARPT LÄGE"}
           </button>
         </div>
       </div>
@@ -601,10 +655,17 @@ export default function MapPage() {
             />
 
             <UnitsLayer
-              units={allUnits}
+              units={visibleUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
+
+            {state.overlayVisibility.drones && (
+              <>
+                <DroneRangeOverlay drones={allDrones} />
+                <DroneConnectionLine drones={allDrones} />
+              </>
+            )}
 
             {Object.keys(BASE_COORDS).map((id) => (
               <BaseMarker
@@ -656,10 +717,6 @@ export default function MapPage() {
             {state.friendlyMarkers.map((fm) => (
               <FriendlyMarkerPin key={fm.id} marker={fm} />
             ))}
-            {state.friendlyEntities.map((fe) => (
-              <FriendlyEntityPin key={fe.id} entity={fe} />
-            ))}
-
             {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
             <DrawingPreviewOverlay drawState={drawState} />
           </MapGL>
@@ -996,7 +1053,17 @@ export default function MapPage() {
                 </button>
               </div>
 
-              {selectedUnit ? (
+              {selectedUnit && isDrone(selectedUnit) ? (
+                <DroneDetailPanel
+                  drone={selectedUnit}
+                  onBack={() => setSelected(null)}
+                  onRecall={recallDrone}
+                  onUpdateWaypoints={updateDroneWaypoints}
+                  onSetOverlay={setDroneOverlay}
+                  onDeploy={() => {}}
+                  planningMode={planningMode}
+                />
+              ) : selectedUnit ? (
                 <UnitDetailPanel
                   unit={selectedUnit}
                   isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}

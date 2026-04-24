@@ -66,4 +66,6 @@ export interface OverlayLayerVisibility {
   criticalInfra: boolean;
   /** Non-military protected objects */
   skyddsobjekt: boolean;
+  /** Drone / UAV layer */
+  drones: boolean;
 }

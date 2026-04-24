@@ -73,14 +73,29 @@ export interface AircraftUnit extends UnitBase {
 
 export type DroneType = "ISR_DRONE" | "STRIKE_DRONE";
 
+export interface DroneWaypoint {
+  id: string;
+  lat: number;
+  lng: number;
+  loiterMinutes?: number;
+}
+
 export interface DroneUnit extends UnitBase {
   category: "drone";
   type: DroneType;
   status: AircraftStatus;
+  payload?: string;
   fuel: number;
   enduranceHours: number;
   currentMission?: MissionType;
   missionEndHour?: number;
+  waypoints: DroneWaypoint[];
+  currentWaypointIdx: number;
+  sensorRangeKm: number;
+  rangeKm: number;
+  rangeRadiusVisible: boolean;
+  connectionLineVisible: boolean;
+  isDraggable: boolean;
 }
 
 export type AirDefenseType = "SAM_SHORT" | "SAM_MEDIUM" | "SAM_LONG";
