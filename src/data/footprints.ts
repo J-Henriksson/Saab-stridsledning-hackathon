@@ -103,4 +103,11 @@ export const FOOTPRINT_POLYGONS: Record<string, [number, number][]> = {
     [14.9698, 57.6618],
     [14.9698, 57.6663],
   ],
+
+  // ── Baltic scenario bases ─────────────────────────────────────────────────
+  // ARNA — Uppsala/Ärna (ESCM), runway 01/19 (~10°), 2.6 km
+  ARNA: airfieldRect(59.5953, 17.5891, 2.6, 1.2, 10),
+
+  // VISBY — Visby Airport (ESSV), runway 03/21 (~30°), 2.5 km
+  VISBY: airfieldRect(57.6627, 18.3462, 2.5, 1.0, 30),
 };

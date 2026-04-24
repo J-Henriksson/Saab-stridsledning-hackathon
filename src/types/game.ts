@@ -1,5 +1,5 @@
 // ── Base enums ────────────────────────────────────────────────────────────
-export type BaseType = "MOB" | "FOB_N" | "FOB_S" | "ROB_N" | "ROB_S" | "ROB_E";
+export type BaseType = "MOB" | "FOB_N" | "FOB_S" | "ROB_N" | "ROB_S" | "ROB_E" | "ARNA" | "VISBY";
 
 // ── Enemy / plan-mode types ───────────────────────────────────────────────
 export type EnemyBaseCategory = "airfield" | "sam_site" | "command" | "logistics" | "radar";
@@ -52,8 +52,8 @@ export interface FriendlyEntity {
   notes: string;
   createdAt: number;
 }
-export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS";
-export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE";
+export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS" | "TP84";
+export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE" | "CAP" | "CAS";
 export type ScenarioPhase = "FRED" | "KRIS" | "KRIG";
 export type MaintenanceType = "quick_lru" | "complex_lru" | "direct_repair" | "troubleshooting" | "scheduled_service";
 
@@ -267,6 +267,14 @@ export interface PersonnelGroup {
   onDuty: boolean;
 }
 
+export interface WeatherConditions {
+  windKts: number;
+  windDirDeg: number;       // 0–360, direction FROM
+  visibilityKm: number;
+  ceilingFt: number;        // cloud base in feet, 0 = CAVOK
+  condition: "VMC" | "MVMC" | "IMC";
+}
+
 export interface Base {
   id: BaseType;
   name: string;
@@ -279,6 +287,12 @@ export interface Base {
   ammunition: { type: string; quantity: number; max: number }[];
   maintenanceBays: { total: number; occupied: number };
   zones: BaseZone[];
+  // ── Tactical fields (Baltic scenario) ────────────────────────────────────
+  icaoCode?: string;
+  hangarCapacity?: number;
+  rampCapacity?: number;
+  defenseUnitIds?: string[];
+  weather?: WeatherConditions;
 }
 
 export interface GameState {

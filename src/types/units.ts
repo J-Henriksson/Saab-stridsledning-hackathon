@@ -52,6 +52,15 @@ export interface UnitBase {
   pendingArrivalBase?: BaseType;
 }
 
+export type FuelStatus = "Normal" | "Joker" | "Bingo" | "Emergency";
+
+export interface WeaponLoadout {
+  aam?: number;    // air-to-air missiles (IRIS-T, Meteor, AIM-120)
+  agm?: number;    // air-to-ground missiles (KEPD 350, RBS-15)
+  bombs?: number;  // guided / unguided bombs
+  pods?: string[]; // sensor / jammer / recce pods
+}
+
 export interface AircraftUnit extends UnitBase {
   category: "aircraft";
   type: AircraftType;
@@ -69,6 +78,19 @@ export interface AircraftUnit extends UnitBase {
   maintenanceTask?: MaintenanceTask;
   requiredSparePart?: string;
   fuel: number;
+  // ── Tactical fields (Baltic scenario) ────────────────────────────────────
+  callsign?: string;
+  squawkCode?: string;         // 4-digit octal transponder code
+  machSpeed?: number;          // Mach number (e.g. 0.85)
+  verticalRate?: number;       // ft/min, positive = climbing
+  tacMission?: "QRA" | "CAP" | "CAS" | "RECON";
+  weaponLoadout?: WeaponLoadout;
+  fuelStatus?: FuelStatus;
+  wing?: string;               // unit designation, e.g. "F 21"
+  radarActive?: boolean;
+  radarRangeKm?: number;
+  radarAzimuthHalfDeg?: number;
+  isTargeted?: boolean;
 }
 
 export type DroneType = "ISR_DRONE" | "STRIKE_DRONE";

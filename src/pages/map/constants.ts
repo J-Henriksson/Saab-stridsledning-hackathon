@@ -1,11 +1,13 @@
 // Real Swedish airfield coordinates
 export const BASE_COORDS: Record<string, { lat: number; lng: number }> = {
   MOB:   { lat: 58.4065, lng: 15.5267 },  // Malmen (Linköping)
-  FOB_N: { lat: 65.5438, lng: 22.1219 },  // Luleå/Kallax
+  FOB_N: { lat: 65.5438, lng: 22.1219 },  // Luleå/Kallax — F 21
   FOB_S: { lat: 56.2670, lng: 12.8514 },  // Ängelholm/F10
   ROB_N: { lat: 66.3228, lng: 20.1492 },  // Vidsel
   ROB_S: { lat: 56.2667, lng: 15.2650 },  // Ronneby/F17
   ROB_E: { lat: 61.2610, lng: 17.0990 },  // Söderhamn/F15
+  ARNA:  { lat: 59.5953, lng: 17.5891 },  // Uppsala/Ärna — F 16
+  VISBY: { lat: 57.6627, lng: 18.3462 },  // Visby — ESSV
 };
 
 export const SUPPLY_LINES: [string, string][] = [
@@ -28,6 +30,8 @@ export const BASE_RINGS: Record<string, { sizeRadiusKm: number; defaultAorRadius
   ROB_N: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 100 },  // Vidsel
   ROB_S: { sizeRadiusKm: 1.5, defaultAorRadiusKm: 80  },  // Ronneby/F17
   ROB_E: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 70  },  // Söderhamn/F15
+  ARNA:  { sizeRadiusKm: 2.5, defaultAorRadiusKm: 95  },  // Uppsala/Ärna
+  VISBY: { sizeRadiusKm: 1.8, defaultAorRadiusKm: 75  },  // Visby
 };
 
 // ── Base map styles ────────────────────────────────────────────────────────────
@@ -96,6 +100,8 @@ export const BASE_ICAO: Record<string, string> = {
   ROB_N: "ESPE",  // Vidsel
   ROB_S: "ESDF",  // Ronneby/Kallinge
   ROB_E: "ESSD",  // Söderhamn
+  ARNA:  "ESCM",  // Uppsala/Ärna
+  VISBY: "ESSV",  // Visby
 };
 
 export const BASE_RUNWAY_STATUS: Record<string, "operational" | "limited" | "closed"> = {
@@ -105,6 +111,8 @@ export const BASE_RUNWAY_STATUS: Record<string, "operational" | "limited" | "clo
   ROB_N: "limited",
   ROB_S: "operational",
   ROB_E: "limited",
+  ARNA:  "operational",
+  VISBY: "operational",
 };
 
 export const BASE_ACTIVE_UNITS: Record<string, string[]> = {
@@ -114,4 +122,6 @@ export const BASE_ACTIVE_UNITS: Record<string, string[]> = {
   ROB_N: ["FMV Provflygavdelning"],
   ROB_S: ["F 17 Blekinge flygflottilj"],
   ROB_E: ["Hälsinge flygflottilj (reserv)"],
+  ARNA:  ["F 16 Uppsala flygflottilj", "Stril C"],
+  VISBY: ["Gotlands flygbas", "Gotlandsbataljonen"],
 };

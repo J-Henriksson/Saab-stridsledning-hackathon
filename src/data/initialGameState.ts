@@ -195,6 +195,174 @@ const FOB_S: Base = {
   zones: createZones("sidobas", "FOB_S"),
 };
 
+// ── Baltic scenario — ARNA (F 16 Uppsala) & VISBY ────────────────────────────
+
+function createBalticAircraft(
+  baseId: "ARNA" | "VISBY",
+  type: AircraftType,
+  prefix: string,
+  count: number,
+  tacOverrides: Array<Partial<AircraftUnit>> = []
+): AircraftUnit[] {
+  const pos = BASE_COORDS[baseId] ?? { lat: 59, lng: 18 };
+  const wing = baseId === "ARNA" ? "F 16" : "Gotland";
+  return Array.from({ length: count }, (_, i) => {
+    const tailNumber = `${prefix}${String(i + 1).padStart(2, "0")}`;
+    const unit = createAircraftUnit({
+      id: `${baseId}_${tailNumber}`,
+      tailNumber,
+      name: tailNumber,
+      type,
+      role: type === "GlobalEye" ? "awacs" : type === "TP84" ? "transport" : "fighter",
+      position: pos,
+      currentBase: baseId,
+    });
+    return {
+      ...unit,
+      flightHours: Math.round(Math.random() * 60 + 15),
+      hoursToService: Math.round(Math.random() * 50 + 20),
+      health: Math.round(Math.random() * 15 + 85),
+      wing,
+      ...(tacOverrides[i] ?? {}),
+    } as AircraftUnit;
+  });
+}
+
+function seedBalticBase(baseId: "ARNA" | "VISBY", aircraftList: AircraftUnit[]): Unit[] {
+  const pos = BASE_COORDS[baseId] ?? { lat: 59, lng: 18 };
+  const units: Unit[] = [...aircraftList];
+  units.push(createAirDefenseUnit({
+    name: `${baseId}-AD-1`,
+    type: baseId === "ARNA" ? "SAM_LONG" : "SAM_MEDIUM",
+    position: pos,
+    currentBase: baseId,
+  }));
+  units.push(createRadarUnit({
+    name: `${baseId}-RAD-1`,
+    type: "SEARCH_RADAR",
+    position: pos,
+    currentBase: baseId,
+  }));
+  (["LOGISTICS_TRUCK", "FUEL_BOWSER", "ARMORED_TRANSPORT"] as const).forEach((t, i) => {
+    units.push(createGroundVehicleUnit({ name: `${baseId}-GV-${i + 1}`, type: t, position: pos, currentBase: baseId }));
+  });
+  return units;
+}
+
+const nowHour = new Date().getHours();
+
+const ARNA_AIRCRAFT: AircraftUnit[] = [
+  ...createBalticAircraft("ARNA", "GripenE", "GE", 4, [
+    {
+      callsign: "VIKING 1", squawkCode: "2401", wing: "F 16",
+      status: "on_mission", tacMission: "CAP", currentMission: "CAP",
+      missionEndHour: (nowHour + 2) % 24,
+      position: { lat: 59.5, lng: 19.0 },
+      movement: { state: "airborne", speed: 480, heading: 90 },
+      radarActive: true, radarRangeKm: 120, radarAzimuthHalfDeg: 60,
+      weaponLoadout: { aam: 4, pods: ["EW-pod"] },
+      fuelStatus: "Normal", fuel: 72, machSpeed: 0.82, verticalRate: 0,
+    },
+    {
+      callsign: "VIKING 2", squawkCode: "2402", wing: "F 16",
+      status: "ready", tacMission: "QRA",
+      radarActive: false, weaponLoadout: { aam: 4 }, fuelStatus: "Normal", fuel: 98,
+    },
+    {
+      callsign: "VIKING 3", squawkCode: "2403", wing: "F 16",
+      status: "ready", tacMission: "QRA",
+      radarActive: false, weaponLoadout: { aam: 2, agm: 2 }, fuelStatus: "Normal", fuel: 95,
+    },
+    {
+      callsign: "VIKING 4", squawkCode: "2404", wing: "F 16",
+      status: "under_maintenance", radarActive: false, fuel: 40,
+    },
+  ]),
+  ...createBalticAircraft("ARNA", "GlobalEye", "AEW", 1, [
+    {
+      callsign: "ARGUS 1", squawkCode: "7777", wing: "F 16",
+      status: "on_mission", tacMission: "RECON", currentMission: "AEW",
+      missionEndHour: (nowHour + 4) % 24,
+      position: { lat: 58.0, lng: 20.0 },
+      movement: { state: "airborne", speed: 350, heading: 60 },
+      radarActive: true, radarRangeKm: 350, radarAzimuthHalfDeg: 120,
+      weaponLoadout: { pods: ["PS-890 Erieye"] },
+      fuelStatus: "Normal", fuel: 65, machSpeed: 0.54, verticalRate: 0,
+    },
+  ]),
+];
+
+const ARNA: Base = {
+  id: "ARNA",
+  name: "F 16 Uppsala/Ärna",
+  type: "sidobas",
+  units: seedBalticBase("ARNA", ARNA_AIRCRAFT),
+  spareParts: createSpareParts().map((p) => ({ ...p, quantity: Math.ceil(p.quantity * 0.65), maxQuantity: Math.ceil(p.maxQuantity * 0.65) })),
+  personnel: createPersonnel(0.6),
+  fuel: 85, maxFuel: 100,
+  ammunition: [
+    { type: "IRIS-T", quantity: 12, max: 20 },
+    { type: "Meteor", quantity: 8, max: 12 },
+    { type: "KEPD 350", quantity: 4, max: 8 },
+  ],
+  maintenanceBays: { total: 3, occupied: 1 },
+  zones: createZones("sidobas", "ARNA"),
+  icaoCode: "ESCM", hangarCapacity: 6, rampCapacity: 10,
+  defenseUnitIds: ["ARNA-AD-1"],
+  weather: { windKts: 8, windDirDeg: 240, visibilityKm: 15, ceilingFt: 0, condition: "VMC" },
+};
+
+const VISBY_AIRCRAFT: AircraftUnit[] = [
+  ...createBalticAircraft("VISBY", "GripenE", "GE", 3, [
+    {
+      callsign: "ODIN 1", squawkCode: "2501", wing: "Gotland",
+      status: "on_mission", tacMission: "RECON", currentMission: "RECCE",
+      missionEndHour: (nowHour + 1) % 24,
+      position: { lat: 57.5, lng: 21.0 },
+      movement: { state: "airborne", speed: 420, heading: 45 },
+      radarActive: true, radarRangeKm: 110, radarAzimuthHalfDeg: 55,
+      weaponLoadout: { aam: 2, pods: ["RECCE-pod"] },
+      fuelStatus: "Joker", fuel: 28, machSpeed: 0.78, verticalRate: -500,
+    },
+    {
+      callsign: "ODIN 2", squawkCode: "2502", wing: "Gotland",
+      status: "ready", tacMission: "QRA",
+      radarActive: false, weaponLoadout: { aam: 4 }, fuelStatus: "Normal", fuel: 99, isTargeted: false,
+    },
+    {
+      callsign: "ODIN 3", squawkCode: "2503", wing: "Gotland",
+      status: "ready", tacMission: "CAP",
+      radarActive: false, weaponLoadout: { aam: 4, agm: 2 }, fuelStatus: "Normal", fuel: 92,
+    },
+  ]),
+  ...createBalticAircraft("VISBY", "TP84", "TP", 1, [
+    {
+      callsign: "TRANSPORT 1", squawkCode: "2510", wing: "Gotland",
+      status: "ready", role: "transport",
+      radarActive: false, weaponLoadout: {}, fuelStatus: "Normal", fuel: 88,
+    },
+  ]),
+];
+
+const VISBY_BASE: Base = {
+  id: "VISBY",
+  name: "Visby flygbas",
+  type: "reservbas",
+  units: seedBalticBase("VISBY", VISBY_AIRCRAFT),
+  spareParts: createSpareParts().map((p) => ({ ...p, quantity: Math.ceil(p.quantity * 0.4), maxQuantity: Math.ceil(p.maxQuantity * 0.4) })),
+  personnel: createPersonnel(0.35),
+  fuel: 60, maxFuel: 100,
+  ammunition: [
+    { type: "IRIS-T", quantity: 8, max: 12 },
+    { type: "Meteor", quantity: 4, max: 8 },
+  ],
+  maintenanceBays: { total: 2, occupied: 0 },
+  zones: createZones("reservbas", "VISBY"),
+  icaoCode: "ESSV", hangarCapacity: 4, rampCapacity: 8,
+  defenseUnitIds: ["VISBY-AD-1"],
+  weather: { windKts: 14, windDirDeg: 190, visibilityKm: 8, ceilingFt: 2500, condition: "MVMC" },
+};
+
 export const initialATOOrders: ATOOrder[] = [
   {
     id: "ato-qra-1",
@@ -418,7 +586,7 @@ export const initialGameState: GameState = {
   minute: new Date().getMinutes(),
   second: new Date().getSeconds(),
   phase: "FRED",
-  bases: [MOB, FOB_N, FOB_S],
+  bases: [MOB, FOB_N, FOB_S, ARNA, VISBY_BASE],
   deployedUnits: [],
   successfulMissions: 0,
   failedMissions: 0,
