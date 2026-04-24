@@ -1234,8 +1234,10 @@ export default function MapPage() {
             );
           })()}
 
-          {/* Legend + coordinate HUD — bottom left, above aircraft bar */}
+          {/* Coordinate HUD + legend — bottom left, above aircraft bar */}
           <div className="absolute bottom-14 left-3 z-10 flex flex-col gap-2">
+            <CoordinateHUD cursor={hudCursor} />
+
             <div
               className="p-3 rounded-xl text-xs font-mono pointer-events-none"
               style={{
@@ -1268,8 +1270,6 @@ export default function MapPage() {
                 ))}
               </div>
             </div>
-
-            <CoordinateHUD cursor={hudCursor} />
           </div>
 
           {/* Terrain filter panel */}
