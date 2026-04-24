@@ -5,13 +5,15 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, Flame, ChevronRight, Layers3 } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3 } from "lucide-react";
 
 import { BASE_COORDS, SWEDEN_CENTER, INITIAL_ZOOM, MAP_STYLE } from "./map/constants";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
 import { AircraftLayer } from "./map/AircraftLayer";
-import { SATELLITE_DEFS, SatelliteLayer, SatelliteLiveState } from "./map/SatelliteLayer";
+import { CloudLayer, CloudSummary } from "./map/CloudLayer";
+import { ACTIVE_SATELLITE_DEFS, SatelliteLayer, SatelliteLiveState } from "./map/SatelliteLayer";
+import { SatelliteDetailPanel } from "./map/SatelliteDetailPanel";
 import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
@@ -22,21 +24,22 @@ import { getAircraft } from "@/core/units/helpers";
 type SelectedEntity =
   | { kind: "base"; baseId: string }
   | { kind: "aircraft"; baseId: string; aircraftId: string }
+  | { kind: "satellite"; satelliteId: string }
   | { kind: "unit"; unitId: string }
   | null;
 
-type MapMode = "satelliter" | "vind" | "moln" | "hotzoner";
+type MapViewKey = "satelliter" | "vind" | "moln" | "hotzoner";
 
 const MAP_MODE_OPTIONS: {
-  id: MapMode;
+  id: MapViewKey;
   label: string;
   icon: typeof Satellite;
   available: boolean;
 }[] = [
   { id: "satelliter", label: "Satelliter", icon: Satellite, available: true },
   { id: "vind", label: "Vind", icon: Wind, available: false },
-  { id: "moln", label: "Moln", icon: Cloud, available: false },
-  { id: "hotzoner", label: "Hotzoner", icon: Flame, available: false },
+  { id: "moln", label: "Moln", icon: Cloud, available: true },
+  { id: "hotzoner", label: "Hotzoner", icon: TriangleAlert, available: false },
 ];
 
 const SEA_LABELS = [
@@ -86,9 +89,19 @@ export default function MapPage() {
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [isModePanelOpen, setIsModePanelOpen] = useState(false);
-  const [activeMapMode, setActiveMapMode] = useState<MapMode>("satelliter");
+  const [visibleViews, setVisibleViews] = useState<Record<MapViewKey, boolean>>({
+    satelliter: true,
+    vind: false,
+    moln: false,
+    hotzoner: false,
+  });
+  const [cloudSummary, setCloudSummary] = useState<CloudSummary>({
+    activeFields: 0,
+    dominantDrift: "Östlig drift",
+    coverageLabel: "Lätt täckning",
+  });
   const [liveSatellites, setLiveSatellites] = useState<SatelliteLiveState[]>(
-    SATELLITE_DEFS.map((satellite) => ({
+    ACTIVE_SATELLITE_DEFS.map((satellite) => ({
       id: satellite.id,
       name: satellite.name,
       lat: satellite.startLat,
@@ -101,6 +114,15 @@ export default function MapPage() {
       signalStrength: 80,
       region: "Mellansverige",
       nextPassMinutes: 8,
+      role: satellite.role,
+      readiness: satellite.readiness,
+      observationFocus: satellite.observationFocus,
+      recommendedAction: satellite.recommendedAction,
+      limitation: satellite.limitation,
+      footprintWidthKm: satellite.footprintWidthKm,
+      footprintLengthKm: satellite.footprintLengthKm,
+      visibilityQuality: "God",
+      swedishInterestCoverage: "Täcker",
     })),
   );
   const mapRef = useRef<MapRef>(null);
@@ -131,16 +153,26 @@ export default function MapPage() {
       : undefined;
 
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
+  const selectedSatelliteId = selected?.kind === "satellite" ? selected.satelliteId : undefined;
 
   const selectedUnit = selected?.kind === "unit"
     ? allUnits.find((u) => u.id === selected.unitId)
+    : undefined;
+  const selectedSatellite = selected?.kind === "satellite"
+    ? liveSatellites.find((satellite) => satellite.id === selected.satelliteId)
     : undefined;
 
   // Reset follow state when selection changes
   useEffect(() => {
     isFollowing.current = false;
     followStartTime.current = null;
-  }, [selectedAircraftId]);
+  }, [selectedAircraftId, selectedSatelliteId]);
+
+  useEffect(() => {
+    if (!visibleViews.satelliter && selected?.kind === "satellite") {
+      setSelected(null);
+    }
+  }, [visibleViews.satelliter, selected]);
 
   const handlePositionUpdate = useCallback((lng: number, lat: number) => {
     const map = mapRef.current;
@@ -157,6 +189,20 @@ export default function MapPage() {
     map.easeTo({ center: [lng, lat], duration: 150 });
   }, []);
 
+  const handleSatellitePositionUpdate = useCallback((lng: number, lat: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const now = performance.now();
+    if (!followStartTime.current) {
+      followStartTime.current = now;
+      isFollowing.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 7.2, duration: 1100, pitch: 18 });
+      return;
+    }
+    if (now - followStartTime.current < 1100) return;
+    map.easeTo({ center: [lng, lat], duration: 180 });
+  }, []);
+
   const handleRecall = useCallback(() => {
     if (selected?.kind !== "aircraft") return;
     dispatch({
@@ -170,6 +216,9 @@ export default function MapPage() {
   const handleMapClick = useCallback(() => setSelected(null), []);
   const handleSatelliteUpdate = useCallback((satellites: SatelliteLiveState[]) => {
     setLiveSatellites(satellites);
+  }, []);
+  const toggleView = useCallback((view: MapViewKey) => {
+    setVisibleViews((current) => ({ ...current, [view]: !current[view] }));
   }, []);
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap();
@@ -231,7 +280,15 @@ export default function MapPage() {
             <NavigationControl position="top-right" />
 
             <SupplyLinesLayer bases={state.bases} />
-            {activeMapMode === "satelliter" && <SatelliteLayer onUpdate={handleSatelliteUpdate} />}
+            {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
+            {visibleViews.satelliter && (
+              <SatelliteLayer
+                onUpdate={handleSatelliteUpdate}
+                onSelectSatellite={(satelliteId) => setSelected({ kind: "satellite", satelliteId })}
+                selectedSatelliteId={selectedSatelliteId}
+                onPositionUpdate={selectedSatelliteId ? handleSatellitePositionUpdate : undefined}
+              />
+            )}
             <AircraftLayer
               bases={state.bases}
               currentHour={state.hour}
@@ -289,11 +346,14 @@ export default function MapPage() {
           />
 
           <MapModeSidebar
-            activeMode={activeMapMode}
+            visibleViews={visibleViews}
             isOpen={isModePanelOpen}
             onToggle={() => setIsModePanelOpen((current) => !current)}
-            onSelectMode={setActiveMapMode}
+            onToggleView={toggleView}
             satellites={liveSatellites}
+            cloudSummary={cloudSummary}
+            selectedSatelliteId={selectedSatelliteId}
+            onSelectSatellite={(satelliteId) => setSelected({ kind: "satellite", satelliteId })}
           />
 
           {/* Active aircraft bar */}
@@ -318,7 +378,14 @@ export default function MapPage() {
               {/* Panel header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                 <div>
-                  {selectedUnit ? (
+                  {selectedSatellite ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedSatellite.name}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {selectedSatellite.role} · {selectedSatellite.orbitClass}
+                      </div>
+                    </>
+                  ) : selectedUnit ? (
                     <>
                       <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
                       <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
@@ -351,6 +418,8 @@ export default function MapPage() {
                   isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
                   allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
                 />
+              ) : selectedSatellite ? (
+                <SatelliteDetailPanel satellite={selectedSatellite} />
               ) : selectedAircraft && selected.kind === "aircraft" ? (
                 <AircraftDetailPanel
                   aircraft={selectedAircraft}
@@ -377,18 +446,30 @@ export default function MapPage() {
 }
 
 function MapModeSidebar({
-  activeMode,
+  visibleViews,
   isOpen,
   onToggle,
-  onSelectMode,
+  onToggleView,
   satellites,
+  cloudSummary,
+  selectedSatelliteId,
+  onSelectSatellite,
 }: {
-  activeMode: MapMode;
+  visibleViews: Record<MapViewKey, boolean>;
   isOpen: boolean;
   onToggle: () => void;
-  onSelectMode: (mode: MapMode) => void;
+  onToggleView: (mode: MapViewKey) => void;
   satellites: SatelliteLiveState[];
+  cloudSummary: CloudSummary;
+  selectedSatelliteId?: string;
+  onSelectSatellite: (satelliteId: string) => void;
 }) {
+  const modeAccent = (mode: MapViewKey) => {
+    if (mode === "hotzoner") return "#f87171";
+    if (mode === "moln") return "#cbd5e1";
+    return "#67e8f9";
+  };
+
   return (
     <div className="absolute left-3 top-3 z-20 pointer-events-none sm:left-4 sm:top-4">
       <div className="flex items-start gap-2">
@@ -412,25 +493,30 @@ function MapModeSidebar({
           <div className="flex flex-col gap-2 px-2 py-3">
             {MAP_MODE_OPTIONS.map((mode) => {
               const Icon = mode.icon;
-              const isActive = mode.id === activeMode;
+              const isActive = visibleViews[mode.id];
+              const accent = modeAccent(mode.id);
 
               return (
                 <button
                   key={mode.id}
                   onClick={() => {
-                    onSelectMode(mode.id);
+                    onToggleView(mode.id);
                     if (!isOpen) onToggle();
                   }}
                   className="group relative flex h-11 items-center justify-center rounded-xl border transition-all"
                   style={{
-                    borderColor: isActive ? "rgba(34,211,238,0.45)" : "rgba(148,163,184,0.14)",
-                    background: isActive ? "linear-gradient(180deg, rgba(8,145,178,0.22), rgba(8,47,73,0.34))" : "rgba(15,23,42,0.46)",
-                    boxShadow: isActive ? "inset 0 1px 0 rgba(103,232,249,0.18), 0 0 18px rgba(34,211,238,0.18)" : "none",
+                    borderColor: isActive ? `${accent}73` : "rgba(148,163,184,0.14)",
+                    background: isActive
+                      ? mode.id === "hotzoner"
+                        ? "linear-gradient(180deg, rgba(127,29,29,0.32), rgba(69,10,10,0.4))"
+                        : "linear-gradient(180deg, rgba(8,145,178,0.22), rgba(8,47,73,0.34))"
+                      : "rgba(15,23,42,0.46)",
+                    boxShadow: isActive ? `inset 0 1px 0 ${accent}22, 0 0 18px ${accent}22` : "none",
                   }}
                   aria-label={`Välj ${mode.label}`}
                 >
-                  <Icon className="h-4 w-4" style={{ color: isActive ? "#67e8f9" : "#94a3b8" }} />
-                  {!mode.available && (
+                  <Icon className="h-4 w-4" style={{ color: isActive ? accent : "#94a3b8" }} />
+                  {!mode.available && !isActive && (
                     <span
                       className="absolute bottom-1 h-1.5 w-1.5 rounded-full"
                       style={{ background: "rgba(148,163,184,0.55)" }}
@@ -482,30 +568,35 @@ function MapModeSidebar({
                 <div className="grid grid-cols-2 gap-2">
                   {MAP_MODE_OPTIONS.map((mode) => {
                     const Icon = mode.icon;
-                    const isActive = mode.id === activeMode;
+                    const isActive = visibleViews[mode.id];
+                    const accent = modeAccent(mode.id);
 
                     return (
                       <button
                         key={mode.id}
-                        onClick={() => onSelectMode(mode.id)}
+                        onClick={() => onToggleView(mode.id)}
                         className="rounded-xl border px-3 py-3 text-left transition-all hover:-translate-y-[1px]"
                         style={{
-                          borderColor: isActive ? "rgba(34,211,238,0.45)" : "rgba(148,163,184,0.14)",
-                          background: isActive ? "linear-gradient(180deg, rgba(10,65,92,0.65), rgba(6,26,43,0.88))" : "rgba(15,23,42,0.45)",
-                          boxShadow: isActive ? "0 0 22px rgba(34,211,238,0.16)" : "none",
+                          borderColor: isActive ? `${accent}73` : "rgba(148,163,184,0.14)",
+                          background: isActive
+                            ? mode.id === "hotzoner"
+                              ? "linear-gradient(180deg, rgba(127,29,29,0.72), rgba(69,10,10,0.88))"
+                              : "linear-gradient(180deg, rgba(10,65,92,0.65), rgba(6,26,43,0.88))"
+                            : "rgba(15,23,42,0.45)",
+                          boxShadow: isActive ? `0 0 22px ${accent}22` : "none",
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <Icon className="h-4 w-4" style={{ color: isActive ? "#67e8f9" : "#94a3b8" }} />
+                          <Icon className="h-4 w-4" style={{ color: isActive ? accent : "#94a3b8" }} />
                           <span
                             className="rounded-full border px-1.5 py-0.5 text-[8px] tracking-[0.18em]"
                             style={{
-                              color: mode.available ? "#4ade80" : "#94a3b8",
-                              borderColor: mode.available ? "rgba(34,197,94,0.25)" : "rgba(148,163,184,0.2)",
-                              background: mode.available ? "rgba(34,197,94,0.08)" : "rgba(148,163,184,0.08)",
+                              color: isActive ? "#4ade80" : "#94a3b8",
+                              borderColor: isActive ? "rgba(34,197,94,0.25)" : "rgba(148,163,184,0.2)",
+                              background: isActive ? "rgba(34,197,94,0.08)" : "rgba(148,163,184,0.08)",
                             }}
                           >
-                            {mode.available ? "AKTIV" : "EJ KLAR"}
+                            {isActive ? "PÅ" : "AV"}
                           </span>
                         </div>
                         <div className="mt-2 text-[11px] font-bold tracking-[0.1em]" style={{ color: "#f8fafc" }}>
@@ -517,11 +608,44 @@ function MapModeSidebar({
                 </div>
               </div>
 
-              {activeMode === "satelliter" ? (
-                <SatelliteModePanel satellites={satellites} />
-              ) : (
-                <PlaceholderModePanel mode={activeMode} />
-              )}
+              {visibleViews.satelliter ? (
+                <SatelliteModePanel
+                  satellites={satellites}
+                  selectedSatelliteId={selectedSatelliteId}
+                  onSelectSatellite={onSelectSatellite}
+                />
+              ) : null}
+
+              {visibleViews.moln ? <CloudModePanel summary={cloudSummary} /> : null}
+
+              {(["vind", "moln", "hotzoner"] as const)
+                .filter((mode) => visibleViews[mode] && mode !== "moln")
+                .map((mode) => (
+                  <PlaceholderModePanel key={mode} mode={mode} />
+                ))}
+
+              {!visibleViews.satelliter &&
+              !(visibleViews.vind || visibleViews.moln || visibleViews.hotzoner) ? (
+                <div className="px-4 py-5 font-mono">
+                  <div
+                    className="rounded-2xl border px-4 py-5"
+                    style={{
+                      borderColor: "rgba(148,163,184,0.16)",
+                      background: "linear-gradient(180deg, rgba(15,23,42,0.64), rgba(15,23,42,0.4))",
+                    }}
+                  >
+                    <div className="text-[9px] tracking-[0.3em]" style={{ color: "#94a3b8" }}>
+                      KARTLAGER
+                    </div>
+                    <div className="mt-2 text-lg font-bold tracking-[0.12em]" style={{ color: "#f8fafc" }}>
+                      Inga vyer aktiva
+                    </div>
+                    <p className="mt-3 text-[11px] leading-5" style={{ color: "#cbd5e1" }}>
+                      Slå på ett lager i sidofältet för att visa satelliter eller andra kartvyer.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
@@ -530,7 +654,58 @@ function MapModeSidebar({
   );
 }
 
-function SatelliteModePanel({ satellites }: { satellites: SatelliteLiveState[] }) {
+function CloudModePanel({ summary }: { summary: CloudSummary }) {
+  return (
+    <div className="px-4 py-4 text-[10px] font-mono border-t" style={{ borderColor: "rgba(203,213,225,0.08)" }}>
+      <div className="flex items-start justify-between gap-3 border-b pb-3" style={{ borderColor: "rgba(203,213,225,0.14)" }}>
+        <div>
+          <div className="text-[9px] tracking-[0.35em]" style={{ color: "#cbd5e1" }}>
+            ATMOSFÄR
+          </div>
+          <div className="mt-1 text-xs font-bold tracking-[0.18em]" style={{ color: "#f8fafc" }}>
+            MOLN
+          </div>
+        </div>
+        <div className="rounded-sm border px-2 py-1 text-[9px] tracking-[0.24em]" style={{ borderColor: "rgba(203,213,225,0.26)", color: "#e2e8f0", background: "rgba(203,213,225,0.08)" }}>
+          DYNAMISK
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <TelemetryStat label="FÄLT" value={String(summary.activeFields).padStart(2, "0")} accent="#cbd5e1" />
+        <TelemetryStat label="TÄCKNING" value={summary.coverageLabel.toUpperCase()} accent="#94a3b8" />
+      </div>
+
+      <div
+        className="mt-3 rounded-2xl border px-3 py-3"
+        style={{
+          borderColor: "rgba(203,213,225,0.14)",
+          background: "linear-gradient(180deg, rgba(30,41,59,0.72), rgba(15,23,42,0.54))",
+        }}
+      >
+        <div className="text-[9px] tracking-[0.22em]" style={{ color: "#94a3b8" }}>
+          DOMINERANDE DRIFT
+        </div>
+        <div className="mt-2 text-[12px] font-bold tracking-[0.12em]" style={{ color: "#e2e8f0" }}>
+          {summary.dominantDrift}
+        </div>
+        <p className="mt-3 text-[10px] leading-5" style={{ color: "#cbd5e1" }}>
+          Molnlagret är integrerat i kartans geometri och driver över operationsområdet med mjuk, volymetrisk täckning.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SatelliteModePanel({
+  satellites,
+  selectedSatelliteId,
+  onSelectSatellite,
+}: {
+  satellites: SatelliteLiveState[];
+  selectedSatelliteId?: string;
+  onSelectSatellite: (satelliteId: string) => void;
+}) {
   const averageAltitude = Math.round(
     satellites.reduce((sum, satellite) => sum + satellite.altitudeKm, 0) / Math.max(satellites.length, 1),
   );
@@ -578,13 +753,20 @@ function SatelliteModePanel({ satellites }: { satellites: SatelliteLiveState[] }
       </div>
 
       <div className="mt-3 space-y-2 max-h-[42vh] overflow-y-auto pr-1">
-        {satellites.map((satellite) => (
-          <div
+        {satellites.map((satellite) => {
+          const isSelected = satellite.id === selectedSatelliteId;
+          return (
+          <button
             key={satellite.id}
-            className="rounded-sm border px-2.5 py-2"
+            type="button"
+            onClick={() => onSelectSatellite(satellite.id)}
+            className="w-full rounded-sm border px-2.5 py-2 text-left transition-all"
             style={{
-              borderColor: "rgba(103,232,249,0.14)",
-              background: "linear-gradient(180deg, rgba(15,23,42,0.72), rgba(15,23,42,0.48))",
+              borderColor: isSelected ? "rgba(103,232,249,0.4)" : "rgba(103,232,249,0.14)",
+              background: isSelected
+                ? "linear-gradient(180deg, rgba(12,74,110,0.72), rgba(15,23,42,0.72))"
+                : "linear-gradient(180deg, rgba(15,23,42,0.72), rgba(15,23,42,0.48))",
+              boxShadow: isSelected ? "0 0 18px rgba(34,211,238,0.18)" : "none",
             }}
           >
             <div className="flex items-center justify-between gap-2">
@@ -597,7 +779,7 @@ function SatelliteModePanel({ satellites }: { satellites: SatelliteLiveState[] }
                 </div>
               </div>
               <div className="rounded-sm border px-1.5 py-1 text-[8px]" style={{ borderColor: "rgba(34,197,94,0.3)", color: "#4ade80", background: "rgba(34,197,94,0.08)" }}>
-                LÅS
+                {isSelected ? "FÖLJER" : "LÅS"}
               </div>
             </div>
 
@@ -609,26 +791,29 @@ function SatelliteModePanel({ satellites }: { satellites: SatelliteLiveState[] }
               <TelemetryRow label="SIGNAL" value={`${satellite.signalStrength}%`} />
               <TelemetryRow label="PASSAGE" value={`${satellite.nextPassMinutes} MIN`} />
             </div>
-          </div>
-        ))}
+            <div className="mt-2 text-[9px] leading-4" style={{ color: "#cbd5e1" }}>
+              {satellite.recommendedAction}
+            </div>
+          </button>
+        )})}
       </div>
     </div>
   );
 }
 
-function PlaceholderModePanel({ mode }: { mode: Exclude<MapMode, "satelliter"> }) {
-  const modeText: Record<Exclude<MapMode, "satelliter">, { title: string; description: string }> = {
+function PlaceholderModePanel({ mode }: { mode: Exclude<MapViewKey, "satelliter"> }) {
+  const modeText: Record<Exclude<MapViewKey, "satelliter">, { title: string; description: string }> = {
     vind: {
       title: "Vind",
       description: "Vindlager är reserverat för kommande stridsledningsstöd och är ännu inte aktiverat.",
     },
-    moln: {
-      title: "Moln",
-      description: "Molnöversikt är förberedd i gränssnittet men saknar ännu aktiv datamatning.",
-    },
     hotzoner: {
       title: "Hotzoner",
       description: "Hotzonsläge kommer att visualisera riskområden och konfliktzoner i ett senare steg.",
+    },
+    moln: {
+      title: "Moln",
+      description: "Molnöversikt är förberedd i gränssnittet men saknar ännu aktiv datamatning.",
     },
   };
 
