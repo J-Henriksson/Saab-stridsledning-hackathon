@@ -10,7 +10,7 @@ interface ATOEditorProps {
   onCancel: () => void;
 }
 
-const MISSION_TYPES: MissionType[] = ["DCA", "QRA", "RECCE", "AEW", "AI_DT", "AI_ST", "ESCORT", "TRANSPORT", "REBASE"];
+const MISSION_TYPES: MissionType[] = ["DCA", "QRA", "RECCE", "AEW", "AI_DT", "AI_ST", "ESCORT", "TRANSPORT", "REBASE", "ISR_DRONE"];
 const AIRCRAFT_TYPES: AircraftType[] = ["GripenE", "GripenF_EA", "GlobalEye", "VLO_UCAV", "LOTUS"];
 const BASES: BaseType[] = ["MOB", "FOB_N", "FOB_S", "ROB_N", "ROB_S", "ROB_E"];
 const PRIORITIES = ["high", "medium", "low"] as const;

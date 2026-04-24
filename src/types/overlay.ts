@@ -68,4 +68,6 @@ export interface OverlayLayerVisibility {
   skyddsobjekt: boolean;
   /** Radar station markers and sweeps */
   radarUnits: boolean;
+  /** Drone / UAV layer */
+  drones: boolean;
 }

@@ -2,6 +2,7 @@ import { GameState, Base, SparePartStock, PersonnelGroup, ATOOrder, BaseZone, Ai
 import { ZONE_CAPACITIES } from "@/data/config/capacities";
 import {
   createAircraftUnit,
+  createDeployedDroneUnit,
   createDroneUnit,
   createAirDefenseUnit,
   createGroundVehicleUnit,
@@ -60,14 +61,27 @@ function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircr
   const pos = BASE_COORDS[baseId];
   const units: Unit[] = [...aircraftList]; // aircraft are first-class units now
 
-  // Drones (MOB, FOB_N only)
-  const droneCount = baseId === "FOB_S" ? 0 : 4;
-  for (let i = 0; i < droneCount; i++) {
+  // Drones: SKYM-12 ready at MOB; SKYM-13 ready at FOB_N; FOB_S none
+  // SKYM-11 (airborne) and RED-UAV-01 (hostile) are seeded into deployedUnits below
+  if (baseId === "MOB") {
     units.push(createDroneUnit({
-      name: `${baseId}-DRN-${i + 1}`,
+      id: "drone-skym-12",
+      name: "SKYM-12",
       type: "ISR_DRONE",
       position: pos,
-      currentBase: baseId,
+      currentBase: "MOB",
+      status: "ready",
+      fuel: 100,
+    }));
+  } else if (baseId === "FOB_N") {
+    units.push(createDroneUnit({
+      id: "drone-skym-13",
+      name: "SKYM-13",
+      type: "ISR_DRONE",
+      position: pos,
+      currentBase: "FOB_N",
+      status: "ready",
+      fuel: 100,
     }));
   }
 
@@ -413,6 +427,27 @@ function generateFixedZones(): TacticalZone[] {
     }));
 }
 
+const SKYM_11 = createDeployedDroneUnit({
+  id: "drone-skym-11",
+  name: "SKYM-11",
+  type: "ISR_DRONE",
+  position: { lat: 65.5, lng: 22.5 },
+  currentBase: "MOB",
+  fuel: 72,
+  enduranceHours: 18,
+});
+
+const RED_UAV_01 = createDeployedDroneUnit({
+  id: "drone-red-uav-01",
+  name: "RED-UAV-01",
+  type: "ISR_DRONE",
+  affiliation: "hostile",
+  position: { lat: 56.0, lng: 21.0 },
+  currentBase: null,
+  fuel: 85,
+  enduranceHours: 18,
+});
+
 export const initialGameState: GameState = {
   day: 1,
   hour: new Date().getHours(),
@@ -420,7 +455,7 @@ export const initialGameState: GameState = {
   second: new Date().getSeconds(),
   phase: "FRED",
   bases: [MOB, FOB_N, FOB_S],
-  deployedUnits: [...DEMO_RADAR_UNITS],
+  deployedUnits: [...DEMO_RADAR_UNITS, SKYM_11, RED_UAV_01],
   successfulMissions: 0,
   failedMissions: 0,
   atoOrders: initialATOOrders,
@@ -459,5 +494,6 @@ export const initialGameState: GameState = {
     criticalInfra: true,
     skyddsobjekt: true,
     radarUnits: true,
+    drones: true,
   },
 };
