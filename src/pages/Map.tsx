@@ -34,6 +34,9 @@ import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
+import { AirDefenseRingsLayer } from "./map/AirDefenseRingsLayer";
+import { WTALayer } from "./map/WTALayer";
+import { useTacticalMap } from "@/hooks/useTacticalMap";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
@@ -227,6 +230,8 @@ export default function MapPage() {
     [state.bases, state.deployedUnits]
   );
 
+  const { adUnits, deployedAdUnits } = useTacticalMap();
+
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
       ? state.bases.find((b) => b.id === selected.baseId)
@@ -413,6 +418,7 @@ export default function MapPage() {
     if (selectedAircraft) return { main: selectedAircraft.tailNumber, sub: `${selectedAircraft.type} · ${selectedBase?.name}` };
     if (selectedZone) return { main: selectedZone.name, sub: selectedZone.category === "fixed" ? "Permanent skyddszon" : "Temporär zon" };
     if (selectedAsset) return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
+    if (selectedUnit) return { main: selectedUnit.name, sub: `${selectedUnit.category} · ${selectedUnit.affiliation}` };
     if (selected?.kind === "base") return { main: selectedBase?.name ?? selected.baseId, sub: selectedBase?.type ?? "Reservbas" };
     if (selected?.kind === "enemy_base" && selectedEnemyBase) return { main: selectedEnemyBase.name, sub: "Fiendens bas" };
     if (selected?.kind === "enemy_entity" && selectedEnemyEntity) return { main: selectedEnemyEntity.name, sub: "Fiendens enhet" };
@@ -480,6 +486,19 @@ export default function MapPage() {
           style={{
             cursor: placingMode ? "crosshair" : undefined,
             ...(mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : {}),
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const unitId = e.dataTransfer.getData("text/plain");
+            if (!unitId) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const lngLat = mapRef.current?.getMap().unproject([
+              e.clientX - rect.left,
+              e.clientY - rect.top,
+            ]);
+            if (!lngLat) return;
+            dispatch({ type: "DEPLOY_UNIT", unitId, destination: { lat: lngLat.lat, lng: lngLat.lng } });
           }}
         >
           <MapGL
@@ -604,6 +623,17 @@ export default function MapPage() {
               units={allUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+            />
+
+            <AirDefenseRingsLayer
+              units={deployedAdUnits.filter((u) => u.deployedState === "emplaced")}
+              selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+            />
+
+            <WTALayer
+              adUnits={adUnits}
+              enemyEntities={state.enemyEntities}
+              enemyBases={state.enemyBases}
             />
 
             {Object.keys(BASE_COORDS).map((id) => (
@@ -1033,6 +1063,7 @@ export default function MapPage() {
                   onSelectAircraft={(id) =>
                     setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
                   }
+                  onSelectUnit={(id) => setSelected({ kind: "unit", unitId: id })}
                   aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
                   onSetAor={(km) => handleSetAor(selectedBase.id, km)}
                 />

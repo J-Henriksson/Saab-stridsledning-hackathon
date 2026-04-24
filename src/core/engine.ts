@@ -522,6 +522,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return loc.baseId === null ? putUnitInField(s1, updated) : putUnitAtBase(s1, updated, loc.baseId);
     }
 
+    case "ASSIGN_TARGET": {
+      const loc = findUnit(state, action.unitId);
+      if (!loc || loc.unit.category !== "air_defense") return state;
+      const updated: Unit = { ...loc.unit, assignedTargetId: action.targetId ?? undefined };
+      const s1 = removeUnitFromState(state, loc.unit.id);
+      return loc.baseId === null ? putUnitInField(s1, updated) : putUnitAtBase(s1, updated, loc.baseId);
+    }
+
     case "SET_RADAR_EMITTING": {
       const loc = findUnit(state, action.unitId);
       if (!loc || loc.unit.category !== "radar") return state;

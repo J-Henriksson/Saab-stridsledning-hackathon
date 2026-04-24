@@ -1,7 +1,8 @@
 import { Base } from "@/types/game";
 import { fuelColor, getReadiness } from "./helpers";
 import { getAircraft } from "@/core/units/helpers";
-import { StatBox, Row } from "./StatBox";
+import { isAirDefense, isRadar, isDrone } from "@/types/units";
+import { StatBox } from "./StatBox";
 import {
   Plane,
   Fuel,
@@ -18,15 +19,18 @@ import {
 export function BaseDetailPanel({
   base,
   onSelectAircraft,
+  onSelectUnit,
   aorRadiusKm,
   onSetAor,
 }: {
   base: Base;
   onSelectAircraft: (id: string) => void;
+  onSelectUnit?: (id: string) => void;
   aorRadiusKm: number;
   onSetAor: (km: number) => void;
 }) {
   const aircraftList = getAircraft(base);
+  const groundUnits = base.units.filter((u) => isAirDefense(u) || isRadar(u) || isDrone(u));
   const mc = aircraftList.filter((a) => a.status === "ready");
   const nmc = aircraftList.filter((a) => a.status === "unavailable");
   const maintenance = aircraftList.filter((a) => a.status === "under_maintenance");
@@ -216,6 +220,47 @@ export function BaseDetailPanel({
                     {zone.currentQueue.length}/{zone.capacity}
                   </span>
                 </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Ground units (SAM, radar, drone) */}
+      {groundUnits.length > 0 && (
+        <div>
+          <div className="text-[10px] font-mono text-muted-foreground mb-2 flex items-center gap-1">
+            <Shield className="h-3 w-3" /> ENHETER ({groundUnits.length} st)
+          </div>
+          <div className="space-y-1">
+            {groundUnits.map((u) => {
+              const isAD = isAirDefense(u);
+              const missiles = isAD ? u.missileStock : null;
+              return (
+                <button
+                  key={u.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", u.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onClick={() => onSelectUnit?.(u.id)}
+                  className="w-full flex items-center gap-2 p-2 rounded border border-border bg-card hover:border-primary/40 hover:bg-muted/30 transition-colors text-left"
+                  style={{ cursor: "grab" }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{
+                      background: isAD && u.deployedState === "emplaced" ? "#22c55e" : "#94a3b8",
+                    }}
+                  />
+                  <span className="text-[10px] font-mono font-bold text-foreground flex-1 truncate">{u.name}</span>
+                  <span className="text-[9px] text-muted-foreground">{u.type}</span>
+                  {missiles && (
+                    <span className="text-[9px] font-mono text-red-400">{missiles.loaded}/{missiles.max}</span>
+                  )}
+                  <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                </button>
               );
             })}
           </div>

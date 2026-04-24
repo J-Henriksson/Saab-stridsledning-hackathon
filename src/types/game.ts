@@ -233,6 +233,7 @@ export type GameAction =
   | { type: "CLASSIFY_CONTACT"; unitId: string; affiliation: import("./units").Affiliation }
   | { type: "STORE_UNIT"; unitId: string; baseId: BaseType }
   | { type: "SET_AD_STATE"; unitId: string; deployedState: "emplaced" | "stowed" }
+  | { type: "ASSIGN_TARGET"; unitId: string; targetId: string | null }
   | { type: "SET_RADAR_EMITTING"; unitId: string; emitting: boolean }
   | { type: "ADD_TACTICAL_ZONE"; zone: Omit<import("./overlay").TacticalZone, "id" | "createdAtHour" | "createdAtDay"> }
   | { type: "REMOVE_TACTICAL_ZONE"; zoneId: string }

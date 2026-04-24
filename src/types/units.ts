@@ -85,6 +85,8 @@ export interface DroneUnit extends UnitBase {
 
 export type AirDefenseType = "SAM_SHORT" | "SAM_MEDIUM" | "SAM_LONG";
 
+export type ADOperationalStatus = "ready" | "standby" | "firing" | "relocating";
+
 export interface AirDefenseUnit extends UnitBase {
   category: "air_defense";
   type: AirDefenseType;
@@ -92,6 +94,10 @@ export interface AirDefenseUnit extends UnitBase {
   missileStock: { loaded: number; max: number };
   fuel: number;
   relocateSpeed: number;
+  engagementRange: number;
+  detectionRange: number;
+  operationalStatus: ADOperationalStatus;
+  assignedTargetId?: string;
 }
 
 export type GroundVehicleType = "LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER";
