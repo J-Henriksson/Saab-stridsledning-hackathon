@@ -233,7 +233,11 @@ export type GameAction =
   | { type: "CLASSIFY_CONTACT"; unitId: string; affiliation: import("./units").Affiliation }
   | { type: "STORE_UNIT"; unitId: string; baseId: BaseType }
   | { type: "SET_AD_STATE"; unitId: string; deployedState: "emplaced" | "stowed" }
-  | { type: "SET_RADAR_EMITTING"; unitId: string; emitting: boolean };
+  | { type: "SET_RADAR_EMITTING"; unitId: string; emitting: boolean }
+  | { type: "ADD_TACTICAL_ZONE"; zone: Omit<import("./overlay").TacticalZone, "id" | "createdAtHour" | "createdAtDay"> }
+  | { type: "REMOVE_TACTICAL_ZONE"; zoneId: string }
+  | { type: "SET_OVERLAY_VISIBILITY"; key: keyof import("./overlay").OverlayLayerVisibility; value: boolean }
+  | { type: "ADD_EVENT"; event: Omit<GameEvent, "id" | "timestamp"> };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 // `Aircraft` is now an alias for the unit-model variant. Kept as an alias
@@ -298,6 +302,8 @@ export interface GameState {
   enemyEntities: EnemyEntity[];
   friendlyMarkers: FriendlyMarker[];
   friendlyEntities: FriendlyEntity[];
+  tacticalZones: import("./overlay").TacticalZone[];
+  overlayVisibility: import("./overlay").OverlayLayerVisibility;
 }
 
 export type AARActionType =

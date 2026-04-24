@@ -1,6 +1,7 @@
 import { useReducer, useCallback, useMemo } from "react";
 import type { GameState, GameAction, BaseType, MissionType, ATOOrder, EnemyBase, EnemyEntity, FriendlyMarker, FriendlyEntity } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
+import type { TacticalZone, OverlayLayerVisibility } from "@/types/overlay";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
 import { getAircraft } from "@/core/units/helpers";
@@ -49,6 +50,9 @@ export interface GameEngine {
   addFriendlyEntity: (entity: Omit<FriendlyEntity, "id" | "createdAt">) => void;
   editFriendlyEntity: (id: string, updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">>) => void;
   deleteFriendlyEntity: (id: string) => void;
+  addTacticalZone: (zone: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => void;
+  removeTacticalZone: (zoneId: string) => void;
+  setOverlayVisibility: (key: keyof OverlayLayerVisibility, value: boolean) => void;
 }
 
 export function useGameEngine(): GameEngine {
@@ -196,6 +200,24 @@ export function useGameEngine(): GameEngine {
     dispatch({ type: "PLAN_DELETE_FRIENDLY_ENTITY", id });
   }, []);
 
+  const addTacticalZone = useCallback(
+    (zone: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => {
+      dispatch({ type: "ADD_TACTICAL_ZONE", zone });
+    },
+    []
+  );
+
+  const removeTacticalZone = useCallback((zoneId: string) => {
+    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId });
+  }, []);
+
+  const setOverlayVisibility = useCallback(
+    (key: keyof OverlayLayerVisibility, value: boolean) => {
+      dispatch({ type: "SET_OVERLAY_VISIBILITY", key, value });
+    },
+    []
+  );
+
   const importATOBatch = useCallback((
     orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[],
     sourceFile: string,
@@ -255,6 +277,7 @@ export function useGameEngine(): GameEngine {
     updateBaseResources,
     addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
     addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
+    addTacticalZone, removeTacticalZone, setOverlayVisibility,
   }), [
     state, togglePause, setGameSpeed, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
@@ -267,5 +290,6 @@ export function useGameEngine(): GameEngine {
     updateBaseResources,
     addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
     addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
+    addTacticalZone, removeTacticalZone, setOverlayVisibility,
   ]);
 }

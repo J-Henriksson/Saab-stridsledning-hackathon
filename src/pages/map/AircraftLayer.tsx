@@ -1,9 +1,11 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
-import { Base } from "@/types/game";
+import { Base, GameAction } from "@/types/game";
 import { BASE_COORDS } from "./constants";
 import { getAircraft } from "@/core/units/helpers";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
+import type { TacticalZone } from "@/types/overlay";
+import { useIncursionDetection } from "./useIncursionDetection";
 
 const REBASE_TRANSIT_HOURS = 2;
 const TRAIL_POINTS = 80;
@@ -29,15 +31,21 @@ interface TrailPoint {
 export function AircraftLayer({
   bases,
   currentHour,
+  currentDay,
   onSelectAircraft,
   selectedAircraftId,
   onPositionUpdate,
+  tacticalZones,
+  dispatch,
 }: {
   bases: Base[];
   currentHour?: number;
+  currentDay?: number;
   onSelectAircraft?: (baseId: string, aircraftId: string) => void;
   selectedAircraftId?: string;
   onPositionUpdate?: (lng: number, lat: number) => void;
+  tacticalZones?: TacticalZone[];
+  dispatch?: (action: GameAction) => void;
 }) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -144,6 +152,25 @@ export function AircraftLayer({
     const pos = aircraftPositions.find((p) => p.id === selectedAircraftId);
     if (pos) onPositionUpdate(pos.lng, pos.lat);
   }, [aircraftPositions, selectedAircraftId, onPositionUpdate]);
+
+  const restrictedZones = useMemo(
+    () =>
+      (tacticalZones ?? []).filter(
+        (z) => z.userType === "restricted" || z.fixedType === "no_fly" || z.fixedType === "high_security"
+      ),
+    [tacticalZones]
+  );
+
+  useIncursionDetection({
+    aircraftPoints: aircraftPositions.map((p) => {
+      const base = bases.find((b) => b.id === p.baseId);
+      const ac = base?.aircraft.find((a) => a.id === p.id);
+      return { id: p.id, tailNumber: ac?.tailNumber ?? p.id, lng: p.lng, lat: p.lat };
+    }),
+    restrictedZones,
+    dispatch: dispatch ?? (() => {}),
+    currentHour: currentHour ?? 0,
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;

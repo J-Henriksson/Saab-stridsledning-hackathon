@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import MapGL, { Marker, NavigationControl, MapRef } from "react-map-gl/maplibre";
+import MapGL, { Marker, NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
@@ -8,7 +8,16 @@ import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords } from "lucide-react";
 
-import { BASE_COORDS, SWEDEN_CENTER, INITIAL_ZOOM, MAP_STYLE } from "./map/constants";
+import {
+  BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
+  MAP_STYLE, DARK_STYLE, TOPO_STYLE, SATELLITE_STYLE, MINIMAL_STYLE,
+  TERRARIUM_TILES, OCEAN_TILES,
+} from "./map/constants";
+import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
+import { useMapLayers } from "@/hooks/useMapLayers";
+import type { OverlayKey } from "@/hooks/useMapLayers";
+import { MapFilterPanel } from "@/components/map/MapFilterPanel";
+import { RadarShadowOverlay } from "@/components/map/RadarShadowOverlay";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
 import { AircraftLayer } from "./map/AircraftLayer";
@@ -25,7 +34,16 @@ import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
+import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
+import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
+import { RegionBordersLayer } from "./map/RegionBordersLayer";
+import { LayerManager } from "./map/LayerManager";
+import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
+import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
+import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus } from "@/types/game";
+import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
+import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { getAircraft } from "@/core/units/helpers";
 
 type SelectedEntity =
@@ -35,6 +53,8 @@ type SelectedEntity =
   | { kind: "enemy_base"; id: string }
   | { kind: "enemy_entity"; id: string }
   | { kind: "unit"; unitId: string }
+  | { kind: "zone"; zoneId: string }
+  | { kind: "asset"; assetId: string }
   | null;
 
 type MapViewKey = "satelliter" | "vind" | "moln" | "hotzoner";
@@ -148,6 +168,11 @@ export default function MapPage() {
   );
   const [isPlanMode, setIsPlanMode] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
+  const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
+  const [hoveredOverlayKey, setHoveredOverlayKey] = useState<OverlayKey | null>(null);
+  const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
+  const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
@@ -194,6 +219,17 @@ export default function MapPage() {
   const selectedSatellite = selected?.kind === "satellite"
     ? liveSatellites.find((satellite) => satellite.id === selected.satelliteId)
     : undefined;
+
+  const selectedZone =
+    selected?.kind === "zone"
+      ? state.tacticalZones.find((z) => z.id === selected.zoneId)
+      : undefined;
+
+  const selectedAsset =
+    selected?.kind === "asset"
+      ? [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS].find((a) => a.id === selected.assetId)
+      : undefined;
+
 
   useEffect(() => {
     isFollowing.current = false;
@@ -250,6 +286,7 @@ export default function MapPage() {
   }, []);
 
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
+    if (drawingMode !== "none") return;
     if (placingMode && e.lngLat) {
       const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       const d = placingMode.data;
@@ -271,7 +308,7 @@ export default function MapPage() {
       return;
     }
     setSelected(null);
-  }, [placingMode, dispatch]);
+  }, [placingMode, drawingMode, dispatch]);
 
   const handleSatelliteUpdate = useCallback((satellites: SatelliteLiveState[]) => {
     setLiveSatellites(satellites);
@@ -296,9 +333,49 @@ export default function MapPage() {
     }
   }, []);
 
+  const handleZoneComplete = useCallback(
+    (zoneData: Omit<TacticalZone, "id" | "createdAtHour" | "createdAtDay">) => {
+      const ttlHours = 8;
+      const rawEndHour = state.hour + ttlHours;
+      const expiresAtDay = rawEndHour >= 24 ? state.day + Math.floor(rawEndHour / 24) : state.day;
+      const expiresAtHour = rawEndHour % 24;
+      dispatch({
+        type: "ADD_TACTICAL_ZONE",
+        zone: { ...zoneData, expiresAtHour, expiresAtDay },
+      });
+      setDrawingMode("none");
+    },
+    [dispatch, state.hour, state.day]
+  );
+
+  const drawState = useZoneDrawing({ mode: drawingMode, onZoneComplete: handleZoneComplete });
+
+  const handleToggleVisibility = useCallback(
+    (key: keyof OverlayLayerVisibility) => {
+      dispatch({
+        type: "SET_OVERLAY_VISIBILITY",
+        key,
+        value: !state.overlayVisibility[key],
+      });
+    },
+    [dispatch, state.overlayVisibility]
+  );
+
+  const handleSetAor = useCallback((markerId: string, km: number) => {
+    setAorOverrides((prev) => ({ ...prev, [markerId]: km }));
+  }, []);
+
+  const handleSelectAsset = useCallback((asset: FixedMilitaryAsset) => {
+    setSelected({ kind: "asset", assetId: asset.id });
+  }, []);
+
+  const userZoneCount = state.tacticalZones.filter((z) => z.category === "user").length;
+
   // Panel header content
   const panelTitle = (() => {
     if (selectedAircraft) return { main: selectedAircraft.tailNumber, sub: `${selectedAircraft.type} · ${selectedBase?.name}` };
+    if (selectedZone) return { main: selectedZone.name, sub: selectedZone.category === "fixed" ? "Permanent skyddszon" : "Temporär zon" };
+    if (selectedAsset) return { main: selectedAsset.name, sub: selectedAsset.type.replace("_", " ").toUpperCase() };
     if (selected?.kind === "base") return { main: selectedBase?.name ?? selected.baseId, sub: selectedBase?.type ?? "Reservbas" };
     if (selected?.kind === "enemy_base" && selectedEnemyBase) return { main: selectedEnemyBase.name, sub: "Fiendens bas" };
     if (selected?.kind === "enemy_entity" && selectedEnemyEntity) return { main: selectedEnemyEntity.name, sub: "Fiendens enhet" };
@@ -363,23 +440,97 @@ export default function MapPage() {
         {/* Map area */}
         <div
           className="flex-1 relative overflow-hidden"
-          style={{ cursor: placingMode ? "crosshair" : undefined }}
+          style={{
+            cursor: placingMode ? "crosshair" : undefined,
+            ...(mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : {}),
+          }}
         >
           <MapGL
             ref={mapRef}
             initialViewState={{
-              longitude: BASE_COORDS.MOB.lng,
-              latitude: BASE_COORDS.MOB.lat,
-              zoom: 9,
-              pitch: 30,
+              longitude: STOCKHOLM_CENTER.lng,
+              latitude: STOCKHOLM_CENTER.lat,
+              zoom: TACTICAL_ZOOM,
+              pitch: 0,
             }}
-            mapStyle={MAP_STYLE}
+            mapStyle={
+              mapLayerState.baseMap === "topo"      ? TOPO_STYLE :
+              mapLayerState.baseMap === "satellite" ? SATELLITE_STYLE :
+              mapLayerState.baseMap === "minimal"   ? MINIMAL_STYLE :
+              mapLayerState.baseMap === "dark"      ? DARK_STYLE :
+              MAP_STYLE  // "voyager" — default
+            }
             onClick={handleMapClick}
             onLoad={handleMapLoad}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
-            <NavigationControl position="top-right" />
+            <NavigationControl position="bottom-right" />
+
+            {/* Ocean overlay — rendered first so it sits below all other layers */}
+            {(mapLayerState.overlays.ocean.active || hoveredOverlayKey === "ocean") && (
+              <Source
+                id="terrain-ocean"
+                type="raster"
+                tiles={OCEAN_TILES}
+                tileSize={256}
+                attribution="Tiles © Esri"
+              >
+                <Layer
+                  id="terrain-ocean-layer"
+                  type="raster"
+                  paint={{
+                    "raster-opacity": hoveredOverlayKey === "ocean" && !mapLayerState.overlays.ocean.active
+                      ? (mapLayerState.overlays.ocean.opacity * 0.5) / 100
+                      : mapLayerState.overlays.ocean.opacity / 100,
+                    // Nudge toward teal to emphasise water bodies as flight corridors
+                    "raster-saturation": 0.4,
+                    "raster-hue-rotate": 15,
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Hillshade — uses MapLibre's native hillshade layer type, rendered inside GL
+                so it sits below zones/rings/markers automatically. Disabled on satellite
+                because the imagery already contains its own terrain shadows. */}
+            {(mapLayerState.overlays.hillshade.active || hoveredOverlayKey === "hillshade") &&
+              mapLayerState.baseMap !== "satellite" && (
+              <Source
+                id="terrain-dem"
+                type="raster-dem"
+                tiles={[TERRARIUM_TILES]}
+                tileSize={256}
+                encoding="terrarium"
+              >
+                <Layer
+                  id="terrain-hillshade"
+                  type="hillshade"
+                  paint={{
+                    "hillshade-shadow-color": "#1e2d40",
+                    "hillshade-highlight-color": "#d0d8e8",
+                    "hillshade-accent-color": "#3a4a5c",
+                    // exaggeration (0–1) doubles as opacity — driven by the per-overlay slider
+                    "hillshade-exaggeration": hoveredOverlayKey === "hillshade" && !mapLayerState.overlays.hillshade.active
+                      ? (mapLayerState.overlays.hillshade.opacity * 0.5) / 100
+                      : mapLayerState.overlays.hillshade.opacity / 100,
+                    "hillshade-illumination-direction": 335,
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* County/region borders — base geographic reference layer */}
+            <RegionBordersLayer />
+
+            {/* Tactical zone fills */}
+            <TacticalZonesLayer
+              zones={state.tacticalZones}
+              visible={state.overlayVisibility.activeZones}
+            />
+
+            {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
+            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state.overlayVisibility} />
 
             <SupplyLinesLayer bases={state.bases} />
             {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
@@ -394,11 +545,22 @@ export default function MapPage() {
             <AircraftLayer
               bases={state.bases}
               currentHour={state.hour}
+              currentDay={state.day}
               onSelectAircraft={(baseId, aircraftId) =>
                 setSelected({ kind: "aircraft", baseId, aircraftId })
               }
               selectedAircraftId={selectedAircraftId}
               onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
+              tacticalZones={state.tacticalZones}
+              dispatch={dispatch}
+            />
+
+            {/* Fixed military & civilian asset markers */}
+            <FixedAssetMarkers
+              showMilitaryBases={state.overlayVisibility.militaryBases}
+              showCriticalInfra={state.overlayVisibility.criticalInfra}
+              flygvapnetMode={state.overlayVisibility.flygvapnet}
+              onSelectAsset={handleSelectAsset}
             />
 
             <UnitsLayer
@@ -416,6 +578,8 @@ export default function MapPage() {
                   (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === id
                 }
                 onClick={() => setSelected({ kind: "base", baseId: id })}
+                flygvapnetMode={state.overlayVisibility.flygvapnet}
+                showAirbases={true}
               />
             ))}
 
@@ -458,6 +622,9 @@ export default function MapPage() {
             {state.friendlyEntities.map((fe) => (
               <FriendlyEntityPin key={fe.id} entity={fe} />
             ))}
+
+            {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
+            <DrawingPreviewOverlay drawState={drawState} />
           </MapGL>
 
           {/* Placement mode banner */}
@@ -478,13 +645,86 @@ export default function MapPage() {
           {/* Wind particle flow field — shown when vind tab is active */}
           {visibleViews.vind && <WindLayer active={true} />}
 
-          {/* Scanline CRT overlay */}
+          {/* Search bar — top left */}
+          <div className="absolute top-3 left-14 z-10" style={{ pointerEvents: "auto" }}>
+            <input
+              type="text"
+              placeholder="Sök position eller enhet..."
+              className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
+              style={{
+                background: "rgba(255,255,255,0.90)",
+                border: "1px solid rgba(45,90,39,0.28)",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
+              }}
+            />
+          </div>
+
+          {/* Radar shadow viewshed — canvas overlay, only when active and observer selected */}
+          {(() => {
+            const observerLngLat: [number, number] | null =
+              selectedBase && BASE_COORDS[selectedBase.id]
+                ? [BASE_COORDS[selectedBase.id].lng, BASE_COORDS[selectedBase.id].lat]
+                : selectedAsset
+                ? [selectedAsset.lng, selectedAsset.lat]
+                : null;
+            const showShadow =
+              (mapLayerState.overlays.radarShadow.active || hoveredOverlayKey === "radarShadow") &&
+              observerLngLat !== null;
+            if (!showShadow) return null;
+            return (
+              <RadarShadowOverlay
+                observerLngLat={observerLngLat}
+                opacity={
+                  hoveredOverlayKey === "radarShadow" && !mapLayerState.overlays.radarShadow.active
+                    ? (mapLayerState.overlays.radarShadow.opacity * 0.5) / 100
+                    : mapLayerState.overlays.radarShadow.opacity / 100
+                }
+              />
+            );
+          })()}
+
+          {/* Legend card — bottom left, above aircraft bar */}
           <div
-            className="absolute inset-0 pointer-events-none"
+            className="absolute bottom-14 left-3 z-10 p-3 rounded-xl text-xs font-mono pointer-events-none"
             style={{
-              background:
-                "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,100,0.01) 2px, rgba(0,255,100,0.01) 4px)",
+              background: "rgba(255,255,255,0.90)",
+              border: "1px solid rgba(0,0,0,0.08)",
+              backdropFilter: "blur(10px)",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
             }}
+          >
+            <div className="font-bold text-gray-500 mb-2 text-[9px] tracking-widest">LEGEND</div>
+            <div className="space-y-1.5">
+              {[
+                { color: "#2D5A27", label: "Svenska militära baser", dashed: false },
+                { color: "#708090", label: "Kritisk infrastruktur", dashed: false },
+                { color: "#F4D03F", label: "Skyddsobjekt", dashed: false },
+                { color: "#2D5A27", label: "AOR (ansvarsområde)", dashed: true },
+              ].map(({ color, label, dashed }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span
+                    className="shrink-0 w-5 h-[2px] rounded"
+                    style={{
+                      background: dashed ? "none" : color,
+                      borderTop: dashed ? `2px dashed ${color}` : "none",
+                    }}
+                  />
+                  <span className="text-[10px] text-gray-600">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Layer manager — left edge */}
+          <LayerManager
+            drawingMode={drawingMode}
+            onSetDrawingMode={setDrawingMode}
+            visibility={state.overlayVisibility}
+            onToggleVisibility={handleToggleVisibility}
+            activeZoneCount={userZoneCount}
+            terrainFilterOpen={terrainFilterOpen}
+            onOpenTerrainFilter={() => setTerrainFilterOpen((v) => !v)}
           />
 
           <MapModeSidebar
@@ -497,6 +737,22 @@ export default function MapPage() {
             selectedSatelliteId={selectedSatelliteId}
             onSelectSatellite={(satelliteId) => setSelected({ kind: "satellite", satelliteId })}
           />
+
+          {/* Terrain filter panel */}
+          <AnimatePresence>
+            {terrainFilterOpen && (
+              <MapFilterPanel
+                state={mapLayerState}
+                onBaseMapChange={setBaseMap}
+                onToggleOverlay={toggleOverlay}
+                onSetOverlayOpacity={setOverlayOpacity}
+                onToggleDampColors={toggleDampColors}
+                onHoverChange={setHoveredOverlayKey}
+                hasObserver={!!(selectedBase || selectedAsset)}
+                onClose={() => setTerrainFilterOpen(false)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Active aircraft bar */}
           <ActiveAircraftBar
@@ -532,7 +788,7 @@ export default function MapPage() {
                       <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
                       <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
                     </>
-                  ) : (
+                  ) : panelTitle ? (
                     <>
                       <div className="flex items-center gap-1.5">
                         {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
@@ -540,10 +796,14 @@ export default function MapPage() {
                             ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
                             : <Swords className="h-3.5 w-3.5 text-red-300" />
                         )}
-                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle?.main}</div>
+                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
                       </div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle?.sub}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
                     </>
+                  ) : (
+                    <div className="text-xs font-bold text-foreground font-mono">
+                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
+                    </div>
                   )}
                 </div>
                 <button
@@ -569,10 +829,30 @@ export default function MapPage() {
                   onRecall={handleRecall}
                   currentHour={state.hour}
                 />
+              ) : selectedZone ? (
+                <ZoneDetailPanel
+                  zone={selectedZone}
+                  onDelete={() => {
+                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
+                    setSelected(null);
+                  }}
+                  currentHour={state.hour}
+                  currentDay={state.day}
+                />
+              ) : selectedAsset ? (
+                <AssetInfoPanel
+                  asset={selectedAsset}
+                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
+                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
+                />
               ) : selected?.kind === "base" && selectedBase ? (
                 <BaseDetailPanel
                   base={selectedBase}
-                  onSelectAircraft={(id) => setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })}
+                  onSelectAircraft={(id) =>
+                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
+                  }
+                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
+                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
                 />
               ) : selected?.kind === "base" ? (
                 <div className="p-4 text-xs text-muted-foreground">
@@ -986,6 +1266,112 @@ function SatelliteModePanel({
             </div>
           </button>
         )})}
+      </div>
+    </div>
+  );
+}
+
+// ── Asset info panel ───────────────────────────────────────────────────────
+
+function AssetInfoPanel({
+  asset,
+  aorRadiusKm,
+  onSetAor,
+}: {
+  asset: FixedMilitaryAsset;
+  aorRadiusKm: number;
+  onSetAor: (km: number) => void;
+}) {
+  const TYPE_LABELS: Record<string, string> = {
+    army_regiment:    "Armeregementen",
+    marine_regiment:  "Marinregementen",
+    naval_base:       "Marinbas",
+    airport_civilian: "Civilt flygfält",
+    ammo_depot:       "Ammunitionsdepå",
+  };
+
+  return (
+    <div className="flex-1 p-4 space-y-3">
+      <div className="text-[10px] font-mono text-muted-foreground">{TYPE_LABELS[asset.type] ?? asset.type}</div>
+      <div className="space-y-2 text-[10px] font-mono">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Beteckning</span>
+          <span className="font-bold">{asset.shortName}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">Position</span>
+          <span className="font-bold">{asset.lat.toFixed(4)}°N {asset.lng.toFixed(4)}°E</span>
+        </div>
+        {asset.fillLevel !== undefined && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Fyllnadsnivå</span>
+              <span
+                className="font-bold"
+                style={{
+                  color:
+                    asset.fillLevel > 60
+                      ? "#22c55e"
+                      : asset.fillLevel > 30
+                      ? "#eab308"
+                      : "#ef4444",
+                }}
+              >
+                {asset.fillLevel}%
+              </span>
+            </div>
+            <div
+              className="rounded-full overflow-hidden"
+              style={{ height: 4, background: "#1e293b" }}
+            >
+              <div
+                style={{
+                  width: `${asset.fillLevel}%`,
+                  height: "100%",
+                  background:
+                    asset.fillLevel > 60
+                      ? "#22c55e"
+                      : asset.fillLevel > 30
+                      ? "#eab308"
+                      : "#ef4444",
+                  borderRadius: "9999px",
+                }}
+              />
+            </div>
+          </>
+        )}
+        {asset.protectionRadiusKm && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Skyddszon</span>
+            <span className="font-bold">{asset.protectionRadiusKm} km</span>
+          </div>
+        )}
+        {/* AOR slider */}
+        <div className="pt-1">
+          <div className="flex justify-between mb-1">
+            <span className="text-muted-foreground">Ansvarsområde (AOR)</span>
+            <span className="font-bold" style={{ color: "#D7AB3A" }}>{aorRadiusKm} km</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={100}
+            step={1}
+            value={aorRadiusKm}
+            onChange={(e) => onSetAor(Number(e.target.value))}
+            className="w-full h-1.5 cursor-pointer"
+            style={{ accentColor: "#D7AB3A" }}
+          />
+          <div className="flex justify-between text-[9px] font-mono text-muted-foreground mt-0.5">
+            <span>1 km</span>
+            <span>100 km</span>
+          </div>
+        </div>
+      </div>
+      <div
+        className="text-[9px] font-mono text-muted-foreground border-t border-border pt-2 mt-2"
+      >
+        PERMANENT SKYDDSOBJEKT — ej redigerbar
       </div>
     </div>
   );

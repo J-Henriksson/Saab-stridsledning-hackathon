@@ -7,6 +7,8 @@ export type SelectedEntity =
   | { kind: "enemy_base"; id: string }
   | { kind: "enemy_entity"; id: string }
   | { kind: "unit"; unitId: string }
+  | { kind: "zone"; zoneId: string }
+  | { kind: "asset"; assetId: string }
   | null;
 
 export function statusColor(base: Base | undefined) {
