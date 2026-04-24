@@ -168,6 +168,10 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "PLAN_UPDATE_COORDS_ROAD_BASE":
     case "PLAN_ADD_FRIENDLY_UNIT":
     case "PLAN_DELETE_FRIENDLY_UNIT":
+    case "LAUNCH_DRONE":
+    case "RECALL_DRONE":
+    case "UPDATE_DRONE_WAYPOINTS":
+    case "SET_DRONE_OVERLAY":
     case "ADD_TACTICAL_ZONE":
     case "REMOVE_TACTICAL_ZONE":
     case "SET_OVERLAY_VISIBILITY":
