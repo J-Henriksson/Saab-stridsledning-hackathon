@@ -3,6 +3,7 @@ import { Marker, Source, Layer } from "react-map-gl/maplibre";
 import type { Unit, GeoPosition } from "@/types/units";
 import { isAircraft, isAirDefense } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
 
 // Matches useGameClock: tickMs = max(1000 / gameSpeed, FRAME_MS).
@@ -163,6 +164,16 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const dest = unit.movement.destination;
         const destIsGeo = !!dest && typeof dest === "object" && "lat" in dest;
 
+        let aircraftAngle = 0;
+        if (isAircraft(unit) && isMoving && destIsGeo) {
+          const geoDest = dest as GeoPosition;
+          const dLng = geoDest.lng - pos.lng;
+          const dLat = geoDest.lat - pos.lat;
+          const midLat = (pos.lat + geoDest.lat) / 2;
+          const mercatorScale = 1 / Math.cos((midLat * Math.PI) / 180);
+          aircraftAngle = Math.atan2(-dLat * mercatorScale, dLng) * (180 / Math.PI);
+        }
+
         const isAD = isAirDefense(unit);
         // Pre-placed static Lv batteries never accept drag, even when deployed.
         const isStaticAD = isAD && (unit as import("@/types/units").AirDefenseUnit).isStatic === true;
@@ -206,7 +217,25 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
               }}
               title={`${unit.name} — ${unit.category} (${unit.affiliation})`}
             >
-              <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+              {isAircraft(unit) ? (
+                <img
+                  src={gripenSilhouette}
+                  alt={unit.name}
+                  width={20}
+                  style={{
+                    transform: `rotate(${aircraftAngle}deg)`,
+                    filter: unit.affiliation === "hostile"
+                      ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(320deg)"
+                      : unit.affiliation === "neutral"
+                      ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(200deg)"
+                      : unit.affiliation === "friend"
+                      ? "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg)"
+                      : "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(50deg)",
+                  }}
+                />
+              ) : (
+                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+              )}
               {isMoving && destIsGeo && (
                 <div
                   aria-hidden
