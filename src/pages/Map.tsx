@@ -152,7 +152,7 @@ export default function MapPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [visibleViews, setVisibleViews] = useState<Record<MapViewKey, boolean>>({
-    satelliter: true,
+    satelliter: false,
     vind: false,
     moln: false,
     hotzoner: false,

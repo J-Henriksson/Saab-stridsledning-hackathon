@@ -95,9 +95,9 @@ interface CloudBand {
 
 const CLOUD_BANDS: CloudBand[] = [
   // Scattered cumulus patches — drift east-northeast
-  { freq: 0.22, driftX: 0.012, driftY: -0.003, density: 0.22, transitionWidth: 0.24, opacity: 0.90, phase: 0.0 },
+  { freq: 0.22, driftX: 0.0024, driftY: -0.0006, density: 0.22, transitionWidth: 0.24, opacity: 0.90, phase: 0.0 },
   // Thin high-altitude wisps — drift slightly faster and more eastward
-  { freq: 0.09, driftX: 0.018, driftY: -0.002, density: 0.26, transitionWidth: 0.20, opacity: 0.50, phase: 2.8 },
+  { freq: 0.09, driftX: 0.0036, driftY: -0.0004, density: 0.26, transitionWidth: 0.20, opacity: 0.50, phase: 2.8 },
 ];
 
 // Soft geographic mask — full weight over Sweden, fades to zero outside
