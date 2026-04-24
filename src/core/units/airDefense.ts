@@ -38,9 +38,11 @@ export function getAirDefenseRangeProfile(unit: AirDefenseUnit): AirDefenseRange
     statusFactor * 0.1;
   const readinessPercent = Math.round(clamp01(readiness * deploymentFactor) * 100);
 
-  const engagementMultiplier = clamp01(
-    (capacityFactor * 0.65 + healthFactor * 0.2 + fuelFactor * 0.05 + statusFactor * 0.1) * deploymentFactor
-  );
+  const engagementMultiplier = capacityFactor === 0
+    ? 0
+    : clamp01(
+        (capacityFactor * 0.65 + healthFactor * 0.2 + fuelFactor * 0.05 + statusFactor * 0.1) * deploymentFactor
+      );
   const detectionMultiplier = clamp01(
     (healthFactor * 0.5 + fuelFactor * 0.15 + statusFactor * 0.2 + 0.15) * Math.max(0.5, deploymentFactor)
   );
