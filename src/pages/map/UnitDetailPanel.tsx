@@ -4,6 +4,7 @@ import type { BaseType } from "@/types/game";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 import { useGame } from "@/context/GameContext";
 import { Link } from "react-router-dom";
+import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
 
 const AFFILIATIONS: Affiliation[] = ["friend", "hostile", "neutral", "unknown", "pending"];
 
@@ -82,7 +83,8 @@ export function UnitDetailPanel({
       )}
 
       {isAirDefense(unit) && (() => {
-        const missileRatio = unit.missileStock.max > 0 ? unit.missileStock.loaded / unit.missileStock.max : 0;
+        const profile = getAirDefenseRangeProfile(unit);
+        const missileRatio = profile.capacityFactor;
         const missileColor = missileRatio > 0.6 ? "#22c55e" : missileRatio > 0.25 ? "#eab308" : "#ef4444";
         const fuelColor = unit.fuel > 60 ? "#22c55e" : unit.fuel > 25 ? "#eab308" : "#ef4444";
         const healthColor = unit.health > 60 ? "#22c55e" : unit.health > 30 ? "#eab308" : "#ef4444";
@@ -94,7 +96,6 @@ export function UnitDetailPanel({
           relocating: { bg: "rgba(148,163,184,0.20)", fg: "#94a3b8" },
         };
         const sc = statusColors[unit.operationalStatus] ?? statusColors.standby;
-        const effEngKm = Math.round(unit.engagementRange * missileRatio);
 
         return (
           <section
@@ -160,14 +161,27 @@ export function UnitDetailPanel({
 
             {/* Ranges */}
             <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] font-mono">
+              <span className="text-slate-500">Beredskap</span>
+              <span style={{ color: profile.readinessPercent > 65 ? "#22c55e" : profile.readinessPercent > 35 ? "#eab308" : "#ef4444" }}>
+                {profile.readinessPercent}%
+              </span>
               <span className="text-slate-500">Eff. räckvidd</span>
-              <span style={{ color: missileColor }}>{effEngKm} km</span>
+              <span style={{ color: missileColor }}>{profile.effectiveEngagementRange} km</span>
               <span className="text-slate-500">Max räckvidd</span>
               <span className="text-slate-400">{unit.engagementRange} km</span>
-              <span className="text-slate-500">Detektering</span>
-              <span className="text-amber-400">{unit.detectionRange} km</span>
+              <span className="text-slate-500">Eff. detektering</span>
+              <span className="text-amber-400">{profile.effectiveDetectionRange} km</span>
+              <span className="text-slate-500">Max detektering</span>
+              <span className="text-slate-400">{unit.detectionRange} km</span>
               <span className="text-slate-500">Förflyttning</span>
               <span className="text-slate-400">{unit.relocateSpeed} km/h</span>
+            </div>
+
+            <div
+              className="rounded border px-2.5 py-2 text-[10px] font-mono"
+              style={{ borderColor: "rgba(245,158,11,0.24)", background: "rgba(245,158,11,0.06)", color: "#f8fafc" }}
+            >
+              Klicka pa batteriet pa kartan for att visa aktuell rackvidd. Rackvidden vags mot robotlast, systemhalsa, bransle och status.
             </div>
 
             {/* WTA selector */}
@@ -239,17 +253,9 @@ export function UnitDetailPanel({
         <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Åtgärder</div>
         {isAtBase ? (
           <>
-            <button
-              onClick={() => {
-                const lat = parseFloat(prompt("Destinations-lat?", unit.position.lat.toFixed(3)) ?? "");
-                const lng = parseFloat(prompt("Destinations-lng?", unit.position.lng.toFixed(3)) ?? "");
-                if (!isFinite(lat) || !isFinite(lng)) return;
-                dispatch({ type: "DEPLOY_UNIT", unitId: unit.id, destination: { lat, lng } });
-              }}
-              className="w-full px-2 py-1 border border-border rounded hover:bg-muted/30"
-            >
-              Deploy till fält
-            </button>
+            <div className="rounded border border-primary/25 bg-primary/5 px-3 py-2 text-[10px] text-muted-foreground">
+              Placera enheten genom att dra den fran baspanelen ut pa kartan.
+            </div>
             <div className="flex gap-1 flex-wrap">
               {allBases.filter((b) => b.id !== unit.currentBase).map((b) => (
                 <button
@@ -270,17 +276,9 @@ export function UnitDetailPanel({
             >
               Återkalla till bas
             </button>
-            <button
-              onClick={() => {
-                const lat = parseFloat(prompt("Ny lat?", unit.position.lat.toFixed(3)) ?? "");
-                const lng = parseFloat(prompt("Ny lng?", unit.position.lng.toFixed(3)) ?? "");
-                if (!isFinite(lat) || !isFinite(lng)) return;
-                dispatch({ type: "RELOCATE_UNIT", unitId: unit.id, destination: { lat, lng } });
-              }}
-              className="w-full px-2 py-1 border border-border rounded hover:bg-muted/30"
-            >
-              Omplacera i fält
-            </button>
+            <div className="rounded border border-primary/25 bg-primary/5 px-3 py-2 text-[10px] text-muted-foreground">
+              Flytta enheten genom att dra markoren direkt pa kartan.
+            </div>
           </>
         )}
       </section>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import type { AirDefenseUnit } from "@/types/units";
+import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
 
 interface Props {
   units: AirDefenseUnit[];
@@ -50,50 +51,52 @@ export function AirDefenseRingsLayer({ units, selectedUnitId }: Props) {
     const project = (lngLat: [number, number]) => map.project(lngLat);
 
     for (const unit of units) {
-      if (unit.deployedState !== "emplaced") continue;
+      const isSelected = unit.id === selectedUnitId;
+      if (!isSelected) continue;
 
       const { lng, lat } = unit.position;
       const center = project([lng, lat]);
       const cx = center.x;
       const cy = center.y;
+      const profile = getAirDefenseRangeProfile(unit);
+      const detPx = kmToPx(project, lng, lat, profile.effectiveDetectionRange);
+      const engPx = kmToPx(project, lng, lat, profile.effectiveEngagementRange);
+      const readinessAlpha = Math.max(0.35, profile.readinessPercent / 100);
 
-      const detPx = kmToPx(project, lng, lat, unit.detectionRange);
-      const isSelected = unit.id === selectedUnitId;
-
-      // Engagement ring — size and color scale by missile load
-      const loadRatio = unit.missileStock.max > 0
-        ? unit.missileStock.loaded / unit.missileStock.max
-        : 0;
-
-      if (loadRatio > 0) {
-        const engPx = kmToPx(project, lng, lat, unit.engagementRange * loadRatio);
-        const hue = Math.round(loadRatio * 120); // 120 = green, 0 = red
-        const engColor = `hsla(${hue},90%,50%,${isSelected ? 0.9 : 0.7})`;
-
-        if (isSelected) {
-          ctx.beginPath();
-          ctx.arc(cx, cy, engPx, 0, 2 * Math.PI);
-          ctx.fillStyle = `hsla(${hue},90%,50%,0.08)`;
-          ctx.fill();
-        }
+      if (engPx > 0) {
+        const hue = Math.round(profile.capacityFactor * 120);
+        const engColor = `hsla(${hue}, 92%, 52%, ${0.72 + readinessAlpha * 0.2})`;
 
         ctx.beginPath();
         ctx.arc(cx, cy, engPx, 0, 2 * Math.PI);
+        ctx.fillStyle = `hsla(${hue}, 92%, 52%, 0.12)`;
+        ctx.fill();
         ctx.setLineDash([]);
-        ctx.lineWidth = isSelected ? 2.5 : 1.5;
+        ctx.lineWidth = 2.5;
         ctx.strokeStyle = engColor;
         ctx.stroke();
       }
 
-      // Detection ring (outer, animated dashed) — always full range
+      if (detPx > 0) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, detPx, 0, 2 * Math.PI);
+        ctx.setLineDash([10, 6]);
+        ctx.lineDashOffset = -dashOffsetRef.current;
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = `rgba(245, 158, 11, ${0.28 + readinessAlpha * 0.2})`;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       ctx.beginPath();
-      ctx.arc(cx, cy, detPx, 0, 2 * Math.PI);
-      ctx.setLineDash([8, 5]);
-      ctx.lineDashOffset = -dashOffsetRef.current;
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(234,179,8,0.35)";
+      ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, 8.5, 0, 2 * Math.PI);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(220, 38, 38, 0.9)";
       ctx.stroke();
-      ctx.setLineDash([]);
     }
   }, [units, selectedUnitId, mapRef]);
 

@@ -95,6 +95,10 @@ function putUnitInField(state: GameState, unit: Unit): GameState {
   return { ...state, deployedUnits: [...state.deployedUnits, unit] };
 }
 
+function shouldPlaceImmediately(unit: Unit): boolean {
+  return unit.category === "air_defense";
+}
+
 /** Pure reducer: gameReducer(state, action) => newState */
 export function gameReducer(state: GameState, action: GameAction): GameState {
   // Reset / load are always valid
@@ -347,14 +351,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!loc) return state;
       const { unit, baseId } = loc;
       if (baseId === null) return state;
+      const placeImmediately = shouldPlaceImmediately(unit);
       const newUnit: Unit = enforceAirborneInvariant(
         {
           ...unit,
+          currentBase: null,
           lastBase: unit.currentBase,
+          position: placeImmediately ? action.destination : unit.position,
           movement: {
-            state: unit.category === "aircraft" ? "airborne" : "moving",
-            speed: action.speed ?? 60,
-            destination: action.destination,
+            state: placeImmediately ? "stationary" : unit.category === "aircraft" ? "airborne" : "moving",
+            speed: placeImmediately ? 0 : action.speed ?? 60,
+            destination: placeImmediately ? undefined : action.destination,
           },
           deployedAt: { day: state.day, hour: state.hour },
         } as Unit,
@@ -457,12 +464,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const loc = findUnit(state, action.unitId);
       if (!loc || loc.baseId !== null) return state;
       const { unit } = loc;
+      const placeImmediately = shouldPlaceImmediately(unit);
       const newUnit: Unit = {
         ...unit,
+        position: placeImmediately ? action.destination : unit.position,
         movement: {
-          state: unit.category === "aircraft" ? "airborne" : "moving",
-          speed: 60,
-          destination: action.destination,
+          state: placeImmediately ? "stationary" : unit.category === "aircraft" ? "airborne" : "moving",
+          speed: placeImmediately ? 0 : 60,
+          destination: placeImmediately ? undefined : action.destination,
         },
       } as Unit;
       const s1 = removeUnitFromState(state, unit.id);

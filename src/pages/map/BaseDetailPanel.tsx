@@ -1,7 +1,7 @@
 import { Base } from "@/types/game";
 import { fuelColor, getReadiness } from "./helpers";
 import { getAircraft } from "@/core/units/helpers";
-import { isAirDefense, isRadar, isDrone } from "@/types/units";
+import { isAirDefense, isRadar } from "@/types/units";
 import { StatBox } from "./StatBox";
 import {
   Plane,
@@ -30,7 +30,7 @@ export function BaseDetailPanel({
   onSetAor: (km: number) => void;
 }) {
   const aircraftList = getAircraft(base);
-  const groundUnits = base.units.filter((u) => isAirDefense(u) || isRadar(u) || isDrone(u));
+  const groundUnits = base.units.filter((u) => isAirDefense(u) || isRadar(u));
   const mc = aircraftList.filter((a) => a.status === "ready");
   const nmc = aircraftList.filter((a) => a.status === "unavailable");
   const maintenance = aircraftList.filter((a) => a.status === "under_maintenance");
@@ -240,13 +240,18 @@ export function BaseDetailPanel({
                 <button
                   key={u.id}
                   draggable
+                  data-unit-drag-id={u.id}
                   onDragStart={(e) => {
                     e.dataTransfer.setData("text/plain", u.id);
+                    e.dataTransfer.setData("application/x-sam-unit", u.id);
                     e.dataTransfer.effectAllowed = "move";
                   }}
                   onClick={() => onSelectUnit?.(u.id)}
                   className="w-full flex items-center gap-2 p-2 rounded border border-border bg-card hover:border-primary/40 hover:bg-muted/30 transition-colors text-left"
-                  style={{ cursor: "grab" }}
+                  style={{
+                    cursor: "grab",
+                    boxShadow: isAD ? "inset 0 0 0 1px rgba(220,38,38,0.14)" : undefined,
+                  }}
                 >
                   <span
                     className="w-2 h-2 rounded-full shrink-0"
@@ -258,6 +263,11 @@ export function BaseDetailPanel({
                   <span className="text-[9px] text-muted-foreground">{u.type}</span>
                   {missiles && (
                     <span className="text-[9px] font-mono text-red-400">{missiles.loaded}/{missiles.max}</span>
+                  )}
+                  {isAD && (
+                    <span className="rounded-full border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[8px] font-mono text-red-300">
+                      Dra till karta
+                    </span>
                   )}
                   <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                 </button>

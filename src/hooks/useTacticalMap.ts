@@ -13,8 +13,8 @@ export function useTacticalMap() {
   }, [state.bases, state.deployedUnits]);
 
   const deployedAdUnits = useMemo(
-    () => adUnits.filter((u) => u.currentBase === null),
-    [adUnits]
+    () => state.deployedUnits.filter(isAirDefense) as AirDefenseUnit[],
+    [state.deployedUnits]
   );
 
   const assignTarget = useCallback(

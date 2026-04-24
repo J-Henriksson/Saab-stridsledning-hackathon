@@ -156,7 +156,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const destIsGeo = !!dest && typeof dest === "object" && "lat" in dest;
 
         const isAD = isAirDefense(unit);
-        const isDraggable = isAD && unit.currentBase === null;
+        const isDraggable = unit.currentBase === null;
         const glowFilter = selectedUnitId === unit.id
           ? isAD
             ? "drop-shadow(0 0 6px #DC2626)"

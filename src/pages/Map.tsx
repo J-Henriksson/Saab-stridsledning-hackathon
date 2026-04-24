@@ -66,6 +66,11 @@ interface PlacingMode {
   data: Record<string, string>;
 }
 
+interface DraggingUnitState {
+  unitId: string;
+  unitName: string;
+}
+
 const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_base:   "vänlig bas",
   friendly_entity: "vänlig enhet",
@@ -195,6 +200,8 @@ export default function MapPage() {
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
   const [hoveredOverlayKey, setHoveredOverlayKey] = useState<OverlayKey | null>(null);
+  const [draggingUnit, setDraggingUnit] = useState<DraggingUnitState | null>(null);
+  const [dropCandidate, setDropCandidate] = useState<{ lat: number; lng: number } | null>(null);
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
@@ -230,6 +237,35 @@ export default function MapPage() {
     [state.bases, state.deployedUnits]
   );
 
+  useEffect(() => {
+    const onDragStart = (event: DragEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      const dragSource = target.closest<HTMLElement>("[data-unit-drag-id]");
+      const unitId = dragSource?.dataset.unitDragId;
+      if (!unitId) return;
+      const unit = allUnits.find((candidate) => candidate.id === unitId);
+      if (!unit) return;
+
+      setDraggingUnit({
+        unitId: unit.id,
+        unitName: unit.name,
+      });
+    };
+
+    const onDragEnd = () => {
+      setDraggingUnit(null);
+      setDropCandidate(null);
+    };
+
+    document.addEventListener("dragstart", onDragStart);
+    document.addEventListener("dragend", onDragEnd);
+    return () => {
+      document.removeEventListener("dragstart", onDragStart);
+      document.removeEventListener("dragend", onDragEnd);
+    };
+  }, [allUnits]);
+
   const { adUnits, deployedAdUnits } = useTacticalMap();
 
   const selectedBase =
@@ -257,6 +293,9 @@ export default function MapPage() {
 
   const selectedUnit = selected?.kind === "unit"
     ? allUnits.find((u) => u.id === selected.unitId)
+    : undefined;
+  const draggedUnit = draggingUnit
+    ? allUnits.find((u) => u.id === draggingUnit.unitId)
     : undefined;
   const selectedSatellite = selected?.kind === "satellite"
     ? liveSatellites.find((satellite) => satellite.id === selected.satelliteId)
@@ -484,10 +523,26 @@ export default function MapPage() {
         <div
           className="flex-1 relative overflow-hidden"
           style={{
-            cursor: placingMode ? "crosshair" : undefined,
+            cursor: placingMode ? "crosshair" : draggingUnit ? "grabbing" : undefined,
             ...(mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : {}),
           }}
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!draggingUnit) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const lngLat = mapRef.current?.getMap().unproject([
+              e.clientX - rect.left,
+              e.clientY - rect.top,
+            ]);
+            if (lngLat) {
+              setDropCandidate({ lat: lngLat.lat, lng: lngLat.lng });
+            }
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setDropCandidate(null);
+            }
+          }}
           onDrop={(e) => {
             e.preventDefault();
             const unitId = e.dataTransfer.getData("text/plain");
@@ -499,6 +554,9 @@ export default function MapPage() {
             ]);
             if (!lngLat) return;
             dispatch({ type: "DEPLOY_UNIT", unitId, destination: { lat: lngLat.lat, lng: lngLat.lng } });
+            setSelected({ kind: "unit", unitId });
+            setDraggingUnit(null);
+            setDropCandidate(null);
           }}
         >
           <MapGL
@@ -620,15 +678,46 @@ export default function MapPage() {
             />
 
             <UnitsLayer
-              units={allUnits}
+              units={state.deployedUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
 
             <AirDefenseRingsLayer
-              units={deployedAdUnits.filter((u) => u.deployedState === "emplaced")}
+              units={deployedAdUnits}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
+
+            {draggingUnit && dropCandidate && (
+              <Marker longitude={dropCandidate.lng} latitude={dropCandidate.lat} anchor="center">
+                <div className="pointer-events-none relative">
+                  <div
+                    className="absolute left-1/2 top-1/2 rounded-full border border-red-400/60 bg-red-500/10"
+                    style={{
+                      width: 116,
+                      height: 116,
+                      transform: "translate(-50%, -50%)",
+                      boxShadow: "0 0 30px rgba(220,38,38,0.16)",
+                    }}
+                  />
+                  <div
+                    className="absolute left-1/2 top-1/2 h-3 w-3 rounded-full bg-red-400"
+                    style={{ transform: "translate(-50%, -50%)" }}
+                  />
+                  <div
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 rounded-md border px-2 py-1 text-[10px] font-mono text-red-200"
+                    style={{
+                      transform: "translate(-50%, calc(-50% + 70px))",
+                      background: "rgba(8,17,32,0.92)",
+                      borderColor: "rgba(220,38,38,0.35)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {draggedUnit ? draggedUnit.name : draggingUnit.unitName}
+                  </div>
+                </div>
+              </Marker>
+            )}
 
             <WTALayer
               adUnits={adUnits}
@@ -705,6 +794,26 @@ export default function MapPage() {
                 >
                   Avbryt
                 </button>
+              </div>
+            </div>
+          )}
+
+          {draggingUnit && (
+            <div className="absolute inset-0 z-10 flex items-start justify-center pointer-events-none">
+              <div
+                className="mt-4 px-4 py-2 rounded font-mono text-xs flex items-center gap-3"
+                style={{
+                  background: dropCandidate ? "rgba(34,197,94,0.16)" : "rgba(8,17,32,0.88)",
+                  border: dropCandidate ? "1px solid rgba(34,197,94,0.55)" : "1px solid rgba(220,38,38,0.35)",
+                  color: dropCandidate ? "#bbf7d0" : "#fca5a5",
+                  boxShadow: "0 12px 30px rgba(2,6,23,0.35)",
+                }}
+              >
+                <span>
+                  {dropCandidate
+                    ? `Slapp ${draggingUnit.unitName} for att gruppera luftvarnet`
+                    : `Dra ${draggingUnit.unitName} till kartan for att gruppera luftvarnet`}
+                </span>
               </div>
             </div>
           )}
