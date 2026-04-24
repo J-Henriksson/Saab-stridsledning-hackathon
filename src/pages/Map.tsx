@@ -14,6 +14,7 @@ import {
   TERRARIUM_TILES, OCEAN_TILES,
 } from "./map/constants";
 import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
+import { RoadBaseDetailPanel } from "./map/RoadBaseDetailPanel";
 import { useMapLayers } from "@/hooks/useMapLayers";
 import type { OverlayKey } from "@/hooks/useMapLayers";
 import { MapFilterPanel } from "@/components/map/MapFilterPanel";
@@ -31,6 +32,7 @@ import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSide
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
 import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
+import { RoadBaseMarker } from "./map/RoadBaseMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
@@ -59,6 +61,7 @@ type SelectedEntity =
   | { kind: "radar"; radarId: string }
   | { kind: "zone"; zoneId: string }
   | { kind: "asset"; assetId: string }
+  | { kind: "road_base"; id: string }
   | null;
 
 type MapViewKey = "satelliter" | "vind" | "moln" | "hotzoner";
@@ -73,6 +76,7 @@ const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_entity: "vänlig enhet",
   enemy_base:      "fiendens bas",
   enemy_entity:    "fiendens enhet",
+  road_base:       "vägbas",
 };
 
 const MAP_MODE_OPTIONS: {
@@ -295,6 +299,11 @@ export default function MapPage() {
       ? state.enemyEntities.find((e) => e.id === selected.id)
       : undefined;
 
+  const selectedRoadBase =
+    selected?.kind === "road_base"
+      ? state.roadBases.find((rb) => rb.id === selected.id)
+      : undefined;
+
   const selectedAircraftId = selected?.kind === "aircraft" ? selected.aircraftId : undefined;
   const selectedSatelliteId = selected?.kind === "satellite" ? selected.satelliteId : undefined;
 
@@ -393,6 +402,9 @@ export default function MapPage() {
         case "friendly_entity":
           dispatch({ type: "PLAN_ADD_FRIENDLY_ENTITY", entity: { name: d.name, category: d.category as any, notes: d.notes ?? "", coords } });
           break;
+        case "road_base":
+          dispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
+          break;
       }
       setPlacingMode(null);
       return;
@@ -475,6 +487,7 @@ export default function MapPage() {
     if (selected?.kind === "base") return { main: selectedBase?.name ?? selected.baseId, sub: selectedBase?.type ?? "Reservbas" };
     if (selected?.kind === "enemy_base" && selectedEnemyBase) return { main: selectedEnemyBase.name, sub: "Fiendens bas" };
     if (selected?.kind === "enemy_entity" && selectedEnemyEntity) return { main: selectedEnemyEntity.name, sub: "Fiendens enhet" };
+    if (selected?.kind === "road_base" && selectedRoadBase) return { main: selectedRoadBase.name, sub: "Vägbas" };
     return null;
   })();
 
@@ -627,7 +640,11 @@ export default function MapPage() {
             />
 
             {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
-            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state?.overlayVisibility ?? ({} as any)} />
+            <MarkerRingsLayer
+              aorOverrides={aorOverrides}
+              visibleLayers={state?.overlayVisibility ?? ({} as any)}
+              roadBases={state?.roadBases ?? []}
+            />
 
             <SupplyLinesLayer bases={state?.bases ?? []} />
 
@@ -719,6 +736,16 @@ export default function MapPage() {
             ))}
             {state.friendlyEntities.map((fe) => (
               <FriendlyEntityPin key={fe.id} entity={fe} />
+            ))}
+            {state.roadBases.map((rb) => (
+              <RoadBaseMarker
+                key={rb.id}
+                roadBase={rb}
+                isPlanMode={isPlanMode}
+                isSelected={selected?.kind === "road_base" && selected.id === rb.id}
+                onSelect={() => setSelected({ kind: "road_base", id: rb.id })}
+                dispatch={dispatch}
+              />
             ))}
 
             {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}
@@ -1120,6 +1147,14 @@ export default function MapPage() {
                 <div className="p-4 text-xs text-muted-foreground">
                   Bas ej aktiv i detta scenario.
                 </div>
+              ) : selected?.kind === "road_base" && selectedRoadBase ? (
+                <RoadBaseDetailPanel
+                  roadBase={selectedRoadBase}
+                  isPlanMode={isPlanMode}
+                  dispatch={dispatch}
+                  onSetRange={(km) => handleSetAor(selectedRoadBase.id, km)}
+                  rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
+                />
               ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
                 <EnemyBaseDetailPanel base={selectedEnemyBase} />
               ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (

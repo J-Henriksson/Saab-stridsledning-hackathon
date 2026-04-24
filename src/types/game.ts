@@ -32,7 +32,7 @@ export interface EnemyEntity {
 }
 
 export type FriendlyMarkerCategory = "airbase" | "logistics" | "command" | "army" | "navy";
-export type FriendlyEntityCategory = "infantry" | "armor" | "artillery" | "air_defense" | "support" | "aircraft";
+export type FriendlyEntityCategory = "aircraft" | "air_defense" | "radar" | "drone";
 
 export interface FriendlyMarker {
   id: string;
@@ -52,6 +52,21 @@ export interface FriendlyEntity {
   notes: string;
   createdAt: number;
 }
+export type RoadBaseStatus  = "Beredskap" | "Operativ" | "Underhåll";
+export type RoadBaseEchelon = "Group" | "Platoon" | "Battalion";
+
+export interface RoadBase {
+  id: string;
+  name: string;
+  coords: { lat: number; lng: number };
+  status: RoadBaseStatus;
+  echelon: RoadBaseEchelon;
+  parentBaseId: string;
+  isDraggable: true;
+  rangeRadius: number;
+  createdAt: number;
+}
+
 export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS";
 export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE";
 export type ScenarioPhase = "FRED" | "KRIS" | "KRIG";
@@ -226,6 +241,10 @@ export type GameAction =
   | { type: "PLAN_ADD_FRIENDLY_ENTITY"; entity: Omit<FriendlyEntity, "id" | "createdAt"> }
   | { type: "PLAN_EDIT_FRIENDLY_ENTITY"; id: string; updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">> }
   | { type: "PLAN_DELETE_FRIENDLY_ENTITY"; id: string }
+  | { type: "PLAN_ADD_ROAD_BASE"; roadBase: Omit<RoadBase, "id" | "createdAt"> }
+  | { type: "PLAN_EDIT_ROAD_BASE"; id: string; updates: Partial<Omit<RoadBase, "id" | "createdAt">> }
+  | { type: "PLAN_DELETE_ROAD_BASE"; id: string }
+  | { type: "PLAN_UPDATE_COORDS_ROAD_BASE"; id: string; coords: { lat: number; lng: number } }
   | { type: "DEPLOY_UNIT"; unitId: string; destination: import("./units").GeoPosition; speed?: number }
   | { type: "TRANSFER_UNIT"; unitId: string; toBaseId: BaseType }
   | { type: "RECALL_UNIT"; unitId: string; toBaseId?: BaseType }
@@ -302,6 +321,7 @@ export interface GameState {
   enemyEntities: EnemyEntity[];
   friendlyMarkers: FriendlyMarker[];
   friendlyEntities: FriendlyEntity[];
+  roadBases: RoadBase[];
   tacticalZones: import("./overlay").TacticalZone[];
   overlayVisibility: import("./overlay").OverlayLayerVisibility;
 }

@@ -436,6 +436,19 @@ export const initialGameState: GameState = {
   enemyEntities: [],
   friendlyMarkers: [],
   friendlyEntities: [],
+  roadBases: [
+    {
+      id: "rob-e21-seed",
+      name: "ROB-E21",
+      coords: { lat: 59.85, lng: 17.65 },
+      status: "Operativ" as const,
+      echelon: "Platoon" as const,
+      parentBaseId: "F16",
+      isDraggable: true as const,
+      rangeRadius: 15,
+      createdAt: 1,
+    },
+  ],
   tacticalZones: generateFixedZones(),
   overlayVisibility: {
     militaryAssets: true,
