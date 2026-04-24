@@ -9,9 +9,17 @@ function isGeoPosition(x: unknown): x is GeoPosition {
 }
 
 export function enforceAirborneInvariant(unit: Unit, isAtBase: boolean): Unit {
-  if (unit.category === "aircraft" && !isAtBase) {
-    if (unit.movement.state === "stationary") {
-      return { ...unit, movement: { ...unit.movement, state: "airborne" } };
+  if (unit.category === "aircraft") {
+    const shouldBeAirborne = unit.status === "on_mission" || unit.status === "returning" || !isAtBase;
+    if (shouldBeAirborne && unit.movement.state === "stationary") {
+      return {
+        ...unit,
+        movement: {
+          ...unit.movement,
+          state: "airborne",
+          speed: unit.movement.speed || 420,
+        },
+      };
     }
   }
   return unit;
@@ -55,23 +63,29 @@ export function advanceMovement(unit: Unit, hoursElapsed: number = 1): Unit {
   const dest = unit.movement.destination;
   if (!isGeoPosition(dest)) return unit;
 
+  // knots = nautical miles per hour. 
+  // 1 degree latitude is approx 60 nautical miles.
+  // We use a simplified deg per hour for this simulation.
   const stepDeg = unit.movement.speed * KNOTS_TO_DEG_PER_HOUR * hoursElapsed;
-  const remaining = distanceDeg(unit.position, dest);
+  const currentPos = unit.position || { lat: 0, lng: 0 };
+  const remaining = distanceDeg(currentPos, dest);
 
   if (stepDeg >= remaining || remaining < 1e-4) {
     return {
       ...unit,
       position: { lat: dest.lat, lng: dest.lng },
       movement: { ...unit.movement, state: "stationary", speed: 0, destination: undefined },
-    } as Unit;
+    } as any;
   }
 
   const ratio = stepDeg / remaining;
+  const nextPos = {
+    lat: currentPos.lat + (dest.lat - currentPos.lat) * ratio,
+    lng: currentPos.lng + (dest.lng - currentPos.lng) * ratio,
+  };
+
   return {
     ...unit,
-    position: {
-      lat: unit.position.lat + (dest.lat - unit.position.lat) * ratio,
-      lng: unit.position.lng + (dest.lng - unit.position.lng) * ratio,
-    },
-  } as Unit;
+    position: nextPos,
+  } as any;
 }

@@ -59,7 +59,17 @@ export interface WeaponLoadout {
   agm?: number;    // air-to-ground missiles (KEPD 350, RBS-15)
   bombs?: number;  // guided / unguided bombs
   pods?: string[]; // sensor / jammer / recce pods
+  irisT?: number;
+  meteor?: number;
+  aim120?: number;
+  sidewinder?: number;
+  rbs15?: number;
+  gbu39?: number;
+  brimstone?: number;
+  gunAmmoPct?: number;
 }
+
+export type WeaponStatus = "Armed" | "Safe";
 
 export interface AircraftUnit extends UnitBase {
   category: "aircraft";
@@ -78,6 +88,13 @@ export interface AircraftUnit extends UnitBase {
   maintenanceTask?: MaintenanceTask;
   requiredSparePart?: string;
   fuel: number;
+  altitudeFt?: number;
+  transponderCode?: string;
+  homeBaseId?: BaseType;
+  originBase?: string;
+  estimatedLandingTime?: string;
+  weaponStatus?: WeaponStatus;
+  operatingState?: "Scrambled" | "Hangar" | "Apron" | "Maintenance";
   // ── Tactical fields (Baltic scenario) ────────────────────────────────────
   callsign?: string;
   squawkCode?: string;         // 4-digit octal transponder code

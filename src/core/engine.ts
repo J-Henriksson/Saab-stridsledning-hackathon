@@ -564,24 +564,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 }
 
 function handleTick(state: GameState, seconds: number): GameState {
+  if (!state.isRunning) return state;
   let cur = state;
   let totalSec = cur.second + seconds;
   while (totalSec >= 60) {
     totalSec -= 60;
     // One minute elapsed.
-    let newMin = cur.minute + 1;
-    if (newMin >= 60) {
-      newMin = 0;
-      // Hour rollover: advance hour/day and run the per-hour work first.
-      let newHour = cur.hour + 1;
-      let newDay = cur.day;
-      if (newHour >= 24) {
-        newHour = 6;
-        newDay = cur.day + 1;
+    const nextMin = (cur.minute + 1) % 60;
+    const hourRollover = cur.minute === 59;
+    
+    // 1. Advance Minute (includes movement for all units)
+    cur = handleAdvanceMinute({ ...cur, minute: nextMin, second: totalSec });
+    
+    // 2. Advance Hour if needed
+    if (hourRollover) {
+      let nextHour = cur.hour + 1;
+      let nextDay = cur.day;
+      if (nextHour >= 24) {
+        nextHour = 6;
+        nextDay = cur.day + 1;
       }
-      cur = handleAdvanceHour({ ...cur, hour: newHour, day: newDay, minute: 0, second: totalSec });
+      cur = handleAdvanceHour({ ...cur, hour: nextHour, day: nextDay });
     }
-    cur = handleAdvanceMinute({ ...cur, minute: newMin, second: totalSec });
   }
   return { ...cur, second: totalSec };
 }
@@ -853,7 +857,17 @@ function handleAdvanceHour(state: GameState): GameState {
           if (fromDrop && !fromATO) {
             returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
           }
-          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
+          const baseCoords = BASE_COORDS[base.id];
+          return {
+            ...ac,
+            status: "returning" as AircraftStatus,
+            missionEndHour: undefined,
+            movement: {
+              state: "airborne",
+              speed: ac.movement?.speed || 420,
+              destination: baseCoords
+            }
+          };
         }
       }
       return ac;
@@ -958,6 +972,7 @@ function handleRebaseAircraft(
   const toBaseName = toBase?.name ?? toBaseId;
 
   // Set aircraft to on_mission with rebaseTarget stored on the aircraft
+  const destCoords = BASE_COORDS[toBaseId as BaseType];
   const updatedBases = state.bases.map((base) =>
     base.id === fromBaseId
       ? {
@@ -970,6 +985,12 @@ function handleRebaseAircraft(
                   currentMission: "REBASE" as MissionType,
                   missionEndHour,
                   rebaseTarget: toBaseId as BaseType,
+                  movement: {
+                    state: "airborne",
+                    speed: ac.movement?.speed || 420,
+                    destination: destCoords
+                  },
+                  position: ac.position || BASE_COORDS[base.id]
                 }
               : ac
           ),
@@ -1028,10 +1049,36 @@ function handleDispatchOrder(state: GameState, orderId: string): GameState {
       ...base,
       units: mapAircraftInUnits(base.units, (ac) => {
         if (!order.assignedAircraft.includes(ac.id) || !isMissionCapable(ac.status)) return ac;
-        const extra = order.missionType === "REBASE" && order.targetBase
+        
+        const extra: any = order.missionType === "REBASE" && order.targetBase
           ? { missionEndHour: order.endHour, rebaseTarget: order.targetBase }
           : {};
-        return { ...ac, status: "on_mission" as AircraftStatus, currentMission: order.missionType, ...extra };
+        
+        // Set destination if order has coordinates
+        if (order.coords) {
+          extra.movement = {
+            state: "airborne",
+            speed: ac.movement?.speed || 420,
+            destination: order.coords
+          };
+        } else if (order.missionType === "REBASE" && order.targetBase) {
+          const destCoords = BASE_COORDS[order.targetBase];
+          if (destCoords) {
+            extra.movement = {
+              state: "airborne",
+              speed: ac.movement?.speed || 420,
+              destination: destCoords
+            };
+          }
+        }
+
+        return { 
+          ...ac, 
+          status: "on_mission" as AircraftStatus, 
+          currentMission: order.missionType, 
+          ...extra,
+          position: ac.position || BASE_COORDS[base.id] // ensure position is set
+        };
       }),
     };
   });
@@ -1085,7 +1132,7 @@ function handleStartMaintenance(state: GameState, baseId: string, aircraftId: st
   });
 }
 
-function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: string, missionType: MissionType, durationHours?: number): GameState {
+function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: string, missionType: MissionType, durationHours?: number, coords?: GeoPosition): GameState {
   const endHour = durationHours ? state.hour + durationHours : undefined;
   const srcBase = state.bases.find((b) => b.id === baseId);
   const aircraft = srcBase ? getAircraft(srcBase).find((a) => a.id === aircraftId) : undefined;
@@ -1096,7 +1143,21 @@ function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: str
       ...base,
       units: mapAircraftInUnits(base.units, (ac) => {
         if (ac.id !== aircraftId || !isMissionCapable(ac.status)) return ac;
-        return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType, missionEndHour: endHour };
+        
+        const movement: any = {
+          state: "airborne",
+          speed: ac.movement?.speed || 420,
+          destination: coords
+        };
+
+        return { 
+          ...ac, 
+          status: "on_mission" as AircraftStatus, 
+          currentMission: missionType, 
+          missionEndHour: endHour,
+          movement,
+          position: ac.position || BASE_COORDS[base.id]
+        };
       }),
     };
   });

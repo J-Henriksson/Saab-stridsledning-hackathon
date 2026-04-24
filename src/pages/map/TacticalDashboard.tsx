@@ -1,58 +1,145 @@
-import type { AircraftUnit, FuelStatus } from "@/types/units";
+import type { AircraftUnit, FuelStatus, WeaponLoadout } from "@/types/units";
 import type { Base } from "@/types/game";
-import { Radar, Crosshair, Zap, Shield, Plane, AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock3,
+  Crosshair,
+  Gauge,
+  Plane,
+  Radar,
+  Shield,
+  Wrench,
+} from "lucide-react";
 
 const FUEL_THRESHOLDS: Record<FuelStatus, { color: string; bg: string; label: string }> = {
-  Normal:    { color: "#2D5A27", bg: "#2D5A2714", label: "NORMAL" },
-  Joker:     { color: "#D97706", bg: "#D9770614", label: "JOKER" },
-  Bingo:     { color: "#DC2626", bg: "#DC262614", label: "BINGO" },
+  Normal: { color: "#2D5A27", bg: "#2D5A2714", label: "NORMAL" },
+  Joker: { color: "#D97706", bg: "#D9770614", label: "JOKER" },
+  Bingo: { color: "#DC2626", bg: "#DC262614", label: "BINGO" },
   Emergency: { color: "#DC2626", bg: "#DC262622", label: "EMERGENCY" },
 };
 
 const MISSION_LABELS: Record<string, string> = {
-  QRA: "Quick Reaction Alert", CAP: "Combat Air Patrol",
-  CAS: "Close Air Support",    RECON: "Reconnaissance",
-  DCA: "Defensive Counter-Air", AEW: "Airborne Early Warning",
-  RECCE: "Reconnaissance",    ESCORT: "Escort",
+  QRA: "Quick Reaction Alert",
+  CAP: "Combat Air Patrol",
+  CAS: "Close Air Support",
+  RECON: "Reconnaissance",
+  RECCE: "Reconnaissance",
   TRANSPORT: "Transport",
+  TRAINING: "Training",
+  INTERCEPT: "Intercept",
+  COMBAT: "Combat",
+  DCA: "Defensive Counter-Air",
 };
 
+const DETAILED_LOADOUT_LABELS: Array<{ key: keyof WeaponLoadout; label: string; color: string }> = [
+  { key: "irisT", label: "IRIS-T", color: "#DC2626" },
+  { key: "meteor", label: "METEOR", color: "#B91C1C" },
+  { key: "aim120", label: "AIM-120", color: "#EF4444" },
+  { key: "sidewinder", label: "AIM-9", color: "#F97316" },
+  { key: "rbs15", label: "RBS-15", color: "#D97706" },
+  { key: "gbu39", label: "GBU-39", color: "#6B7280" },
+  { key: "brimstone", label: "BRIM", color: "#92400E" },
+];
+
 function GaugeBar({
-  value, max = 100, color, label, sublabel,
+  value,
+  max = 100,
+  color,
+  label,
+  sublabel,
 }: {
-  value: number; max?: number; color: string; label: string; sublabel?: string;
+  value: number;
+  max?: number;
+  color: string;
+  label: string;
+  sublabel?: string;
 }) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  const pct = Math.min(100, Math.max(0, (value / Math.max(max, 1)) * 100));
   return (
     <div>
-      <div className="flex justify-between items-baseline mb-1">
-        <span className="text-[9px] font-mono font-bold tracking-widest" style={{ color: "#6b7280" }}>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[9px] font-mono font-bold tracking-widest text-gray-500">
           {label}
         </span>
         <span className="text-[10px] font-mono font-bold" style={{ color }}>
           {sublabel ?? `${value}`}
         </span>
       </div>
-      <div className="rounded-full overflow-hidden" style={{ height: 6, background: "#e5e7eb" }}>
-        <div
-          className="h-full rounded-full transition-all"
-          style={{ width: `${pct}%`, background: color }}
-        />
+      <div className="overflow-hidden rounded-full bg-gray-200" style={{ height: 6 }}>
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
 }
 
-function WeaponBadge({ count, label, color }: { count: number; label: string; color: string }) {
+function WeaponBadge({ count, label, color }: { count: number | string; label: string; color: string }) {
   return (
     <div
-      className="flex flex-col items-center justify-center rounded-lg px-2 py-1.5 min-w-[44px]"
+      className="flex min-w-[56px] flex-col items-center justify-center rounded-lg px-2 py-1.5"
       style={{ background: `${color}12`, border: `1px solid ${color}40` }}
     >
-      <span className="text-sm font-bold font-mono" style={{ color }}>{count}</span>
-      <span className="text-[8px] font-mono" style={{ color: "#9ca3af" }}>{label}</span>
+      <span className="font-mono text-sm font-bold" style={{ color }}>
+        {count}
+      </span>
+      <span className="text-[8px] font-mono text-gray-500">{label}</span>
     </div>
   );
+}
+
+function dataCell(label: string, value: string | number | undefined) {
+  if (value === undefined || value === null || value === "") return null;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5">
+      <div className="text-[8px] tracking-widest text-gray-400">{label}</div>
+      <div className="mt-0.5 text-xs font-bold text-gray-800">{value}</div>
+    </div>
+  );
+}
+
+function getDetailedLoadout(loadout?: WeaponLoadout) {
+  if (!loadout) {
+    return { entries: [] as Array<{ label: string; count: number; color: string }>, totalStores: 0 };
+  }
+
+  const detailedEntries = DETAILED_LOADOUT_LABELS
+    .map(({ key, label, color }) => ({ label, color, count: Number(loadout[key] ?? 0) }))
+    .filter((entry) => entry.count > 0);
+
+  if (detailedEntries.length > 0) {
+    return {
+      entries: detailedEntries,
+      totalStores: detailedEntries.reduce((sum, entry) => sum + entry.count, 0),
+    };
+  }
+
+  const aggregateEntries = [
+    loadout.aam ? { label: "AAM", count: loadout.aam, color: "#DC2626" } : null,
+    loadout.agm ? { label: "AGM", count: loadout.agm, color: "#D97706" } : null,
+    loadout.bombs ? { label: "BOMBS", count: loadout.bombs, color: "#6B7280" } : null,
+  ].filter(Boolean) as Array<{ label: string; count: number; color: string }>;
+
+  return {
+    entries: aggregateEntries,
+    totalStores: aggregateEntries.reduce((sum, entry) => sum + entry.count, 0),
+  };
+}
+
+function getWeaponGaugeMax(aircraft: AircraftUnit, totalStores: number) {
+  if (aircraft.type === "GlobalEye" || aircraft.type === "TP84") {
+    return Math.max(1, aircraft.weaponLoadout?.pods?.length ?? 1);
+  }
+  if (aircraft.type === "SK60") {
+    return 4;
+  }
+  return Math.max(8, totalStores);
+}
+
+function getLandingCapability(base?: Base) {
+  if (!base?.weather) return "UNKNOWN";
+  if (base.weather.condition === "IMC" || base.weather.visibilityKm < 8 || base.weather.windKts > 20) return "RESTRICTED";
+  if (base.weather.condition === "MVMC" || base.weather.visibilityKm < 12) return "MARGINAL";
+  return "OPEN";
 }
 
 export function TacticalDashboard({
@@ -64,243 +151,172 @@ export function TacticalDashboard({
 }) {
   const fuelThreshold = aircraft.fuelStatus ?? "Normal";
   const fuelStyle = FUEL_THRESHOLDS[fuelThreshold];
-  const loadout = aircraft.weaponLoadout;
-  const missionLabel = aircraft.tacMission ? MISSION_LABELS[aircraft.tacMission] : null;
+  const missionLabel = aircraft.tacMission ? MISSION_LABELS[aircraft.tacMission] : aircraft.currentMission ? MISSION_LABELS[aircraft.currentMission] : null;
+  const operatingBaseName = base?.name ?? aircraft.originBase ?? aircraft.currentBase ?? "UNKNOWN BASE";
+  const homeBaseName = base?.name ?? aircraft.homeBaseId ?? operatingBaseName;
+  const { entries: loadoutEntries, totalStores } = getDetailedLoadout(aircraft.weaponLoadout);
+  const pods = aircraft.weaponLoadout?.pods ?? [];
+  const weaponGaugeMax = getWeaponGaugeMax(aircraft, totalStores);
+  const weaponGaugeValue = aircraft.type === "GlobalEye" || aircraft.type === "TP84"
+    ? pods.length
+    : totalStores;
+  const landingCapability = getLandingCapability(base);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
-      {/* Operating base banner — prominent */}
-      <div
-        className="rounded-xl px-3 py-2.5 flex items-center gap-2"
-        style={{ background: "#f0fdf4", border: "1.5px solid #2D5A27" }}
-      >
-        <Plane className="h-4 w-4 shrink-0" style={{ color: "#2D5A27" }} />
-        <div>
-          <div className="text-[9px] font-mono tracking-widest" style={{ color: "#6b7280" }}>
-            OPERATING FROM
-          </div>
-          <div className="font-bold text-sm font-mono" style={{ color: "#2D5A27" }}>
-            {base?.name ?? aircraft.currentBase ?? "OKÄND BAS"}
-          </div>
-          {base?.icaoCode && (
-            <div className="text-[9px] font-mono" style={{ color: "#6b7280" }}>
-              {base.icaoCode} · {base.weather?.condition ?? "—"}
-              {base.weather && ` · Vind ${base.weather.windKts} kt`}
+    <div className="space-y-4 border-b border-border/60 pb-4">
+      <div className="rounded-xl border border-[#2D5A27] bg-[#f0fdf4] px-3 py-3">
+        <div className="flex items-start gap-2">
+          <Plane className="mt-0.5 h-4 w-4 shrink-0 text-[#2D5A27]" />
+          <div className="min-w-0">
+            <div className="text-[11px] font-mono font-bold tracking-wide text-[#2D5A27]">
+              OPERATING FROM: {operatingBaseName}
             </div>
-          )}
+            <div className="mt-1 text-[10px] font-mono text-gray-600">
+              HOR TILL BAS: {homeBaseName}
+            </div>
+            <div className="mt-1 text-[9px] font-mono text-gray-500">
+              {(base?.icaoCode ?? aircraft.homeBaseId ?? "----")} · ETA {aircraft.estimatedLandingTime ?? "TBD"} · LANDING {landingCapability}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Identity row */}
       <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-        {aircraft.callsign && (
-          <div className="rounded-lg px-2 py-1.5" style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}>
-            <div className="text-[8px] tracking-widest" style={{ color: "#9ca3af" }}>CALLSIGN</div>
-            <div className="font-bold text-gray-800 text-xs mt-0.5">{aircraft.callsign}</div>
-          </div>
-        )}
-        {aircraft.squawkCode && (
-          <div className="rounded-lg px-2 py-1.5" style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}>
-            <div className="text-[8px] tracking-widest" style={{ color: "#9ca3af" }}>SQUAWK</div>
-            <div className="font-bold text-gray-800 text-xs mt-0.5">{aircraft.squawkCode}</div>
-          </div>
-        )}
-        {aircraft.wing && (
-          <div className="rounded-lg px-2 py-1.5" style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}>
-            <div className="text-[8px] tracking-widest" style={{ color: "#9ca3af" }}>WING</div>
-            <div className="font-bold text-gray-800 text-xs mt-0.5">{aircraft.wing}</div>
-          </div>
-        )}
-        {missionLabel && (
-          <div className="rounded-lg px-2 py-1.5" style={{ background: "#f9fafb", border: "1px solid #e5e7eb" }}>
-            <div className="text-[8px] tracking-widest" style={{ color: "#9ca3af" }}>MISSION</div>
-            <div className="font-bold text-gray-800 text-xs mt-0.5">{aircraft.tacMission}</div>
-          </div>
-        )}
+        {dataCell("CALLSIGN", aircraft.callsign)}
+        {dataCell("TRANSPONDER", aircraft.transponderCode ?? aircraft.squawkCode)}
+        {dataCell("WING", aircraft.wing)}
+        {dataCell("MISSION", aircraft.tacMission ?? aircraft.currentMission)}
       </div>
 
-      {/* Flight data */}
-      {(aircraft.machSpeed !== undefined || aircraft.verticalRate !== undefined) && (
-        <div className="space-y-1.5">
-          <div className="text-[9px] font-mono tracking-widest" style={{ color: "#9ca3af" }}>FLYGTILLSTÅND</div>
-          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-            {aircraft.machSpeed !== undefined && (
-              <div>
-                <div className="text-[8px]" style={{ color: "#9ca3af" }}>MACH</div>
-                <div className="font-bold text-gray-800">{aircraft.machSpeed.toFixed(2)}</div>
-              </div>
-            )}
-            {aircraft.verticalRate !== undefined && (
-              <div>
-                <div className="text-[8px]" style={{ color: "#9ca3af" }}>VSI (ft/min)</div>
-                <div
-                  className="font-bold"
-                  style={{ color: aircraft.verticalRate > 200 ? "#2D5A27" : aircraft.verticalRate < -200 ? "#DC2626" : "#374151" }}
-                >
-                  {aircraft.verticalRate > 0 ? "+" : ""}{aircraft.verticalRate}
-                </div>
-              </div>
-            )}
-            {aircraft.movement.heading !== undefined && (
-              <div>
-                <div className="text-[8px]" style={{ color: "#9ca3af" }}>HDG</div>
-                <div className="font-bold text-gray-800">{aircraft.movement.heading}°</div>
-              </div>
-            )}
-            {aircraft.movement.speed > 0 && (
-              <div>
-                <div className="text-[8px]" style={{ color: "#9ca3af" }}>SPEED (kt)</div>
-                <div className="font-bold text-gray-800">{aircraft.movement.speed}</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Fuel gauge */}
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-[9px] font-mono tracking-widest" style={{ color: "#9ca3af" }}>BRÄNSLE</div>
-          <div
-            className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full"
-            style={{ background: fuelStyle.bg, color: fuelStyle.color }}
-          >
-            {fuelStyle.label}
-          </div>
-        </div>
-        <GaugeBar
-          value={aircraft.fuel}
-          color={fuelThreshold === "Normal" ? "#2D5A27" : fuelThreshold === "Joker" ? "#D97706" : "#DC2626"}
-          label=""
-          sublabel={`${aircraft.fuel.toFixed(0)}%`}
-        />
-        {/* Threshold markers */}
-        <div className="relative mt-1" style={{ height: 12 }}>
-          <div className="absolute text-[7px] font-mono" style={{ left: "25%", transform: "translateX(-50%)", color: "#D97706" }}>
-            JOKER
-          </div>
-          <div className="absolute text-[7px] font-mono" style={{ left: "10%", transform: "translateX(-50%)", color: "#DC2626" }}>
-            BINGO
-          </div>
-        </div>
+      <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
+        {dataCell("ALTITUDE", aircraft.altitudeFt !== undefined ? `${aircraft.altitudeFt} ft` : undefined)}
+        {dataCell("HEADING", aircraft.movement.heading !== undefined ? `${aircraft.movement.heading}°` : undefined)}
+        {dataCell("SPEED", aircraft.movement.speed ? `${aircraft.movement.speed} kt` : "0 kt")}
+        {dataCell("MACH", aircraft.machSpeed !== undefined ? aircraft.machSpeed.toFixed(2) : undefined)}
+        {dataCell("VERT RATE", aircraft.verticalRate !== undefined ? `${aircraft.verticalRate > 0 ? "+" : ""}${aircraft.verticalRate} ft/min` : undefined)}
+        {dataCell("WEAPON SAFE", aircraft.weaponStatus ?? "Safe")}
       </div>
 
-      {/* Weapon loadout */}
-      {loadout && (
-        <div>
-          <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#9ca3af" }}>
-            VAPENLAST
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {(loadout.aam ?? 0) > 0 && (
-              <WeaponBadge count={loadout.aam!} label="AAM" color="#DC2626" />
-            )}
-            {(loadout.agm ?? 0) > 0 && (
-              <WeaponBadge count={loadout.agm!} label="AGM" color="#D97706" />
-            )}
-            {(loadout.bombs ?? 0) > 0 && (
-              <WeaponBadge count={loadout.bombs!} label="BOMBS" color="#6b7280" />
-            )}
-            {loadout.pods && loadout.pods.length > 0 && loadout.pods.map((p) => (
-              <div
-                key={p}
-                className="flex items-center px-2 py-1 rounded-lg text-[8px] font-mono"
-                style={{ background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8" }}
-              >
-                {p}
-              </div>
-            ))}
-            {!loadout.aam && !loadout.agm && !loadout.bombs && (!loadout.pods || loadout.pods.length === 0) && (
-              <span className="text-[9px] font-mono" style={{ color: "#9ca3af" }}>Ingen last</span>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Radar & systems */}
-      <div>
-        <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#9ca3af" }}>SYSTEM</div>
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-700">
-              <Radar className="h-3 w-3" style={{ color: aircraft.radarActive ? "#2D5A27" : "#9ca3af" }} />
-              Radar
-              {aircraft.radarRangeKm && aircraft.radarActive && (
-                <span style={{ color: "#6b7280" }}>{aircraft.radarRangeKm} km</span>
-              )}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest text-gray-500">
+              <Gauge className="h-3 w-3" />
+              FUEL
             </div>
-            <span
-              className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+            <div
+              className="rounded-full px-2 py-0.5 text-[9px] font-mono font-bold"
+              style={{ background: fuelStyle.bg, color: fuelStyle.color }}
+            >
+              {fuelStyle.label}
+            </div>
+          </div>
+          <GaugeBar
+            value={aircraft.fuel}
+            color={fuelStyle.color}
+            label="STATE"
+            sublabel={`${aircraft.fuel.toFixed(0)}%`}
+          />
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5">
+          <div className="mb-2 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[10px] font-mono tracking-widest text-gray-500">
+              <Crosshair className="h-3 w-3" />
+              WEAPONS
+            </div>
+            <div
+              className="rounded-full px-2 py-0.5 text-[9px] font-mono font-bold"
               style={{
-                background: aircraft.radarActive ? "#f0fdf4" : "#f9fafb",
-                color: aircraft.radarActive ? "#2D5A27" : "#9ca3af",
-                border: `1px solid ${aircraft.radarActive ? "#2D5A2740" : "#e5e7eb"}`,
+                background: aircraft.weaponStatus === "Armed" ? "#fef2f2" : "#f3f4f6",
+                color: aircraft.weaponStatus === "Armed" ? "#B91C1C" : "#6B7280",
               }}
             >
-              {aircraft.radarActive ? "AKTIV" : "TYST"}
+              {aircraft.weaponStatus ?? "Safe"}
+            </div>
+          </div>
+          <GaugeBar
+            value={weaponGaugeValue}
+            max={weaponGaugeMax}
+            color={aircraft.weaponStatus === "Armed" ? "#B91C1C" : "#6B7280"}
+            label="STORES"
+            sublabel={aircraft.type === "GlobalEye" || aircraft.type === "TP84" ? `${pods.length} payload` : `${weaponGaugeValue}/${weaponGaugeMax}`}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 text-[9px] font-mono tracking-widest text-gray-500">WEAPON LOADOUT</div>
+        <div className="flex flex-wrap gap-2">
+          {loadoutEntries.map((entry) => (
+            <WeaponBadge key={entry.label} count={entry.count} label={entry.label} color={entry.color} />
+          ))}
+          {pods.map((pod) => (
+            <div
+              key={pod}
+              className="flex items-center rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[8px] font-mono text-blue-700"
+            >
+              {pod}
+            </div>
+          ))}
+          {loadoutEntries.length === 0 && pods.length === 0 && (
+            <span className="text-[9px] font-mono text-gray-500">No stores loaded</span>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+        <div className="mb-2 text-[9px] font-mono tracking-widest text-gray-500">SYSTEMS</div>
+        <div className="space-y-2 text-[10px] font-mono">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-gray-700">
+              <Radar className="h-3 w-3" style={{ color: aircraft.radarActive ? "#2D5A27" : "#9CA3AF" }} />
+              Radar search sector
+            </div>
+            <span className="font-bold" style={{ color: aircraft.radarActive ? "#2D5A27" : "#9CA3AF" }}>
+              {aircraft.radarActive ? `ACTIVE${aircraft.radarRangeKm ? ` · ${aircraft.radarRangeKm} km` : ""}` : "SILENT"}
             </span>
           </div>
-
-          {aircraft.isTargeted && (
-            <div
-              className="flex items-center gap-1.5 text-[10px] font-mono px-2 py-1.5 rounded-lg"
-              style={{ background: "#fef2f2", border: "1px solid #fca5a5", color: "#DC2626" }}
-            >
-              <AlertTriangle className="h-3 w-3 shrink-0" />
-              VARNING — Fientlig målinmätning detekterad
-            </div>
-          )}
-
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-700">
+            <div className="flex items-center gap-1.5 text-gray-700">
               <Shield className="h-3 w-3 text-gray-400" />
-              Underhåll om
+              Mission package
             </div>
-            <span className="text-[10px] font-mono" style={{ color: (aircraft.hoursToService ?? 0) < 20 ? "#D97706" : "#374151" }}>
+            <span className="font-bold text-gray-700">{missionLabel ?? "Pending tasking"}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-gray-700">
+              <Wrench className="h-3 w-3 text-gray-400" />
+              To next service
+            </div>
+            <span className="font-bold" style={{ color: (aircraft.hoursToService ?? 0) < 20 ? "#D97706" : "#374151" }}>
               {aircraft.hoursToService ?? "—"} h
             </span>
           </div>
-
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-700">
-              <Zap className="h-3 w-3 text-gray-400" />
-              Flygtimmar
+            <div className="flex items-center gap-1.5 text-gray-700">
+              <Clock3 className="h-3 w-3 text-gray-400" />
+              Estimated landing
             </div>
-            <span className="text-[10px] font-mono text-gray-700">{aircraft.flightHours} h</span>
+            <span className="font-bold text-gray-700">{aircraft.estimatedLandingTime ?? "TBD"}</span>
           </div>
+          {aircraft.isTargeted && (
+            <div className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2 py-1.5 text-[10px] font-mono text-red-600">
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              Enemy lock indication detected
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Base weather */}
       {base?.weather && (
-        <div>
-          <div className="text-[9px] font-mono tracking-widest mb-2" style={{ color: "#9ca3af" }}>VÄDER VID BAS</div>
+        <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3">
+          <div className="mb-2 text-[9px] font-mono tracking-widest text-gray-500">BASE WEATHER</div>
           <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
-            <div>
-              <div className="text-[8px]" style={{ color: "#9ca3af" }}>VIND</div>
-              <div className="font-bold text-gray-700">
-                {base.weather.windDirDeg}° / {base.weather.windKts} kt
-              </div>
-            </div>
-            <div>
-              <div className="text-[8px]" style={{ color: "#9ca3af" }}>SIKT</div>
-              <div className="font-bold text-gray-700">{base.weather.visibilityKm} km</div>
-            </div>
-            <div>
-              <div className="text-[8px]" style={{ color: "#9ca3af" }}>MOLN (ft)</div>
-              <div className="font-bold text-gray-700">
-                {base.weather.ceilingFt === 0 ? "CAVOK" : base.weather.ceilingFt}
-              </div>
-            </div>
-            <div>
-              <div className="text-[8px]" style={{ color: "#9ca3af" }}>TILLSTÅND</div>
-              <div
-                className="font-bold"
-                style={{ color: base.weather.condition === "VMC" ? "#2D5A27" : base.weather.condition === "IMC" ? "#DC2626" : "#D97706" }}
-              >
-                {base.weather.condition}
-              </div>
-            </div>
+            {dataCell("WIND", `${base.weather.windDirDeg}° / ${base.weather.windKts} kt`)}
+            {dataCell("VIS", `${base.weather.visibilityKm} km`)}
+            {dataCell("CEILING", base.weather.ceilingFt === 0 ? "CAVOK" : `${base.weather.ceilingFt} ft`)}
+            {dataCell("APPROACH", `${base.weather.condition} / ${landingCapability}`)}
           </div>
         </div>
       )}

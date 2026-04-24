@@ -17,6 +17,7 @@ interface MarkerDef {
 interface Props {
   aorOverrides: Record<string, number>;
   visibleLayers?: OverlayLayerVisibility;
+  baseIds?: string[];
 }
 
 function drawPolygon(
@@ -49,7 +50,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
+export function MarkerRingsLayer({ aorOverrides, visibleLayers, baseIds }: Props) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -79,13 +80,15 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
 
     const showAirbases = visibleLayers ? visibleLayers.militaryBases !== false : true;
     if (showAirbases) {
-      Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {
+      const relevantBaseIds = baseIds ?? Object.keys(BASE_COORDS);
+      relevantBaseIds.forEach((id) => {
+        const coords = BASE_COORDS[id];
         const rings = BASE_RINGS[id];
-        if (!rings) return;
+        if (!coords || !rings) return;
         markers.push({
           id,
-          lng,
-          lat,
+          lng: coords.lng,
+          lat: coords.lat,
           sizeRadiusKm: rings.sizeRadiusKm,
           aorRadiusKm: aorOverrides[id] ?? rings.defaultAorRadiusKm,
           ringColor: GIS_COLORS.militaryBase,
@@ -167,7 +170,7 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
     }
 
     ctx.setLineDash([]);
-  }, [mapRef, aorOverrides, visibleLayers]);
+  }, [mapRef, aorOverrides, visibleLayers, baseIds]);
 
   useEffect(() => {
     const map = mapRef?.getMap();

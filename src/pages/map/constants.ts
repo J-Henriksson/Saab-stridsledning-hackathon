@@ -11,11 +11,10 @@ export const BASE_COORDS: Record<string, { lat: number; lng: number }> = {
 };
 
 export const SUPPLY_LINES: [string, string][] = [
-  ["MOB", "FOB_N"],
-  ["MOB", "FOB_S"],
-  ["MOB", "ROB_E"],
-  ["FOB_N", "ROB_N"],
-  ["FOB_S", "ROB_S"],
+  ["FOB_N", "ARNA"],
+  ["ARNA", "ROB_S"],
+  ["ARNA", "VISBY"],
+  ["ROB_S", "VISBY"],
 ];
 
 export const SWEDEN_CENTER = { lat: 62, lng: 16 };

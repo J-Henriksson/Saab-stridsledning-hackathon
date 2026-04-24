@@ -46,6 +46,24 @@ const createAircraft = (base: string, type: AircraftType, prefix: string, count:
       position: BASE_COORDS[base] ?? { lat: 58, lng: 15 },
       currentBase: base as any,
     });
+
+    // Make some aircraft airborne for the demo
+    if (i === 0 && (base === "MOB" || base === "FOB_N")) {
+      const dest = base === "MOB" ? { lat: 59.33, lng: 18.07 } : { lat: 64.5, lng: 23.5 };
+      return {
+        ...unit,
+        status: "on_mission",
+        currentMission: "DCA",
+        movement: {
+          state: "airborne",
+          speed: 420,
+          destination: dest,
+        },
+        flightHours: Math.round(Math.random() * 80 + 10),
+        hoursToService: Math.round(Math.random() * 60 + 20),
+        health: Math.round(Math.random() * 20 + 80),
+      };
+    }
     // Match old random initial values
     return {
       ...unit,
@@ -258,7 +276,7 @@ const ARNA_AIRCRAFT: AircraftUnit[] = [
       status: "on_mission", tacMission: "CAP", currentMission: "CAP",
       missionEndHour: (nowHour + 2) % 24,
       position: { lat: 59.5, lng: 19.0 },
-      movement: { state: "airborne", speed: 480, heading: 90 },
+      movement: { state: "airborne", speed: 480, heading: 90, destination: { lat: 59.5, lng: 21.0 } },
       radarActive: true, radarRangeKm: 120, radarAzimuthHalfDeg: 60,
       weaponLoadout: { aam: 4, pods: ["EW-pod"] },
       fuelStatus: "Normal", fuel: 72, machSpeed: 0.82, verticalRate: 0,
@@ -284,7 +302,7 @@ const ARNA_AIRCRAFT: AircraftUnit[] = [
       status: "on_mission", tacMission: "RECON", currentMission: "AEW",
       missionEndHour: (nowHour + 4) % 24,
       position: { lat: 58.0, lng: 20.0 },
-      movement: { state: "airborne", speed: 350, heading: 60 },
+      movement: { state: "airborne", speed: 350, heading: 60, destination: { lat: 59.0, lng: 21.0 } },
       radarActive: true, radarRangeKm: 350, radarAzimuthHalfDeg: 120,
       weaponLoadout: { pods: ["PS-890 Erieye"] },
       fuelStatus: "Normal", fuel: 65, machSpeed: 0.54, verticalRate: 0,
@@ -319,7 +337,7 @@ const VISBY_AIRCRAFT: AircraftUnit[] = [
       status: "on_mission", tacMission: "RECON", currentMission: "RECCE",
       missionEndHour: (nowHour + 1) % 24,
       position: { lat: 57.5, lng: 21.0 },
-      movement: { state: "airborne", speed: 420, heading: 45 },
+      movement: { state: "airborne", speed: 420, heading: 45, destination: { lat: 58.5, lng: 22.0 } },
       radarActive: true, radarRangeKm: 110, radarAzimuthHalfDeg: 55,
       weaponLoadout: { aam: 2, pods: ["RECCE-pod"] },
       fuelStatus: "Joker", fuel: 28, machSpeed: 0.78, verticalRate: -500,

@@ -52,7 +52,7 @@ export interface FriendlyEntity {
   notes: string;
   createdAt: number;
 }
-export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS" | "TP84";
+export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS" | "TP84" | "SK60";
 export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE" | "CAP" | "CAS";
 export type ScenarioPhase = "FRED" | "KRIS" | "KRIG";
 export type MaintenanceType = "quick_lru" | "complex_lru" | "direct_repair" | "troubleshooting" | "scheduled_service";
@@ -292,7 +292,10 @@ export interface Base {
   hangarCapacity?: number;
   rampCapacity?: number;
   defenseUnitIds?: string[];
+  sensorUnitIds?: string[];
   weather?: WeatherConditions;
+  availableAssets?: string[];
+  operationalStatus?: "Active" | "Standby" | "Maintenance";
 }
 
 export interface GameState {

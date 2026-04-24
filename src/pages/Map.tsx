@@ -26,6 +26,7 @@ import { ACTIVE_SATELLITE_DEFS, SatelliteLayer, SatelliteLiveState } from "./map
 import { SatelliteDetailPanel } from "./map/SatelliteDetailPanel";
 import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
+import { BaseSyncDashboard } from "./map/BaseSyncDashboard";
 import { WindLayer } from "./map/WindLayer";
 import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSidebar";
 import { EnemyMarker } from "./map/EnemyMarker";
@@ -44,6 +45,7 @@ import { Base, AircraftStatus } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { getAircraft } from "@/core/units/helpers";
+import { AIR_COMMAND_BASES, AIR_COMMAND_SCENARIO, AIR_COMMAND_SUPPORT_UNITS } from "@/data/airCommandScenario";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -194,9 +196,12 @@ export default function MapPage() {
   const [hoveredOverlayKey, setHoveredOverlayKey] = useState<OverlayKey | null>(null);
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
+  const [isBaseSyncOpen, setIsBaseSyncOpen] = useState(false);
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
+  const scenarioBases = AIR_COMMAND_BASES;
+  const scenarioBaseIds = useMemo(() => scenarioBases.map((base) => base.id), [scenarioBases]);
 
   // Pre-select aircraft when navigated here from basöversikt
   useEffect(() => {
@@ -223,13 +228,13 @@ export default function MapPage() {
   }, [isDropdownOpen]);
 
   const allUnits = useMemo(
-    () => [...state.bases.flatMap((b) => b.units), ...state.deployedUnits],
-    [state.bases, state.deployedUnits]
+    () => [...AIR_COMMAND_SUPPORT_UNITS, ...state.deployedUnits],
+    [state.deployedUnits]
   );
 
   const selectedBase =
     selected?.kind === "base" || selected?.kind === "aircraft"
-      ? state.bases.find((b) => b.id === selected.baseId)
+      ? scenarioBases.find((b) => b.id === selected.baseId)
       : undefined;
 
   const selectedAircraft =
@@ -266,6 +271,22 @@ export default function MapPage() {
     selected?.kind === "asset"
       ? [...FIXED_MILITARY_ASSETS, ...AMMO_DEPOTS].find((a) => a.id === selected.assetId)
       : undefined;
+
+  const selectedBaseRadars = useMemo(
+    () =>
+      selectedBase
+        ? AIR_COMMAND_SCENARIO.radarStations.filter((station) => station.linkedBaseIds.includes(selectedBase.id))
+        : [],
+    [selectedBase]
+  );
+
+  const selectedBaseDefenses = useMemo(
+    () =>
+      selectedBase
+        ? AIR_COMMAND_SCENARIO.airDefenseBatteries.filter((battery) => battery.linkedBaseIds.includes(selectedBase.id))
+        : [],
+    [selectedBase]
+  );
 
 
   useEffect(() => {
@@ -567,9 +588,13 @@ export default function MapPage() {
             />
 
             {/* Two-ring overlay — rendered above zone fills so rings stay visible */}
-            <MarkerRingsLayer aorOverrides={aorOverrides} visibleLayers={state.overlayVisibility} />
+            <MarkerRingsLayer
+              aorOverrides={aorOverrides}
+              visibleLayers={state.overlayVisibility}
+              baseIds={scenarioBaseIds}
+            />
 
-            <SupplyLinesLayer bases={state.bases} />
+            <SupplyLinesLayer bases={scenarioBases} />
             {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
             {visibleViews.satelliter && (
               <SatelliteLayer
@@ -606,15 +631,15 @@ export default function MapPage() {
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
 
-            {Object.keys(BASE_COORDS).map((id) => (
+            {state.bases.map((base) => (
               <BaseMarker
-                key={id}
-                id={id}
-                base={state.bases.find((b) => b.id === id)}
+                key={base.id}
+                id={base.id}
+                base={base}
                 isSelected={
-                  (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === id
+                  (selected?.kind === "base" || selected?.kind === "aircraft") && selected.baseId === base.id
                 }
-                onClick={() => setSelected({ kind: "base", baseId: id })}
+                onClick={() => setSelected({ kind: "base", baseId: base.id })}
                 flygvapnetMode={state.overlayVisibility.flygvapnet}
                 showAirbases={true}
               />
@@ -999,16 +1024,16 @@ export default function MapPage() {
               {selectedUnit ? (
                 <UnitDetailPanel
                   unit={selectedUnit}
-                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
-                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+                  isAtBase={!!selectedUnit.currentBase && scenarioBases.some((base) => base.id === selectedUnit.currentBase)}
+                  allBases={scenarioBases.map((base) => ({ id: base.id, name: base.name }))}
                 />
               ) : selectedSatellite ? (
                 <SatelliteDetailPanel satellite={selectedSatellite} />
               ) : selectedAircraft && selected.kind === "aircraft" ? (
                 <AircraftDetailPanel
                   aircraft={selectedAircraft}
+                  base={selectedBase}
                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
-                  onRecall={handleRecall}
                   currentHour={state.hour}
                 />
               ) : selectedZone ? (
@@ -1035,6 +1060,7 @@ export default function MapPage() {
                   }
                   aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
                   onSetAor={(km) => handleSetAor(selectedBase.id, km)}
+                  onOpenSyncDashboard={() => setIsBaseSyncOpen(true)}
                 />
               ) : selected?.kind === "base" ? (
                 <div className="p-4 text-xs text-muted-foreground">
@@ -1048,6 +1074,14 @@ export default function MapPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <BaseSyncDashboard
+          open={isBaseSyncOpen}
+          onOpenChange={setIsBaseSyncOpen}
+          base={selectedBase}
+          supportingRadars={selectedBaseRadars}
+          supportingDefenses={selectedBaseDefenses}
+        />
       </div>
     </div>
   );

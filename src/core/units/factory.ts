@@ -75,11 +75,12 @@ export function createAirDefenseUnit(params: CommonParams & {
   loadedMissiles?: number;
   maxMissiles?: number;
   relocateSpeed?: number;
+  id?: string;
 }): AirDefenseUnit {
   const affiliation = params.affiliation ?? "friend";
   const max = params.maxMissiles ?? 8;
   return {
-    id: uuid(),
+    id: params.id ?? uuid(),
     category: "air_defense",
     type: params.type,
     name: params.name,
@@ -123,10 +124,11 @@ export function createRadarUnit(params: CommonParams & {
   type: RadarUnit["type"];
   emitting?: boolean;
   relocateSpeed?: number;
+  id?: string;
 }): RadarUnit {
   const affiliation = params.affiliation ?? "friend";
   return {
-    id: uuid(),
+    id: params.id ?? uuid(),
     category: "radar",
     type: params.type,
     name: params.name,
