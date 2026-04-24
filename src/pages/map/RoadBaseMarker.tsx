@@ -42,9 +42,10 @@ interface Props {
   isSelected: boolean;
   onSelect: () => void;
   dispatch: (action: GameAction) => void;
+  dimmed?: boolean;
 }
 
-export function RoadBaseMarker({ roadBase, isPlanMode, isSelected, onSelect, dispatch }: Props) {
+export function RoadBaseMarker({ roadBase, isPlanMode, isSelected, onSelect, dispatch, dimmed = false }: Props) {
   const [liveCoords, setLiveCoords] = useState(roadBase.coords);
 
   const handleDrag = useCallback((e: { lngLat: { lat: number; lng: number } }) => {
@@ -71,6 +72,7 @@ export function RoadBaseMarker({ roadBase, isPlanMode, isSelected, onSelect, dis
     >
       <div
         className={`flex flex-col items-center ${isPlanMode ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+        style={{ opacity: dimmed ? 0.15 : 1, transition: "opacity 0.35s ease" }}
         onClick={(e) => { e.stopPropagation(); onSelect(); }}
       >
         <div style={isSelected ? { filter: "drop-shadow(0 0 5px #2D5A27)" } : undefined}>

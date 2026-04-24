@@ -5,6 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GameProvider } from "@/context/GameContext";
+import { BaseFilterProvider } from "@/context/BaseFilterContext";
 import Index from "./pages/Index.tsx";
 import ATO from "./pages/ATO.tsx";
 import AircraftDashboard from "./pages/AircraftDashboard.tsx";
@@ -23,6 +24,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <GameProvider>
+        <BaseFilterProvider>
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Suspense fallback={<div className="min-h-screen bg-background text-foreground flex items-center justify-center font-mono text-sm">Laddar karta...</div>}>
             <Routes>
@@ -38,6 +40,7 @@ const App = () => (
             </Routes>
           </Suspense>
         </BrowserRouter>
+        </BaseFilterProvider>
       </GameProvider>
     </TooltipProvider>
   </QueryClientProvider>

@@ -4,9 +4,10 @@ import MapGL, { Marker, NavigationControl, MapRef, Source, Layer } from "react-m
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
+import { useBaseFilter } from "@/context/BaseFilterContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, Target } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -54,6 +55,7 @@ import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
+import { EventsSidebar } from "./map/EventsSidebar";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
@@ -61,6 +63,7 @@ import { Base, AircraftStatus } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
 import { isDrone, type UnitCategory } from "@/types/units";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
+import { DUMMY_EVENTS } from "@/data/dummyEvents";
 import { getAircraft } from "@/core/units/helpers";
 import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
 
@@ -234,6 +237,24 @@ export default function MapPage() {
   const mapRef = useRef<MapRef>(null);
   const [zoom, setZoom] = useState(TACTICAL_ZOOM);
   const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
+  const { focusedBaseId, filterLevel, setFocusedBase, setFilterLevel, clearFilter, filterEvents } = useBaseFilter();
+
+  // Fly to focused base whenever the focused base changes
+  useEffect(() => {
+    if (!focusedBaseId || !mapRef.current) return;
+    const coords = BASE_COORDS[focusedBaseId];
+    if (!coords) return;
+    mapRef.current.flyTo({ center: [coords.lng, coords.lat], zoom: 10, duration: 1300, pitch: 25 });
+  }, [focusedBaseId]);
+
+  // Merge live game events with static dummy events (dummy comes first so it's always present)
+  const allEvents = useMemo(
+    () => [...DUMMY_EVENTS, ...state.events],
+    [state.events]
+  );
+
+  // Events filtered by active base/unit filter — ready for sidebar consumption
+  const filteredEvents = useMemo(() => filterEvents(allEvents), [allEvents, filterEvents]);
 
   const allUnits = useMemo(
     () => {
@@ -618,6 +639,45 @@ export default function MapPage() {
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-yellow inline-block" /> Medel beredskap</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-red inline-block" /> Låg beredskap</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40 inline-block" /> Inaktiv bas</span>
+          {/* Base filter badge */}
+          <AnimatePresence>
+            {focusedBaseId && (
+              <motion.div
+                key="base-filter-badge"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                className="flex items-center gap-1 border border-blue-500/50 bg-blue-500/10 rounded px-2 py-1"
+              >
+                <Target className="h-3 w-3 text-blue-400 flex-shrink-0" />
+                <span className="text-[10px] font-mono font-bold text-blue-300">
+                  {state.bases.find((b) => b.id === focusedBaseId)?.name ?? focusedBaseId}
+                </span>
+                <div className="flex gap-0.5 ml-1.5 border-l border-blue-500/30 pl-1.5">
+                  {(["global", "base", "unit"] as const).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setFilterLevel(level)}
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
+                        filterLevel === level
+                          ? "bg-blue-500/35 text-blue-200"
+                          : "text-blue-500/50 hover:text-blue-300"
+                      }`}
+                    >
+                      {level === "global" ? "GLOBAL" : level === "base" ? "BAS" : "ENHET"}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={clearFilter}
+                  className="ml-1 text-blue-400/60 hover:text-blue-200 transition-colors"
+                  title="Rensa filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <button
             onClick={() => { setIsPlanMode((v) => !v); setPlacingMode(null); }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all ${
@@ -662,6 +722,162 @@ export default function MapPage() {
                 dispatch={dispatch}
                 onStartPlacement={handleStartPlacement}
               />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Detail panel — friendly base/aircraft or enemy */}
+        <AnimatePresence>
+          {selected && panelTitle && (
+            <motion.div
+              key="detail"
+              initial={{ x: -340, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -340, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-[340px] flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col"
+            >
+              {/* Panel header */}
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div>
+                  {selectedSatellite ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedSatellite.name}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {selectedSatellite.role} · {selectedSatellite.orbitClass}
+                      </div>
+                    </>
+                  ) : selectedUnit ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
+                    </>
+                  ) : panelTitle ? (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
+                          selected.kind === "enemy_base"
+                            ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
+                            : <Swords className="h-3.5 w-3.5 text-red-300" />
+                        )}
+                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
+                    </>
+                  ) : (
+                    <div className="text-xs font-bold text-foreground font-mono">
+                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {selected?.kind === "base" && selectedBase && (
+                    <button
+                      onClick={() =>
+                        focusedBaseId === selectedBase.id
+                          ? clearFilter()
+                          : setFocusedBase(selectedBase.id as import("@/types/game").BaseType)
+                      }
+                      className={`p-1 rounded transition-colors ${
+                        focusedBaseId === selectedBase.id
+                          ? "text-blue-400 bg-blue-500/15"
+                          : "text-muted-foreground hover:text-blue-400"
+                      }`}
+                      title={focusedBaseId === selectedBase.id ? "Rensa filter" : "Fokusera på denna bas"}
+                    >
+                      <Target className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelected(null)}
+                    className="p-1 text-muted-foreground hover:text-foreground rounded"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {selectedUnit && isDrone(selectedUnit) ? (
+                <DroneDetailPanel
+                  drone={selectedUnit}
+                  onBack={() => setSelected(null)}
+                  onRecall={recallDrone}
+                  onUpdateWaypoints={updateDroneWaypoints}
+                  onSetOverlay={setDroneOverlay}
+                  onDeploy={() => {}}
+                  planningMode={planningMode}
+                />
+              ) : selectedUnit ? (
+                <UnitDetailPanel
+                  unit={selectedUnit}
+                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
+                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+                />
+              ) : selectedSatellite ? (
+                <SatelliteDetailPanel satellite={selectedSatellite} />
+              ) : selectedAircraft && selected.kind === "aircraft" ? (
+                 <AircraftDetailPanel
+                   aircraft={selectedAircraft}
+                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
+                   onRecall={handleRecall}
+                   currentHour={state.hour}
+                 />
+               ) : selectedRadar ? (
+                 <RadarControlPanel
+                   unit={selectedRadar}
+                   onClose={() => setSelected(null)}
+                   onUpdate={(updates) => handleUpdateRadar(selectedRadar.id, updates)}
+                 />
+               ) : selectedZone ? (
+
+                <ZoneDetailPanel
+                  zone={selectedZone}
+                  onDelete={() => {
+                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
+                    setSelected(null);
+                  }}
+                  currentHour={state.hour}
+                  currentDay={state.day}
+                />
+              ) : selectedAsset ? (
+                <AssetInfoPanel
+                  asset={selectedAsset}
+                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
+                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
+                />
+              ) : selected?.kind === "base" && selectedBase ? (
+                <BaseDetailPanel
+                  base={selectedBase}
+                  deployedUnits={state.deployedUnits}
+                  onSelectAircraft={(id) =>
+                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
+                  }
+                  onSelectUnit={(id) => setSelected({ kind: "unit", unitId: id })}
+                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
+                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
+                />
+              ) : selected?.kind === "base" ? (
+                <div className="p-4 text-xs text-muted-foreground">
+                  Bas ej aktiv i detta scenario.
+                </div>
+              ) : selected?.kind === "road_base" && selectedRoadBase ? (
+                <RoadBaseDetailPanel
+                  roadBase={selectedRoadBase}
+                  isPlanMode={isPlanMode}
+                  dispatch={dispatch}
+                  onSetRange={(km) => handleSetAor(selectedRoadBase.id, km)}
+                  rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
+                />
+              ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
+                <EnemyBaseDetailPanel
+                  base={selectedEnemyBase}
+                  report={state.intelReports?.[selectedEnemyBase.id]}
+                />
+              ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
+                <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
+              ) : selected?.kind === "naval" && selectedNaval ? (
+                <NavalDetailPanel unit={selectedNaval} />
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
@@ -921,6 +1137,7 @@ export default function MapPage() {
                 onClick={() => setSelected({ kind: "base", baseId: id })}
                 flygvapnetMode={state.overlayVisibility.flygvapnet}
                 showAirbases={true}
+                dimmed={focusedBaseId !== null && id !== focusedBaseId}
               />
             ))}
 
@@ -972,6 +1189,7 @@ export default function MapPage() {
                 isSelected={selected?.kind === "road_base" && selected.id === rb.id}
                 onSelect={() => setSelected({ kind: "road_base", id: rb.id })}
                 dispatch={dispatch}
+                dimmed={focusedBaseId !== null && rb.parentBaseId !== focusedBaseId}
               />
             ))}
 
@@ -1296,142 +1514,13 @@ export default function MapPage() {
           />
         </div>
 
-        {/* Detail panel — friendly base/aircraft or enemy */}
-        <AnimatePresence>
-          {selected && panelTitle && (
-            <motion.div
-              key="detail"
-              initial={{ x: 340, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 340, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[340px] flex-shrink-0 border-l border-border bg-card overflow-y-auto flex flex-col"
-            >
-              {/* Panel header */}
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <div>
-                  {selectedSatellite ? (
-                    <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedSatellite.name}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {selectedSatellite.role} · {selectedSatellite.orbitClass}
-                      </div>
-                    </>
-                  ) : selectedUnit ? (
-                    <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
-                    </>
-                  ) : panelTitle ? (
-                    <>
-                      <div className="flex items-center gap-1.5">
-                        {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
-                          selected.kind === "enemy_base"
-                            ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
-                            : <Swords className="h-3.5 w-3.5 text-red-300" />
-                        )}
-                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
-                      </div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
-                    </>
-                  ) : (
-                    <div className="text-xs font-bold text-foreground font-mono">
-                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="p-1 text-muted-foreground hover:text-foreground rounded"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        {/* Events & reports sidebar — right edge */}
+        <EventsSidebar
+          events={filteredEvents}
+          allEvents={allEvents}
+          bases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+        />
 
-              {selectedUnit && isDrone(selectedUnit) ? (
-                <DroneDetailPanel
-                  drone={selectedUnit}
-                  onBack={() => setSelected(null)}
-                  onRecall={recallDrone}
-                  onUpdateWaypoints={updateDroneWaypoints}
-                  onSetOverlay={setDroneOverlay}
-                  onDeploy={() => {}}
-                  planningMode={planningMode}
-                />
-              ) : selectedUnit ? (
-                <UnitDetailPanel
-                  unit={selectedUnit}
-                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
-                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
-                />
-              ) : selectedSatellite ? (
-                <SatelliteDetailPanel satellite={selectedSatellite} />
-              ) : selectedAircraft && selected.kind === "aircraft" ? (
-                 <AircraftDetailPanel
-                   aircraft={selectedAircraft}
-                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
-                   onRecall={handleRecall}
-                   currentHour={state.hour}
-                 />
-               ) : selectedRadar ? (
-                 <RadarControlPanel
-                   unit={selectedRadar}
-                   onClose={() => setSelected(null)}
-                   onUpdate={(updates) => handleUpdateRadar(selectedRadar.id, updates)}
-                 />
-               ) : selectedZone ? (
-
-                <ZoneDetailPanel
-                  zone={selectedZone}
-                  onDelete={() => {
-                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
-                    setSelected(null);
-                  }}
-                  currentHour={state.hour}
-                  currentDay={state.day}
-                />
-              ) : selectedAsset ? (
-                <AssetInfoPanel
-                  asset={selectedAsset}
-                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
-                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
-                />
-              ) : selected?.kind === "base" && selectedBase ? (
-                <BaseDetailPanel
-                  base={selectedBase}
-                  deployedUnits={state.deployedUnits}
-                  onSelectAircraft={(id) =>
-                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
-                  }
-                  onSelectUnit={(id) => setSelected({ kind: "unit", unitId: id })}
-                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
-                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
-                />
-              ) : selected?.kind === "base" ? (
-                <div className="p-4 text-xs text-muted-foreground">
-                  Bas ej aktiv i detta scenario.
-                </div>
-              ) : selected?.kind === "road_base" && selectedRoadBase ? (
-                <RoadBaseDetailPanel
-                  roadBase={selectedRoadBase}
-                  isPlanMode={isPlanMode}
-                  dispatch={dispatch}
-                  onSetRange={(km) => handleSetAor(selectedRoadBase.id, km)}
-                  rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
-                />
-              ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
-                <EnemyBaseDetailPanel
-                  base={selectedEnemyBase}
-                  report={state.intelReports?.[selectedEnemyBase.id]}
-                />
-              ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
-                <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
-              ) : selected?.kind === "naval" && selectedNaval ? (
-                <NavalDetailPanel unit={selectedNaval} />
-              ) : null}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );
