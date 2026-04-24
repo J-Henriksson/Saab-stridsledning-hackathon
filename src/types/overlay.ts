@@ -43,6 +43,10 @@ export interface FixedMilitaryAsset {
   lng: number;
   fillLevel?: number;
   protectionRadiusKm?: number;
+  /** Physical footprint radius in km — drives the solid inner ring */
+  sizeRadiusKm: number;
+  /** Default area of responsibility radius in km — drives the dashed outer ring */
+  defaultAorRadiusKm: number;
 }
 
 export interface OverlayLayerVisibility {
