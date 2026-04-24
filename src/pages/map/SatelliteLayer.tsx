@@ -50,10 +50,6 @@ interface SatPos {
   lng: number;
 }
 
-const LAT_MIN = 50;
-const LAT_MAX = 73;
-const LNG_MIN = 3;
-const LNG_MAX = 33;
 const TRAIL_POINTS = 34;
 export const ACTIVE_SATELLITE_IDS = ["sat-01", "sat-03", "sat-04"] as const;
 
@@ -154,16 +150,60 @@ export const ACTIVE_SATELLITE_DEFS = SATELLITE_DEFS.filter((satellite) =>
   ACTIVE_SATELLITE_IDS.includes(satellite.id as (typeof ACTIVE_SATELLITE_IDS)[number]),
 );
 
-function wrapLat(lat: number): number {
-  if (lat > LAT_MAX) return LAT_MIN + (lat - LAT_MAX);
-  if (lat < LAT_MIN) return LAT_MAX - (LAT_MIN - lat);
-  return lat;
+const TRAJECTORY_SEGMENTS = 256;
+
+function toRad(degrees: number): number {
+  return (degrees * Math.PI) / 180;
 }
 
-function wrapLng(lng: number): number {
-  if (lng > LNG_MAX) return LNG_MIN + (lng - LNG_MAX);
-  if (lng < LNG_MIN) return LNG_MAX - (LNG_MIN - lng);
-  return lng;
+function toDeg(radians: number): number {
+  return (radians * 180) / Math.PI;
+}
+
+function normalizeLng(lng: number): number {
+  return ((lng + 540) % 360) - 180;
+}
+
+function greatCirclePoint(
+  startLat: number,
+  startLng: number,
+  bearingDeg: number,
+  angularDistRad: number,
+): SatPos {
+  const phi1 = toRad(startLat);
+  const lambda1 = toRad(startLng);
+  const theta = toRad(bearingDeg);
+  const delta = angularDistRad;
+
+  const phi2 = Math.asin(
+    Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta),
+  );
+  const lambda2 =
+    lambda1 +
+    Math.atan2(
+      Math.sin(theta) * Math.sin(delta) * Math.cos(phi1),
+      Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2),
+    );
+
+  return { lat: toDeg(phi2), lng: normalizeLng(toDeg(lambda2)) };
+}
+
+function greatCircleBearing(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+  const phi1 = toRad(fromLat);
+  const phi2 = toRad(toLat);
+  const deltaLambda = toRad(toLng - fromLng);
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function buildGreatCircleLoop(startLat: number, startLng: number, bearingDeg: number): SatPos[] {
+  const points: SatPos[] = [];
+  for (let i = 0; i <= TRAJECTORY_SEGMENTS; i++) {
+    const dist = (2 * Math.PI * i) / TRAJECTORY_SEGMENTS;
+    points.push(greatCirclePoint(startLat, startLng, bearingDeg, dist));
+  }
+  return points;
 }
 
 function getRegion(lat: number, lng: number) {
@@ -173,7 +213,12 @@ function getRegion(lat: number, lng: number) {
   return "Mellansverige";
 }
 
-function toLiveState(def: SatelliteDef, pos: SatPos, elapsedSeconds: number): SatelliteLiveState {
+function toLiveState(
+  def: SatelliteDef,
+  pos: SatPos,
+  heading: number,
+  elapsedSeconds: number,
+): SatelliteLiveState {
   const signalStrength = 72 + Math.round(((Math.sin(elapsedSeconds * 0.6 + pos.lng) + 1) / 2) * 24);
   const region = getRegion(pos.lat, pos.lng);
   const visibilityQuality = signalStrength >= 84 ? "God" : "Begränsad";
@@ -186,7 +231,7 @@ function toLiveState(def: SatelliteDef, pos: SatPos, elapsedSeconds: number): Sa
     name: def.name,
     lat: pos.lat,
     lng: pos.lng,
-    heading: def.trackDeg,
+    heading,
     speedKmh: Math.round(def.speedDegPerSec * 32000),
     altitudeKm: def.altitudeKm,
     orbitClass: def.orbitClass,
@@ -239,11 +284,20 @@ export function SatelliteLayer({
   const posRef = useRef<SatPos[]>(
     ACTIVE_SATELLITE_DEFS.map((satellite) => ({ lat: satellite.startLat, lng: satellite.startLng })),
   );
+  const headingRef = useRef<number[]>(ACTIVE_SATELLITE_DEFS.map((satellite) => satellite.trackDeg));
+  const accumulatedDegRef = useRef<number[]>(ACTIVE_SATELLITE_DEFS.map(() => 0));
+  const trajectoryRef = useRef<SatPos[][]>(
+    ACTIVE_SATELLITE_DEFS.map((satellite) =>
+      buildGreatCircleLoop(satellite.startLat, satellite.startLng, satellite.trackDeg),
+    ),
+  );
   const trailRef = useRef<SatPos[][]>(ACTIVE_SATELLITE_DEFS.map(() => []));
   const lastTimeRef = useRef<number | null>(null);
   const frameRef = useRef(0);
   const [satellites, setSatellites] = useState<SatelliteLiveState[]>(
-    ACTIVE_SATELLITE_DEFS.map((satellite, index) => toLiveState(satellite, posRef.current[index], 0)),
+    ACTIVE_SATELLITE_DEFS.map((satellite, index) =>
+      toLiveState(satellite, posRef.current[index], headingRef.current[index], 0),
+    ),
   );
 
   useEffect(() => {
@@ -269,13 +323,25 @@ export function SatelliteLayer({
 
       for (let i = 0; i < ACTIVE_SATELLITE_DEFS.length; i++) {
         const satellite = ACTIVE_SATELLITE_DEFS[i];
-        const rad = (satellite.trackDeg * Math.PI) / 180;
-        const dLat = Math.cos(rad) * satellite.speedDegPerSec * dt;
-        const dLng = Math.sin(rad) * satellite.speedDegPerSec * dt;
+        accumulatedDegRef.current[i] =
+          (accumulatedDegRef.current[i] + satellite.speedDegPerSec * dt) % 360;
+        const angularDistRad = toRad(accumulatedDegRef.current[i]);
+        const nextPos = greatCirclePoint(
+          satellite.startLat,
+          satellite.startLng,
+          satellite.trackDeg,
+          angularDistRad,
+        );
+        const aheadPos = greatCirclePoint(
+          satellite.startLat,
+          satellite.startLng,
+          satellite.trackDeg,
+          angularDistRad + toRad(0.1),
+        );
         const pos = posRef.current[i];
-
-        pos.lat = wrapLat(pos.lat + dLat);
-        pos.lng = wrapLng(pos.lng + dLng);
+        pos.lat = nextPos.lat;
+        pos.lng = nextPos.lng;
+        headingRef.current[i] = greatCircleBearing(nextPos.lat, nextPos.lng, aheadPos.lat, aheadPos.lng);
 
         const trail = trailRef.current[i];
         trail.unshift({ lat: pos.lat, lng: pos.lng });
@@ -283,7 +349,7 @@ export function SatelliteLayer({
       }
 
       const nextSatellites = ACTIVE_SATELLITE_DEFS.map((satellite, index) =>
-        toLiveState(satellite, posRef.current[index], elapsedSeconds),
+        toLiveState(satellite, posRef.current[index], headingRef.current[index], elapsedSeconds),
       );
 
       const mapCanvas = map.getCanvas();
@@ -304,6 +370,85 @@ export function SatelliteLayer({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
       ctx.lineCap = "round";
+
+      for (let i = 0; i < nextSatellites.length; i++) {
+        const satellite = nextSatellites[i];
+        const trajectory = trajectoryRef.current[i];
+        if (!trajectory || trajectory.length < 2) continue;
+        const isSelected = satellite.id === selectedSatelliteId;
+
+        const polylines: Array<Array<{ x: number; y: number }>> = [];
+        let current: Array<{ x: number; y: number }> = [];
+        for (let p = 0; p < trajectory.length; p++) {
+          const point = trajectory[p];
+          if (p > 0) {
+            const prev = trajectory[p - 1];
+            if (Math.abs(point.lng - prev.lng) > 180) {
+              if (current.length > 1) polylines.push(current);
+              current = [];
+            }
+          }
+          const projected = map.project([point.lng, point.lat]);
+          current.push({ x: projected.x, y: projected.y });
+        }
+        if (current.length > 1) polylines.push(current);
+
+        ctx.save();
+
+        ctx.setLineDash([]);
+        ctx.lineWidth = isSelected ? 6 : 4;
+        ctx.strokeStyle = isSelected ? "rgba(255, 255, 255, 0.22)" : "rgba(255, 255, 255, 0.12)";
+        ctx.shadowBlur = isSelected ? 16 : 8;
+        ctx.shadowColor = "rgba(255, 255, 255, 0.6)";
+        for (const line of polylines) {
+          ctx.beginPath();
+          ctx.moveTo(line[0].x, line[0].y);
+          for (let k = 1; k < line.length; k++) ctx.lineTo(line[k].x, line[k].y);
+          ctx.stroke();
+        }
+
+        ctx.shadowBlur = 0;
+        ctx.setLineDash(isSelected ? [] : [8, 6]);
+        ctx.lineWidth = isSelected ? 2.2 : 1.4;
+        ctx.strokeStyle = isSelected ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.7)";
+        for (const line of polylines) {
+          ctx.beginPath();
+          ctx.moveTo(line[0].x, line[0].y);
+          for (let k = 1; k < line.length; k++) ctx.lineTo(line[k].x, line[k].y);
+          ctx.stroke();
+        }
+
+        const satPt = map.project([satellite.lng, satellite.lat]);
+        const aheadPos = greatCirclePoint(
+          ACTIVE_SATELLITE_DEFS[i].startLat,
+          ACTIVE_SATELLITE_DEFS[i].startLng,
+          ACTIVE_SATELLITE_DEFS[i].trackDeg,
+          toRad(accumulatedDegRef.current[i] + 2),
+        );
+        const aheadPt = map.project([aheadPos.lng, aheadPos.lat]);
+        const headingRad = Math.atan2(aheadPt.y - satPt.y, aheadPt.x - satPt.x);
+        const arrowLen = isSelected ? 16 : 12;
+        const arrowAngle = Math.PI / 6;
+        const tipX = satPt.x + (isSelected ? 26 : 20) * Math.cos(headingRad);
+        const tipY = satPt.y + (isSelected ? 26 : 20) * Math.sin(headingRad);
+        ctx.setLineDash([]);
+        ctx.lineWidth = isSelected ? 2.4 : 1.8;
+        ctx.strokeStyle = isSelected ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.85)";
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(
+          tipX - arrowLen * Math.cos(headingRad - arrowAngle),
+          tipY - arrowLen * Math.sin(headingRad - arrowAngle),
+        );
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(
+          tipX - arrowLen * Math.cos(headingRad + arrowAngle),
+          tipY - arrowLen * Math.sin(headingRad + arrowAngle),
+        );
+        ctx.stroke();
+
+        ctx.restore();
+      }
 
       for (const satellite of nextSatellites) {
         const { center, radiusX, radiusY } = projectFootprintRadii(map, satellite);
@@ -332,17 +477,18 @@ export function SatelliteLayer({
       }
 
       ctx.shadowBlur = 0;
-      ctx.lineWidth = 1.4;
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
       for (const trail of trailRef.current) {
         if (trail.length < 2) continue;
         const projected = trail.map((point) => map.project([point.lng, point.lat]));
         for (let i = 0; i < projected.length - 1; i++) {
-          const opacity = 0.5 * (1 - i / (projected.length - 1));
+          const opacity = 0.75 * (1 - i / (projected.length - 1));
           if (opacity < 0.01) break;
           ctx.beginPath();
           ctx.moveTo(projected[i].x, projected[i].y);
           ctx.lineTo(projected[i + 1].x, projected[i + 1].y);
-          ctx.strokeStyle = `rgba(56, 189, 248, ${opacity})`;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
           ctx.stroke();
         }
       }
