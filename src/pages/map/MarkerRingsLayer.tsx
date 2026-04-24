@@ -4,6 +4,7 @@ import { BASE_COORDS, BASE_RINGS, GIS_COLORS } from "./constants";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { FOOTPRINT_POLYGONS } from "@/data/footprints";
 import type { OverlayLayerVisibility } from "@/types/overlay";
+import type { RoadBase } from "@/types/game";
 
 interface MarkerDef {
   id: string;
@@ -17,6 +18,7 @@ interface MarkerDef {
 interface Props {
   aorOverrides: Record<string, number>;
   visibleLayers?: OverlayLayerVisibility;
+  roadBases?: RoadBase[];
 }
 
 function drawPolygon(
@@ -49,7 +51,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
+export function MarkerRingsLayer({ aorOverrides, visibleLayers, roadBases }: Props) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -124,6 +126,19 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
       });
     }
 
+    if (roadBases) {
+      roadBases.forEach((rb) => {
+        markers.push({
+          id: rb.id,
+          lng: rb.coords.lng,
+          lat: rb.coords.lat,
+          sizeRadiusKm: 0.3,
+          aorRadiusKm: aorOverrides[rb.id] ?? rb.rangeRadius,
+          ringColor: "#2D5A27",
+        });
+      });
+    }
+
     for (const m of markers) {
       const center = project([m.lng, m.lat]);
       const footprint = FOOTPRINT_POLYGONS[m.id];
@@ -167,7 +182,7 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
     }
 
     ctx.setLineDash([]);
-  }, [mapRef, aorOverrides, visibleLayers]);
+  }, [mapRef, aorOverrides, visibleLayers, roadBases]);
 
   useEffect(() => {
     const map = mapRef?.getMap();
