@@ -55,6 +55,7 @@ import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
+import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
@@ -227,6 +228,7 @@ export default function MapPage() {
   const [hoveredOverlayKey, setHoveredOverlayKey] = useState<OverlayKey | null>(null);
   const [draggingUnit, setDraggingUnit] = useState<DraggingUnitState | null>(null);
   const [dropCandidate, setDropCandidate] = useState<{ lat: number; lng: number } | null>(null);
+  const [hudCursor, setHudCursor] = useState<{ lat: number; lng: number } | null>(null);
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
@@ -723,6 +725,10 @@ export default function MapPage() {
             onLoad={handleMapLoad}
             onZoom={(e) => setZoom(e.viewState.zoom)}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
+            onMouseMove={(e: MapLayerMouseEvent) =>
+              setHudCursor({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+            }
+            onMouseOut={() => setHudCursor(null)}
             style={{ width: "100%", height: "100%" }}
           >
             <NavigationControl position="bottom-right" />
@@ -983,6 +989,14 @@ export default function MapPage() {
               />
             )}
           </MapGL>
+
+          <CoordinateHUD
+            cursor={hudCursor}
+            day={state.day}
+            hour={state.hour}
+            minute={state.minute}
+            second={state.second}
+          />
 
           {/* Placement mode banner */}
           {placingMode && (
