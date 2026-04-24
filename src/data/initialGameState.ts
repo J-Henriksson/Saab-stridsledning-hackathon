@@ -331,4 +331,8 @@ export const initialGameState: GameState = {
   recommendations: [],
   maintenanceTasks: [],
   pendingLandingChecks: [],
+  enemyBases: [],
+  enemyEntities: [],
+  friendlyMarkers: [],
+  friendlyEntities: [],
 };

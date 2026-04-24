@@ -56,7 +56,7 @@ function reset(p: Particle, w: number, h: number, angle: number) {
   p.speed   = 0.55 + Math.random() * 0.9;
 }
 
-export function WindLayer() {
+export function WindLayer({ active = true }: { active?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -64,6 +64,10 @@ export function WindLayer() {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    if (!active) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
 
     const sync = () => {
       canvas.width  = canvas.offsetWidth;
@@ -136,7 +140,7 @@ export function WindLayer() {
 
     raf = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, []);
+  }, [active]);
 
   return (
     <canvas

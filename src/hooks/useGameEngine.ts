@@ -1,5 +1,5 @@
 import { useReducer, useCallback, useMemo } from "react";
-import type { GameState, GameAction, BaseType, MissionType, ATOOrder } from "@/types/game";
+import type { GameState, GameAction, BaseType, MissionType, ATOOrder, EnemyBase, EnemyEntity, FriendlyMarker, FriendlyEntity } from "@/types/game";
 import { isMissionCapable } from "@/types/game";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
@@ -35,6 +35,19 @@ export interface GameEngine {
   markFaultNMC: (baseId: string, aircraftId: string, repairTime: number, maintenanceTypeKey: string, actionLabel: string, requiredSparePart?: string) => void;
   consumeSparePart: (baseId: string, sparePartId: string, quantity?: number) => void;
   rebaseAircraft: (aircraftId: string, fromBase: BaseType, toBase: BaseType) => void;
+  addEnemyBase: (base: Omit<EnemyBase, "id" | "createdAt">) => void;
+  editEnemyBase: (id: string, updates: Partial<Omit<EnemyBase, "id" | "createdAt">>) => void;
+  deleteEnemyBase: (id: string) => void;
+  addEnemyEntity: (entity: Omit<EnemyEntity, "id" | "createdAt">) => void;
+  editEnemyEntity: (id: string, updates: Partial<Omit<EnemyEntity, "id" | "createdAt">>) => void;
+  deleteEnemyEntity: (id: string) => void;
+  updateBaseResources: (baseId: BaseType, fuel?: number, ammo?: { type: string; quantity: number }[], maintenanceBayTotal?: number) => void;
+  addFriendlyMarker: (marker: Omit<FriendlyMarker, "id" | "createdAt">) => void;
+  editFriendlyMarker: (id: string, updates: Partial<Omit<FriendlyMarker, "id" | "createdAt">>) => void;
+  deleteFriendlyMarker: (id: string) => void;
+  addFriendlyEntity: (entity: Omit<FriendlyEntity, "id" | "createdAt">) => void;
+  editFriendlyEntity: (id: string, updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">>) => void;
+  deleteFriendlyEntity: (id: string) => void;
 }
 
 export function useGameEngine(): GameEngine {
@@ -130,6 +143,58 @@ export function useGameEngine(): GameEngine {
     dispatch({ type: "REBASE_AIRCRAFT", aircraftId, fromBase, toBase });
   }, []);
 
+  const addEnemyBase = useCallback((base: Omit<EnemyBase, "id" | "createdAt">) => {
+    dispatch({ type: "PLAN_ADD_ENEMY_BASE", base });
+  }, []);
+
+  const editEnemyBase = useCallback((id: string, updates: Partial<Omit<EnemyBase, "id" | "createdAt">>) => {
+    dispatch({ type: "PLAN_EDIT_ENEMY_BASE", id, updates });
+  }, []);
+
+  const deleteEnemyBase = useCallback((id: string) => {
+    dispatch({ type: "PLAN_DELETE_ENEMY_BASE", id });
+  }, []);
+
+  const addEnemyEntity = useCallback((entity: Omit<EnemyEntity, "id" | "createdAt">) => {
+    dispatch({ type: "PLAN_ADD_ENEMY_ENTITY", entity });
+  }, []);
+
+  const editEnemyEntity = useCallback((id: string, updates: Partial<Omit<EnemyEntity, "id" | "createdAt">>) => {
+    dispatch({ type: "PLAN_EDIT_ENEMY_ENTITY", id, updates });
+  }, []);
+
+  const deleteEnemyEntity = useCallback((id: string) => {
+    dispatch({ type: "PLAN_DELETE_ENEMY_ENTITY", id });
+  }, []);
+
+  const updateBaseResources = useCallback((baseId: BaseType, fuel?: number, ammo?: { type: string; quantity: number }[], maintenanceBayTotal?: number) => {
+    dispatch({ type: "PLAN_UPDATE_BASE_RESOURCES", baseId, fuel, ammo, maintenanceBayTotal });
+  }, []);
+
+  const addFriendlyMarker = useCallback((marker: Omit<FriendlyMarker, "id" | "createdAt">) => {
+    dispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker });
+  }, []);
+
+  const editFriendlyMarker = useCallback((id: string, updates: Partial<Omit<FriendlyMarker, "id" | "createdAt">>) => {
+    dispatch({ type: "PLAN_EDIT_FRIENDLY_MARKER", id, updates });
+  }, []);
+
+  const deleteFriendlyMarker = useCallback((id: string) => {
+    dispatch({ type: "PLAN_DELETE_FRIENDLY_MARKER", id });
+  }, []);
+
+  const addFriendlyEntity = useCallback((entity: Omit<FriendlyEntity, "id" | "createdAt">) => {
+    dispatch({ type: "PLAN_ADD_FRIENDLY_ENTITY", entity });
+  }, []);
+
+  const editFriendlyEntity = useCallback((id: string, updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">>) => {
+    dispatch({ type: "PLAN_EDIT_FRIENDLY_ENTITY", id, updates });
+  }, []);
+
+  const deleteFriendlyEntity = useCallback((id: string) => {
+    dispatch({ type: "PLAN_DELETE_FRIENDLY_ENTITY", id });
+  }, []);
+
   const importATOBatch = useCallback((
     orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[],
     sourceFile: string,
@@ -183,6 +248,11 @@ export function useGameEngine(): GameEngine {
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
     consumeSparePart, importATOBatch, rebaseAircraft,
+    addEnemyBase, editEnemyBase, deleteEnemyBase,
+    addEnemyEntity, editEnemyEntity, deleteEnemyEntity,
+    updateBaseResources,
+    addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
+    addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
   }), [
     state, togglePause, setGameSpeed, startMaintenance, sendOnMission, assignAircraftToOrder,
     dispatchOrder, moveAircraftToMaintenance, sendMissionDrop,
@@ -190,5 +260,10 @@ export function useGameEngine(): GameEngine {
     createATOOrder, editATOOrder, deleteATOOrder,
     applyRecommendation, dismissRecommendation, hangarDropConfirm, pauseMaintenance, markFaultNMC,
     consumeSparePart, importATOBatch, rebaseAircraft,
+    addEnemyBase, editEnemyBase, deleteEnemyBase,
+    addEnemyEntity, editEnemyEntity, deleteEnemyEntity,
+    updateBaseResources,
+    addFriendlyMarker, editFriendlyMarker, deleteFriendlyMarker,
+    addFriendlyEntity, editFriendlyEntity, deleteFriendlyEntity,
   ]);
 }

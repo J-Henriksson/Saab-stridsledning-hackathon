@@ -1,5 +1,57 @@
 // ── Base enums ────────────────────────────────────────────────────────────
 export type BaseType = "MOB" | "FOB_N" | "FOB_S" | "ROB_N" | "ROB_S" | "ROB_E";
+
+// ── Enemy / plan-mode types ───────────────────────────────────────────────
+export type EnemyBaseCategory = "airfield" | "sam_site" | "command" | "logistics" | "radar";
+export type EnemyEntityCategory = "fighter" | "transport" | "helicopter" | "apc" | "artillery" | "sam_launcher" | "ship";
+export type ThreatLevel = "low" | "medium" | "high" | "unknown";
+export type OperationalStatus = "active" | "suspected" | "destroyed" | "unknown";
+
+export interface EnemyBase {
+  id: string;
+  name: string;
+  category: EnemyBaseCategory;
+  coords: { lat: number; lng: number };
+  threatLevel: ThreatLevel;
+  operationalStatus: OperationalStatus;
+  estimates: string;
+  notes: string;
+  createdAt: number;
+}
+
+export interface EnemyEntity {
+  id: string;
+  name: string;
+  category: EnemyEntityCategory;
+  coords: { lat: number; lng: number };
+  threatLevel: ThreatLevel;
+  operationalStatus: OperationalStatus;
+  estimates: string;
+  notes: string;
+  createdAt: number;
+}
+
+export type FriendlyMarkerCategory = "airbase" | "logistics" | "command" | "army" | "navy";
+export type FriendlyEntityCategory = "infantry" | "armor" | "artillery" | "air_defense" | "support" | "aircraft";
+
+export interface FriendlyMarker {
+  id: string;
+  name: string;
+  category: FriendlyMarkerCategory;
+  coords: { lat: number; lng: number };
+  notes: string;
+  estimates: string;
+  createdAt: number;
+}
+
+export interface FriendlyEntity {
+  id: string;
+  name: string;
+  category: FriendlyEntityCategory;
+  coords: { lat: number; lng: number };
+  notes: string;
+  createdAt: number;
+}
 export type AircraftType = "GripenE" | "GripenF_EA" | "GlobalEye" | "VLO_UCAV" | "LOTUS";
 export type MissionType = "DCA" | "QRA" | "RECCE" | "AEW" | "AI_DT" | "AI_ST" | "ESCORT" | "TRANSPORT" | "REBASE";
 export type ScenarioPhase = "FRED" | "KRIS" | "KRIG";
@@ -160,7 +212,20 @@ export type GameAction =
   | { type: "RESET_GAME" }
   | { type: "LOAD_STATE"; payload: GameState }
   | { type: "IMPORT_ATO_BATCH"; orders: Omit<ATOOrder, "id" | "status" | "assignedAircraft">[]; sourceFile: string; riskCount: number }
-  | { type: "REBASE_AIRCRAFT"; aircraftId: string; fromBase: BaseType; toBase: BaseType };
+  | { type: "REBASE_AIRCRAFT"; aircraftId: string; fromBase: BaseType; toBase: BaseType }
+  | { type: "PLAN_ADD_ENEMY_BASE"; base: Omit<EnemyBase, "id" | "createdAt"> }
+  | { type: "PLAN_EDIT_ENEMY_BASE"; id: string; updates: Partial<Omit<EnemyBase, "id" | "createdAt">> }
+  | { type: "PLAN_DELETE_ENEMY_BASE"; id: string }
+  | { type: "PLAN_ADD_ENEMY_ENTITY"; entity: Omit<EnemyEntity, "id" | "createdAt"> }
+  | { type: "PLAN_EDIT_ENEMY_ENTITY"; id: string; updates: Partial<Omit<EnemyEntity, "id" | "createdAt">> }
+  | { type: "PLAN_DELETE_ENEMY_ENTITY"; id: string }
+  | { type: "PLAN_UPDATE_BASE_RESOURCES"; baseId: BaseType; fuel?: number; ammo?: { type: string; quantity: number }[]; maintenanceBayTotal?: number }
+  | { type: "PLAN_ADD_FRIENDLY_MARKER"; marker: Omit<FriendlyMarker, "id" | "createdAt"> }
+  | { type: "PLAN_EDIT_FRIENDLY_MARKER"; id: string; updates: Partial<Omit<FriendlyMarker, "id" | "createdAt">> }
+  | { type: "PLAN_DELETE_FRIENDLY_MARKER"; id: string }
+  | { type: "PLAN_ADD_FRIENDLY_ENTITY"; entity: Omit<FriendlyEntity, "id" | "createdAt"> }
+  | { type: "PLAN_EDIT_FRIENDLY_ENTITY"; id: string; updates: Partial<Omit<FriendlyEntity, "id" | "createdAt">> }
+  | { type: "PLAN_DELETE_FRIENDLY_ENTITY"; id: string };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 export interface Aircraft {
@@ -236,6 +301,10 @@ export interface GameState {
   recommendations: Recommendation[];
   maintenanceTasks: MaintenanceTask[];
   pendingLandingChecks: { aircraftId: string; baseId: BaseType }[];
+  enemyBases: EnemyBase[];
+  enemyEntities: EnemyEntity[];
+  friendlyMarkers: FriendlyMarker[];
+  friendlyEntities: FriendlyEntity[];
 }
 
 export type AARActionType =
