@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation } from "react-router-dom";
-import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
+import MapGL, { Marker, NavigationControl, MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
@@ -32,13 +32,54 @@ const MAP_MODE_OPTIONS: {
   label: string;
   icon: typeof Satellite;
   available: boolean;
-  shortLabel: string;
 }[] = [
-  { id: "satelliter", label: "Satelliter", icon: Satellite, available: true, shortLabel: "SAT" },
-  { id: "vind", label: "Vind", icon: Wind, available: false, shortLabel: "WND" },
-  { id: "moln", label: "Moln", icon: Cloud, available: false, shortLabel: "CLD" },
-  { id: "hotzoner", label: "Hotzoner", icon: Flame, available: false, shortLabel: "THR" },
+  { id: "satelliter", label: "Satelliter", icon: Satellite, available: true },
+  { id: "vind", label: "Vind", icon: Wind, available: false },
+  { id: "moln", label: "Moln", icon: Cloud, available: false },
+  { id: "hotzoner", label: "Hotzoner", icon: Flame, available: false },
 ];
+
+const SEA_LABELS = [
+  { id: "nordsjon", label: "Nordsjön", lat: 58.7, lng: 3.6 },
+  { id: "ostersjon", label: "Östersjön", lat: 58.8, lng: 19.7 },
+  { id: "bottniska_viken", label: "Bottniska viken", lat: 63.6, lng: 20.3 },
+];
+
+function isMarineLabelLayer(layer: {
+  id: string;
+  type?: string;
+  layout?: Record<string, unknown>;
+  source?: string;
+  ["source-layer"]?: string;
+}) {
+  if (layer.type !== "symbol") return false;
+
+  const textField = typeof layer.layout?.["text-field"] === "string"
+    ? layer.layout["text-field"]
+    : JSON.stringify(layer.layout?.["text-field"] ?? "");
+  const haystack = [
+    layer.id,
+    layer.source,
+    layer["source-layer"],
+    textField,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const mentionsMarineArea =
+    haystack.includes("water") ||
+    haystack.includes("marine") ||
+    haystack.includes("ocean") ||
+    haystack.includes("sea");
+
+  const mentionsLabel =
+    haystack.includes("name") ||
+    haystack.includes("label") ||
+    haystack.includes("text");
+
+  return mentionsMarineArea && mentionsLabel;
+}
 
 export default function MapPage() {
   const { state, togglePause, setGameSpeed, resetGame, dispatch } = useGame();
@@ -130,6 +171,22 @@ export default function MapPage() {
   const handleSatelliteUpdate = useCallback((satellites: SatelliteLiveState[]) => {
     setLiveSatellites(satellites);
   }, []);
+  const handleMapLoad = useCallback(() => {
+    const map = mapRef.current?.getMap();
+    const style = map?.getStyle();
+    if (!map || !style?.layers) return;
+
+    for (const layer of style.layers) {
+      if (!("id" in layer) || !("type" in layer)) continue;
+      if (!isMarineLabelLayer(layer)) continue;
+
+      try {
+        map.setLayoutProperty(layer.id, "visibility", "none");
+      } catch {
+        // Ignore third-party style layers that cannot be adjusted safely.
+      }
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
@@ -167,6 +224,7 @@ export default function MapPage() {
             }}
             mapStyle={MAP_STYLE}
             onClick={handleMapClick}
+            onLoad={handleMapLoad}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
@@ -200,6 +258,24 @@ export default function MapPage() {
                 }
                 onClick={() => setSelected({ kind: "base", baseId: id })}
               />
+            ))}
+
+            {SEA_LABELS.map((sea) => (
+              <Marker key={sea.id} longitude={sea.lng} latitude={sea.lat} anchor="center" style={{ zIndex: 0 }}>
+                <div
+                  className="pointer-events-none select-none text-center italic leading-tight"
+                  style={{
+                    color: "rgba(226,232,240,0.58)",
+                    textShadow: "0 1px 2px rgba(2,6,23,0.95), 0 0 1px rgba(2,6,23,0.95)",
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: "11px",
+                    letterSpacing: "0.02em",
+                    width: "96px",
+                  }}
+                >
+                  {sea.label}
+                </div>
+              </Marker>
             ))}
           </MapGL>
 
@@ -313,8 +389,6 @@ function MapModeSidebar({
   onSelectMode: (mode: MapMode) => void;
   satellites: SatelliteLiveState[];
 }) {
-  const activeModeMeta = MAP_MODE_OPTIONS.find((mode) => mode.id === activeMode) ?? MAP_MODE_OPTIONS[0];
-
   return (
     <div className="absolute left-3 top-3 z-20 pointer-events-none sm:left-4 sm:top-4">
       <div className="flex items-start gap-2">
@@ -332,19 +406,7 @@ function MapModeSidebar({
             style={{ borderColor: "rgba(103,232,249,0.12)" }}
             aria-label={isOpen ? "Stäng lägespanel" : "Öppna lägespanel"}
           >
-            <div className="relative flex items-center justify-center">
-              <Layers3 className="h-4 w-4" style={{ color: "#67e8f9" }} />
-              <span
-                className="absolute -right-5 rounded-full border px-1.5 py-0.5 text-[8px] font-bold tracking-[0.2em]"
-                style={{
-                  color: "#fbbf24",
-                  borderColor: "rgba(251,191,36,0.24)",
-                  background: "rgba(251,191,36,0.08)",
-                }}
-              >
-                {activeModeMeta.shortLabel}
-              </span>
-            </div>
+            <Layers3 className="h-4 w-4" style={{ color: "#67e8f9" }} />
           </button>
 
           <div className="flex flex-col gap-2 px-2 py-3">
