@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
 import type { Unit, GeoPosition } from "@/types/units";
-import { isAircraft } from "@/types/units";
+import { isAircraft, isAirDefense } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import { useGame } from "@/context/GameContext";
 
 // How long, in wall-ms, we expect a single engine tick to take at 1× game speed.
 // This is the lerp window. If the next tick lands sooner, the next render snaps
@@ -79,6 +80,7 @@ function MovementTrails({ units }: { units: Unit[] }) {
 }
 
 export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
+  const { dispatch } = useGame();
   // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
   // plus all other unit categories to render through the shared unit layer.
   const renderable = useMemo(
@@ -157,12 +159,32 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const dest = unit.movement.destination;
         const destIsGeo = !!dest && typeof dest === "object" && "lat" in dest;
 
+        const isAD = isAirDefense(unit);
+        const isDraggable = unit.currentBase === null;
+        const glowFilter = selectedUnitId === unit.id
+          ? isAD
+            ? "drop-shadow(0 0 6px #DC2626)"
+            : "drop-shadow(0 0 4px #D7AB3A)"
+          : undefined;
+
         return (
           <Marker
             key={unit.id}
             longitude={pos.lng}
             latitude={pos.lat}
             anchor="center"
+            draggable={isDraggable}
+            onDragEnd={(e) => {
+              dispatch({
+                type: "RELOCATE_UNIT",
+                unitId: unit.id,
+                destination: { lat: e.lngLat.lat, lng: e.lngLat.lng },
+              });
+            }}
+            onClick={(e) => {
+              e.originalEvent.stopPropagation();
+              onSelectUnit?.(unit.id);
+            }}
           >
             <div
               onClick={(e) => {
@@ -170,9 +192,8 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
                 onSelectUnit?.(unit.id);
               }}
               style={{
-                cursor: "pointer",
-                filter:
-                  selectedUnitId === unit.id ? "drop-shadow(0 0 4px #D7AB3A)" : undefined,
+                cursor: isDraggable ? "grab" : "pointer",
+                filter: glowFilter,
                 transform: selectedUnitId === unit.id ? "scale(1.15)" : undefined,
                 transition: "transform 120ms ease",
                 position: "relative",

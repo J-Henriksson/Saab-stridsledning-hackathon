@@ -165,6 +165,12 @@ export function createAirDefenseUnit(params: CommonParams & {
 }): AirDefenseUnit {
   const affiliation = params.affiliation ?? "friend";
   const max = params.maxMissiles ?? 8;
+  const ranges: Record<AirDefenseUnit["type"], { eng: number; det: number }> = {
+    SAM_SHORT:  { eng: 15,  det: 40  },
+    SAM_MEDIUM: { eng: 50,  det: 120 },
+    SAM_LONG:   { eng: 200, det: 400 },
+  };
+  const { eng, det } = ranges[params.type];
   return {
     id: params.id ?? uuid(),
     category: "air_defense",
@@ -181,6 +187,9 @@ export function createAirDefenseUnit(params: CommonParams & {
     missileStock: { loaded: params.loadedMissiles ?? max, max },
     fuel: 100,
     relocateSpeed: params.relocateSpeed ?? 30,
+    engagementRange: eng,
+    detectionRange: det,
+    operationalStatus: "ready",
   };
 }
 
