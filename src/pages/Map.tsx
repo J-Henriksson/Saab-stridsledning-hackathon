@@ -1,14 +1,22 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
+import MapGL, { NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin } from "lucide-react";
 
-import { BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM, MAP_STYLE } from "./map/constants";
+import {
+  BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
+  MAP_STYLE, DARK_STYLE, TOPO_STYLE, SATELLITE_STYLE, MINIMAL_STYLE,
+  TERRARIUM_TILES, OCEAN_TILES,
+} from "./map/constants";
 import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
+import { useMapLayers } from "@/hooks/useMapLayers";
+import type { OverlayKey } from "@/hooks/useMapLayers";
+import { MapFilterPanel } from "@/components/map/MapFilterPanel";
+import { RadarShadowOverlay } from "@/components/map/RadarShadowOverlay";
 import { SelectedEntity } from "./map/helpers";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
@@ -31,6 +39,9 @@ export default function MapPage() {
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
+  const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
+  const [hoveredOverlayKey, setHoveredOverlayKey] = useState<OverlayKey | null>(null);
+  const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
@@ -180,7 +191,10 @@ export default function MapPage() {
       <div className="flex-1 overflow-hidden flex">
 
         {/* Map area */}
-        <div className="flex-1 relative overflow-hidden">
+        <div
+          className="flex-1 relative overflow-hidden"
+          style={mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : undefined}
+        >
           <MapGL
             ref={mapRef}
             initialViewState={{
@@ -189,12 +203,71 @@ export default function MapPage() {
               zoom: TACTICAL_ZOOM,
               pitch: 0,
             }}
-            mapStyle={MAP_STYLE}
+            mapStyle={
+              mapLayerState.baseMap === "topo"      ? TOPO_STYLE :
+              mapLayerState.baseMap === "satellite" ? SATELLITE_STYLE :
+              mapLayerState.baseMap === "minimal"   ? MINIMAL_STYLE :
+              mapLayerState.baseMap === "dark"      ? DARK_STYLE :
+              MAP_STYLE  // "voyager" — default
+            }
             onClick={handleMapClick}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
             <NavigationControl position="bottom-right" />
+
+            {/* Ocean overlay — rendered first so it sits below all other layers */}
+            {(mapLayerState.overlays.ocean.active || hoveredOverlayKey === "ocean") && (
+              <Source
+                id="terrain-ocean"
+                type="raster"
+                tiles={OCEAN_TILES}
+                tileSize={256}
+                attribution="Tiles © Esri"
+              >
+                <Layer
+                  id="terrain-ocean-layer"
+                  type="raster"
+                  paint={{
+                    "raster-opacity": hoveredOverlayKey === "ocean" && !mapLayerState.overlays.ocean.active
+                      ? (mapLayerState.overlays.ocean.opacity * 0.5) / 100
+                      : mapLayerState.overlays.ocean.opacity / 100,
+                    // Nudge toward teal to emphasise water bodies as flight corridors
+                    "raster-saturation": 0.4,
+                    "raster-hue-rotate": 15,
+                  }}
+                />
+              </Source>
+            )}
+
+            {/* Hillshade — uses MapLibre's native hillshade layer type, rendered inside GL
+                so it sits below zones/rings/markers automatically. Disabled on satellite
+                because the imagery already contains its own terrain shadows. */}
+            {(mapLayerState.overlays.hillshade.active || hoveredOverlayKey === "hillshade") &&
+              mapLayerState.baseMap !== "satellite" && (
+              <Source
+                id="terrain-dem"
+                type="raster-dem"
+                tiles={[TERRARIUM_TILES]}
+                tileSize={256}
+                encoding="terrarium"
+              >
+                <Layer
+                  id="terrain-hillshade"
+                  type="hillshade"
+                  paint={{
+                    "hillshade-shadow-color": "#1e2d40",
+                    "hillshade-highlight-color": "#d0d8e8",
+                    "hillshade-accent-color": "#3a4a5c",
+                    // exaggeration (0–1) doubles as opacity — driven by the per-overlay slider
+                    "hillshade-exaggeration": hoveredOverlayKey === "hillshade" && !mapLayerState.overlays.hillshade.active
+                      ? (mapLayerState.overlays.hillshade.opacity * 0.5) / 100
+                      : mapLayerState.overlays.hillshade.opacity / 100,
+                    "hillshade-illumination-direction": 335,
+                  }}
+                />
+              </Source>
+            )}
 
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
@@ -264,6 +337,30 @@ export default function MapPage() {
             />
           </div>
 
+          {/* Radar shadow viewshed — canvas overlay, only when active and observer selected */}
+          {(() => {
+            const observerLngLat: [number, number] | null =
+              selectedBase && BASE_COORDS[selectedBase.id]
+                ? [BASE_COORDS[selectedBase.id].lng, BASE_COORDS[selectedBase.id].lat]
+                : selectedAsset
+                ? [selectedAsset.lng, selectedAsset.lat]
+                : null;
+            const showShadow =
+              (mapLayerState.overlays.radarShadow.active || hoveredOverlayKey === "radarShadow") &&
+              observerLngLat !== null;
+            if (!showShadow) return null;
+            return (
+              <RadarShadowOverlay
+                observerLngLat={observerLngLat}
+                opacity={
+                  hoveredOverlayKey === "radarShadow" && !mapLayerState.overlays.radarShadow.active
+                    ? (mapLayerState.overlays.radarShadow.opacity * 0.5) / 100
+                    : mapLayerState.overlays.radarShadow.opacity / 100
+                }
+              />
+            );
+          })()}
+
           {/* Legend card — bottom left, above aircraft bar */}
           <div
             className="absolute bottom-14 left-3 z-10 p-3 rounded-xl text-xs font-mono pointer-events-none"
@@ -303,7 +400,25 @@ export default function MapPage() {
             visibility={state.overlayVisibility}
             onToggleVisibility={handleToggleVisibility}
             activeZoneCount={userZoneCount}
+            terrainFilterOpen={terrainFilterOpen}
+            onOpenTerrainFilter={() => setTerrainFilterOpen((v) => !v)}
           />
+
+          {/* Terrain filter panel */}
+          <AnimatePresence>
+            {terrainFilterOpen && (
+              <MapFilterPanel
+                state={mapLayerState}
+                onBaseMapChange={setBaseMap}
+                onToggleOverlay={toggleOverlay}
+                onSetOverlayOpacity={setOverlayOpacity}
+                onToggleDampColors={toggleDampColors}
+                onHoverChange={setHoveredOverlayKey}
+                hasObserver={!!(selectedBase || selectedAsset)}
+                onClose={() => setTerrainFilterOpen(false)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Active aircraft bar */}
           <ActiveAircraftBar

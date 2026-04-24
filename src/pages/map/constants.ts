@@ -30,8 +30,59 @@ export const BASE_RINGS: Record<string, { sizeRadiusKm: number; defaultAorRadius
   ROB_E: { sizeRadiusKm: 1.2, defaultAorRadiusKm: 70  },  // Söderhamn/F15
 };
 
+// ── Base map styles ────────────────────────────────────────────────────────────
 export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+export const DARK_STYLE  = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+export const MINIMAL_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
+export const TOPO_STYLE = {
+  version: 8 as const,
+  sources: {
+    opentopomap: {
+      type: "raster" as const,
+      tiles: [
+        "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      maxzoom: 17,
+      attribution: "© OpenTopoMap (CC-BY-SA), kartdata © OpenStreetMap-bidragsgivare",
+    },
+  },
+  layers: [{ id: "opentopomap", type: "raster" as const, source: "opentopomap" }],
+};
+
+export const SATELLITE_STYLE = {
+  version: 8 as const,
+  sources: {
+    esri_satellite: {
+      type: "raster" as const,
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      maxzoom: 18,
+      attribution: "Tiles © Esri",
+    },
+  },
+  layers: [{ id: "esri_satellite", type: "raster" as const, source: "esri_satellite" }],
+};
+
+// Terrarium DEM tiles — RGB-encoded elevation data (r*256 + g + b/256 − 32768 = metres)
+export const TERRARIUM_TILES = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+
+// Esri World Ocean Base — used for open-water / flight-corridor overlay
+export const OCEAN_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
+];
+
+// Esri Hillshade — relief shading overlay
+export const HILLSHADE_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+];
+
+// ── GIS color palette (light-map redesign) ───────────────────────────────────
 export const GIS_COLORS = {
   militaryBase:  "#2D5A27",  // Forest Green — airbases + army/marine/naval
   criticalInfra: "#708090",  // Slate Gray — civil airports + ammo depots

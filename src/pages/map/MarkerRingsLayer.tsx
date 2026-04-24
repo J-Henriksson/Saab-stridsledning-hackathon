@@ -77,7 +77,6 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers }: Props) {
 
     const markers: MarkerDef[] = [];
 
-    // Airbases — always Forest Green, shown unless flygvapnet solo hides all (airbases are the stars in flygvapnet mode)
     const showAirbases = visibleLayers ? visibleLayers.militaryBases !== false : true;
     if (showAirbases) {
       Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, X } from "lucide-react";
+import { Layers, X, Mountain } from "lucide-react";
 import type { DrawingMode, OverlayLayerVisibility } from "@/types/overlay";
 
 const DRAW_TOOLS: {
@@ -25,6 +25,8 @@ interface ZoneToolbarProps {
   visibility: OverlayLayerVisibility;
   onToggleVisibility: (key: keyof OverlayLayerVisibility) => void;
   activeZoneCount: number;
+  terrainFilterOpen: boolean;
+  onOpenTerrainFilter: () => void;
 }
 
 export function ZoneToolbar({
@@ -33,6 +35,8 @@ export function ZoneToolbar({
   visibility,
   onToggleVisibility,
   activeZoneCount,
+  terrainFilterOpen,
+  onOpenTerrainFilter,
 }: ZoneToolbarProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -41,7 +45,7 @@ export function ZoneToolbar({
       className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2"
       style={{ pointerEvents: "auto" }}
     >
-      {/* Toggle button */}
+      {/* Zone tools toggle */}
       <button
         onClick={() => setExpanded((e) => !e)}
         className="w-9 h-9 rounded-lg flex items-center justify-center"
@@ -54,6 +58,21 @@ export function ZoneToolbar({
         }}
       >
         <Layers size={16} />
+      </button>
+
+      {/* Terrain filter toggle */}
+      <button
+        onClick={onOpenTerrainFilter}
+        className="w-9 h-9 rounded-lg flex items-center justify-center"
+        title="Kartfilter / Terrängläge"
+        style={{
+          background: terrainFilterOpen ? "rgba(215,171,58,0.15)" : "rgba(5,10,20,0.85)",
+          border: `1px solid ${terrainFilterOpen ? "#D7AB3A" : "rgba(215,171,58,0.3)"}`,
+          color: terrainFilterOpen ? "#D7AB3A" : "rgba(215,171,58,0.6)",
+          backdropFilter: "blur(6px)",
+        }}
+      >
+        <Mountain size={16} />
       </button>
 
       {expanded && (

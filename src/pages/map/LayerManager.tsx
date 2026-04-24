@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin } from "lucide-react";
+import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin, Mountain } from "lucide-react";
 import type { DrawingMode, OverlayLayerVisibility } from "@/types/overlay";
 
 const MILITARY_GREEN = "#2D5A27";
@@ -31,6 +31,8 @@ interface LayerManagerProps {
   visibility: OverlayLayerVisibility;
   onToggleVisibility: (key: keyof OverlayLayerVisibility) => void;
   activeZoneCount: number;
+  terrainFilterOpen?: boolean;
+  onOpenTerrainFilter?: () => void;
 }
 
 export function LayerManager({
@@ -39,6 +41,8 @@ export function LayerManager({
   visibility,
   onToggleVisibility,
   activeZoneCount,
+  terrainFilterOpen = false,
+  onOpenTerrainFilter,
 }: LayerManagerProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -103,6 +107,21 @@ export function LayerManager({
               </button>
             );
           })}
+
+          {onOpenTerrainFilter && (
+            <button
+              onClick={onOpenTerrainFilter}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-lg w-full text-left transition-all mt-0.5"
+              style={{
+                background: terrainFilterOpen ? `${MILITARY_GREEN}18` : "transparent",
+                border: `1px solid ${terrainFilterOpen ? MILITARY_GREEN : "transparent"}`,
+                color: terrainFilterOpen ? MILITARY_GREEN : "#6B7280",
+              }}
+            >
+              <Mountain size={12} />
+              <span className="text-[10px] font-mono flex-1">Kartfilter</span>
+            </button>
+          )}
 
           <div
             style={{ height: 1, background: "rgba(45,90,39,0.12)" }}
