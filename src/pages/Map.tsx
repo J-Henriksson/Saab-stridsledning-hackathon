@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -37,7 +37,6 @@ import { UnitDetailPanel } from "./map/UnitDetailPanel";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
-import { LayerManager } from "./map/LayerManager";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
@@ -81,6 +80,27 @@ const MAP_MODE_OPTIONS: {
   { id: "vind", label: "Vind", icon: Wind, available: true },
   { id: "moln", label: "Moln", icon: Cloud, available: true },
   { id: "hotzoner", label: "Hotzoner", icon: TriangleAlert, available: false },
+];
+
+const DRAW_TOOLS: { mode: DrawingMode; label: string; color: string }[] = [
+  { mode: "circle_restricted", label: "Restriktionszon", color: "#D9192E" },
+  { mode: "circle_surveillance", label: "Övervakningszon", color: "#D97706" },
+  { mode: "circle_logistics", label: "Logistikzon", color: "#2563eb" },
+  { mode: "polygon_roadstrip", label: "Vägstripzon", color: "#0891b2" },
+];
+
+const LAYER_ITEMS: {
+  key: keyof OverlayLayerVisibility;
+  label: string;
+  Icon: typeof Plane;
+  color: string;
+  solo?: boolean;
+}[] = [
+  { key: "flygvapnet", label: "Flygvapnet / Flygbaser", Icon: Plane, color: "#2D5A27", solo: true },
+  { key: "militaryBases", label: "Militära baser", Icon: Shield, color: "#2D5A27" },
+  { key: "criticalInfra", label: "Kritisk infrastruktur", Icon: Building2, color: "#708090" },
+  { key: "skyddsobjekt", label: "Skyddsobjekt", Icon: ShieldAlert, color: "#D97706" },
+  { key: "activeZones", label: "Aktiva zoner", Icon: MapPin, color: "#2563eb" },
 ];
 
 const SEA_LABELS = [
@@ -129,7 +149,8 @@ export default function MapPage() {
   const { state, togglePause, setGameSpeed, resetGame, dispatch } = useGame();
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
-  const [isModePanelOpen, setIsModePanelOpen] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [visibleViews, setVisibleViews] = useState<Record<MapViewKey, boolean>>({
     satelliter: true,
     vind: false,
@@ -184,6 +205,22 @@ export default function MapPage() {
       setSelected({ kind: "aircraft", baseId: s.baseId, aircraftId: s.aircraftId });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setIsDropdownOpen(false); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    if (isDropdownOpen) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [isDropdownOpen]);
 
   const allUnits = useMemo(
     () => [...state.bases.flatMap((b) => b.units), ...state.deployedUnits],
@@ -645,8 +682,12 @@ export default function MapPage() {
           {/* Wind particle flow field — shown when vind tab is active */}
           {visibleViews.vind && <WindLayer active={true} />}
 
-          {/* Search bar — top left */}
-          <div className="absolute top-3 left-14 z-10" style={{ pointerEvents: "auto" }}>
+          {/* Search bar + combined layer dropdown — top left */}
+          <div
+            ref={dropdownRef}
+            className="absolute top-3 left-14 z-20 flex items-center gap-2"
+            style={{ pointerEvents: "auto" }}
+          >
             <input
               type="text"
               placeholder="Sök position eller enhet..."
@@ -658,6 +699,169 @@ export default function MapPage() {
                 boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
               }}
             />
+
+            {/* Combined dropdown trigger */}
+            <button
+              onClick={() => setIsDropdownOpen((v) => !v)}
+              title="Kartlager och verktyg"
+              className="h-9 w-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
+              style={{
+                background: isDropdownOpen ? "rgba(103,232,249,0.15)" : "rgba(255,255,255,0.90)",
+                border: isDropdownOpen ? "1.5px solid rgba(103,232,249,0.5)" : "1px solid rgba(45,90,39,0.28)",
+                color: isDropdownOpen ? "#67e8f9" : "#2D5A27",
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
+              }}
+            >
+              <Layers3 size={16} />
+            </button>
+
+            {/* Combined dropdown panel */}
+            {isDropdownOpen && (
+              <div
+                className="absolute top-full left-0 mt-2 rounded-2xl overflow-hidden overflow-y-auto"
+                style={{
+                  width: 320,
+                  maxHeight: "80vh",
+                  background: "linear-gradient(180deg, rgba(8,17,32,0.97), rgba(4,10,20,0.94))",
+                  border: "1px solid rgba(103,232,249,0.18)",
+                  boxShadow: "0 24px 60px rgba(2,6,23,0.55), inset 0 1px 0 rgba(103,232,249,0.08)",
+                  backdropFilter: "blur(18px)",
+                }}
+              >
+                {/* ── KARTLAGER — map mode toggles ── */}
+                <div className="px-4 pt-4 pb-3 border-b" style={{ borderColor: "rgba(103,232,249,0.10)" }}>
+                  <div className="text-[9px] tracking-[0.32em] mb-3" style={{ color: "#67e8f9" }}>KARTLAGER</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {MAP_MODE_OPTIONS.map((mode) => {
+                      const Icon = mode.icon;
+                      const isActive = visibleViews[mode.id];
+                      const accent = mode.id === "hotzoner" ? "#f87171" : mode.id === "moln" ? "#cbd5e1" : "#67e8f9";
+                      return (
+                        <button
+                          key={mode.id}
+                          onClick={() => toggleView(mode.id)}
+                          className="rounded-xl border px-3 py-2.5 text-left transition-all"
+                          style={{
+                            borderColor: isActive ? `${accent}73` : "rgba(148,163,184,0.14)",
+                            background: isActive
+                              ? mode.id === "hotzoner"
+                                ? "linear-gradient(180deg, rgba(127,29,29,0.72), rgba(69,10,10,0.88))"
+                                : "linear-gradient(180deg, rgba(10,65,92,0.65), rgba(6,26,43,0.88))"
+                              : "rgba(15,23,42,0.45)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <Icon className="h-3.5 w-3.5" style={{ color: isActive ? accent : "#94a3b8" }} />
+                            <span className="rounded-full border px-1.5 py-0.5 text-[8px] tracking-[0.18em]"
+                              style={{
+                                color: isActive ? "#4ade80" : "#94a3b8",
+                                borderColor: isActive ? "rgba(34,197,94,0.25)" : "rgba(148,163,184,0.2)",
+                                background: isActive ? "rgba(34,197,94,0.08)" : "rgba(148,163,184,0.08)",
+                              }}>
+                              {isActive ? "PÅ" : "AV"}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 text-[11px] font-bold tracking-[0.1em]" style={{ color: "#f8fafc" }}>
+                            {mode.label}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Sub-panels when a mode is active */}
+                {visibleViews.satelliter && (
+                  <SatelliteModePanel
+                    satellites={liveSatellites}
+                    selectedSatelliteId={selectedSatelliteId}
+                    onSelectSatellite={(satelliteId) => setSelected({ kind: "satellite", satelliteId })}
+                  />
+                )}
+                {visibleViews.vind && <WindModePanel />}
+                {visibleViews.moln && <CloudModePanel summary={cloudSummary} />}
+                {visibleViews.hotzoner && <PlaceholderModePanel mode="hotzoner" />}
+
+                {/* ── RITVERKTYG — drawing tools ── */}
+                <div className="px-4 py-3 border-t" style={{ borderColor: "rgba(103,232,249,0.10)" }}>
+                  <div className="text-[9px] tracking-[0.32em] mb-2" style={{ color: "#67e8f9" }}>RITVERKTYG</div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {DRAW_TOOLS.map(({ mode, label, color }) => {
+                      const isActive = drawingMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          onClick={() => setDrawingMode(isActive ? "none" : mode)}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition-all text-[10px] font-mono"
+                          style={{
+                            borderColor: isActive ? color : "rgba(148,163,184,0.14)",
+                            background: isActive ? `${color}18` : "rgba(15,23,42,0.45)",
+                            color: isActive ? color : "#94a3b8",
+                          }}
+                        >
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── LAGER — layer visibility ── */}
+                <div className="px-4 py-3 border-t" style={{ borderColor: "rgba(103,232,249,0.10)" }}>
+                  <div className="text-[9px] tracking-[0.32em] mb-2" style={{ color: "#67e8f9" }}>
+                    LAGER{userZoneCount > 0 && <span className="ml-2 text-blue-400">({userZoneCount} aktiva)</span>}
+                  </div>
+                  <div className="space-y-1">
+                    {LAYER_ITEMS.map(({ key, label, Icon, color, solo }) => {
+                      const isOn = state.overlayVisibility[key];
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => handleToggleVisibility(key)}
+                          className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-all text-[10px] font-mono text-left"
+                          style={{
+                            background: isOn ? `${color}12` : "transparent",
+                            color: isOn ? "#f8fafc" : "#64748b",
+                          }}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-sm flex-shrink-0"
+                            style={{
+                              background: isOn ? color : "transparent",
+                              border: `1.5px solid ${isOn ? color : "rgba(148,163,184,0.3)"}`,
+                            }}
+                          />
+                          <Icon size={12} style={{ color: isOn ? color : "#64748b", flexShrink: 0 }} />
+                          <span>{label}</span>
+                          {solo && isOn && (
+                            <span className="ml-auto text-[8px] px-1 py-0.5 rounded border" style={{ borderColor: `${color}50`, color, background: `${color}12` }}>SOLO</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── KARTFILTER ── */}
+                <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: "rgba(103,232,249,0.10)" }}>
+                  <button
+                    onClick={() => { setTerrainFilterOpen((v) => !v); setIsDropdownOpen(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all text-[10px] font-mono"
+                    style={{
+                      borderColor: terrainFilterOpen ? "rgba(215,171,58,0.5)" : "rgba(148,163,184,0.14)",
+                      background: terrainFilterOpen ? "rgba(215,171,58,0.12)" : "rgba(15,23,42,0.45)",
+                      color: terrainFilterOpen ? "#D7AB3A" : "#94a3b8",
+                    }}
+                  >
+                    <Mountain size={13} />
+                    <span>Kartfilter (terräng & overlays)</span>
+                    <ChevronRight size={12} className="ml-auto" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Radar shadow viewshed — canvas overlay, only when active and observer selected */}
@@ -715,28 +919,6 @@ export default function MapPage() {
               ))}
             </div>
           </div>
-
-          {/* Layer manager — left edge */}
-          <LayerManager
-            drawingMode={drawingMode}
-            onSetDrawingMode={setDrawingMode}
-            visibility={state.overlayVisibility}
-            onToggleVisibility={handleToggleVisibility}
-            activeZoneCount={userZoneCount}
-            terrainFilterOpen={terrainFilterOpen}
-            onOpenTerrainFilter={() => setTerrainFilterOpen((v) => !v)}
-          />
-
-          <MapModeSidebar
-            visibleViews={visibleViews}
-            isOpen={isModePanelOpen}
-            onToggle={() => setIsModePanelOpen((current) => !current)}
-            onToggleView={toggleView}
-            satellites={liveSatellites}
-            cloudSummary={cloudSummary}
-            selectedSatelliteId={selectedSatelliteId}
-            onSelectSatellite={(satelliteId) => setSelected({ kind: "satellite", satelliteId })}
-          />
 
           {/* Terrain filter panel */}
           <AnimatePresence>
@@ -862,217 +1044,6 @@ export default function MapPage() {
                 <EnemyBaseDetailPanel base={selectedEnemyBase} />
               ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
                 <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
-              ) : null}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-}
-
-function MapModeSidebar({
-  visibleViews,
-  isOpen,
-  onToggle,
-  onToggleView,
-  satellites,
-  cloudSummary,
-  selectedSatelliteId,
-  onSelectSatellite,
-}: {
-  visibleViews: Record<MapViewKey, boolean>;
-  isOpen: boolean;
-  onToggle: () => void;
-  onToggleView: (mode: MapViewKey) => void;
-  satellites: SatelliteLiveState[];
-  cloudSummary: CloudSummary;
-  selectedSatelliteId?: string;
-  onSelectSatellite: (satelliteId: string) => void;
-}) {
-  const modeAccent = (mode: MapViewKey) => {
-    if (mode === "hotzoner") return "#f87171";
-    if (mode === "moln") return "#cbd5e1";
-    return "#67e8f9";
-  };
-
-  return (
-    <div className="absolute left-3 top-3 z-20 pointer-events-none sm:left-4 sm:top-4">
-      <div className="flex items-start gap-2">
-        <div
-          className="pointer-events-auto flex w-[64px] flex-col overflow-hidden rounded-2xl border backdrop-blur-xl"
-          style={{
-            background: "linear-gradient(180deg, rgba(7,12,24,0.94), rgba(4,8,16,0.88))",
-            borderColor: "rgba(100,116,139,0.26)",
-            boxShadow: "0 24px 50px rgba(2,6,23,0.5), inset 0 1px 0 rgba(103,232,249,0.08)",
-          }}
-        >
-          <button
-            onClick={onToggle}
-            className="flex h-14 items-center justify-center border-b transition-colors hover:bg-white/5"
-            style={{ borderColor: "rgba(103,232,249,0.12)" }}
-            aria-label={isOpen ? "Stäng lägespanel" : "Öppna lägespanel"}
-          >
-            <Layers3 className="h-4 w-4" style={{ color: "#67e8f9" }} />
-          </button>
-
-          <div className="flex flex-col gap-2 px-2 py-3">
-            {MAP_MODE_OPTIONS.map((mode) => {
-              const Icon = mode.icon;
-              const isActive = visibleViews[mode.id];
-              const accent = modeAccent(mode.id);
-
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => {
-                    onToggleView(mode.id);
-                    if (!isOpen) onToggle();
-                  }}
-                  className="group relative flex h-11 items-center justify-center rounded-xl border transition-all"
-                  style={{
-                    borderColor: isActive ? `${accent}73` : "rgba(148,163,184,0.14)",
-                    background: isActive
-                      ? mode.id === "hotzoner"
-                        ? "linear-gradient(180deg, rgba(127,29,29,0.32), rgba(69,10,10,0.4))"
-                        : "linear-gradient(180deg, rgba(8,145,178,0.22), rgba(8,47,73,0.34))"
-                      : "rgba(15,23,42,0.46)",
-                    boxShadow: isActive ? `inset 0 1px 0 ${accent}22, 0 0 18px ${accent}22` : "none",
-                  }}
-                  aria-label={`Välj ${mode.label}`}
-                >
-                  <Icon className="h-4 w-4" style={{ color: isActive ? accent : "#94a3b8" }} />
-                  {!mode.available && !isActive && (
-                    <span
-                      className="absolute bottom-1 h-1.5 w-1.5 rounded-full"
-                      style={{ background: "rgba(148,163,184,0.55)" }}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ x: -18, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -18, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 280, damping: 28 }}
-              className="pointer-events-auto w-[290px] max-w-[calc(100vw-6rem)] overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl sm:w-[320px]"
-              style={{
-                background: "linear-gradient(180deg, rgba(8,17,32,0.95), rgba(4,10,20,0.88))",
-                borderColor: "rgba(215,171,58,0.18)",
-                boxShadow: "0 28px 60px rgba(2,6,23,0.52), inset 0 1px 0 rgba(103,232,249,0.08)",
-              }}
-            >
-              <div
-                className="flex items-center justify-between border-b px-4 py-3"
-                style={{ borderColor: "rgba(103,232,249,0.12)" }}
-              >
-                <div>
-                  <div className="text-[9px] tracking-[0.34em]" style={{ color: "#67e8f9" }}>
-                    STRIDSLEDNING
-                  </div>
-                  <div className="mt-1 text-sm font-bold tracking-[0.14em]" style={{ color: "#f8fafc" }}>
-                    KARTLAGER
-                  </div>
-                </div>
-                <button
-                  onClick={onToggle}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:bg-white/5"
-                  style={{ borderColor: "rgba(148,163,184,0.18)", color: "#cbd5e1" }}
-                  aria-label="Stäng lägespanel"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="border-b px-3 py-3" style={{ borderColor: "rgba(103,232,249,0.1)" }}>
-                <div className="grid grid-cols-2 gap-2">
-                  {MAP_MODE_OPTIONS.map((mode) => {
-                    const Icon = mode.icon;
-                    const isActive = visibleViews[mode.id];
-                    const accent = modeAccent(mode.id);
-
-                    return (
-                      <button
-                        key={mode.id}
-                        onClick={() => onToggleView(mode.id)}
-                        className="rounded-xl border px-3 py-3 text-left transition-all hover:-translate-y-[1px]"
-                        style={{
-                          borderColor: isActive ? `${accent}73` : "rgba(148,163,184,0.14)",
-                          background: isActive
-                            ? mode.id === "hotzoner"
-                              ? "linear-gradient(180deg, rgba(127,29,29,0.72), rgba(69,10,10,0.88))"
-                              : "linear-gradient(180deg, rgba(10,65,92,0.65), rgba(6,26,43,0.88))"
-                            : "rgba(15,23,42,0.45)",
-                          boxShadow: isActive ? `0 0 22px ${accent}22` : "none",
-                        }}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <Icon className="h-4 w-4" style={{ color: isActive ? accent : "#94a3b8" }} />
-                          <span
-                            className="rounded-full border px-1.5 py-0.5 text-[8px] tracking-[0.18em]"
-                            style={{
-                              color: isActive ? "#4ade80" : "#94a3b8",
-                              borderColor: isActive ? "rgba(34,197,94,0.25)" : "rgba(148,163,184,0.2)",
-                              background: isActive ? "rgba(34,197,94,0.08)" : "rgba(148,163,184,0.08)",
-                            }}
-                          >
-                            {isActive ? "PÅ" : "AV"}
-                          </span>
-                        </div>
-                        <div className="mt-2 text-[11px] font-bold tracking-[0.1em]" style={{ color: "#f8fafc" }}>
-                          {mode.label}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {visibleViews.satelliter ? (
-                <SatelliteModePanel
-                  satellites={satellites}
-                  selectedSatelliteId={selectedSatelliteId}
-                  onSelectSatellite={onSelectSatellite}
-                />
-              ) : null}
-
-              {visibleViews.moln ? <CloudModePanel summary={cloudSummary} /> : null}
-
-              {visibleViews.vind ? <WindModePanel /> : null}
-
-              {(["hotzoner"] as const)
-                .filter((mode) => visibleViews[mode])
-                .map((mode) => (
-                  <PlaceholderModePanel key={mode} mode={mode} />
-                ))}
-
-              {!visibleViews.satelliter &&
-              !(visibleViews.vind || visibleViews.moln || visibleViews.hotzoner) ? (
-                <div className="px-4 py-5 font-mono">
-                  <div
-                    className="rounded-2xl border px-4 py-5"
-                    style={{
-                      borderColor: "rgba(148,163,184,0.16)",
-                      background: "linear-gradient(180deg, rgba(15,23,42,0.64), rgba(15,23,42,0.4))",
-                    }}
-                  >
-                    <div className="text-[9px] tracking-[0.3em]" style={{ color: "#94a3b8" }}>
-                      KARTLAGER
-                    </div>
-                    <div className="mt-2 text-lg font-bold tracking-[0.12em]" style={{ color: "#f8fafc" }}>
-                      Inga vyer aktiva
-                    </div>
-                    <p className="mt-3 text-[11px] leading-5" style={{ color: "#cbd5e1" }}>
-                      Slå på ett lager i sidofältet för att visa satelliter eller andra kartvyer.
-                    </p>
-                  </div>
-                </div>
               ) : null}
             </motion.div>
           )}
