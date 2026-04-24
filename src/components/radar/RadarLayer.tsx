@@ -39,48 +39,41 @@ export const RadarLayer: React.FC<RadarLayerProps> = ({
     onUpdateUnit(id, { position });
   };
 
-  const radarTeal = '#00E5C7';
+  const RADAR_TEAL = '#00E5C7';
+  const RADAR_AMBER = '#D7AB3A';
+  const RADAR_GREY = '#6B7280';
 
-  // 1. Consolidated coverage GeoJSON (Outer Rings)
-  const coverageGeoJSON = useMemo(() => {
-    if (!showCoverage) return { type: 'FeatureCollection', features: [] };
-
-    const features = units
-      .filter((u) => u.status !== 'maintenance')
-      .map((u) => {
+  // Graticule 25/50/75% — operational only
+  const graticuleGeoJSON = useMemo(() => {
+    if (!showCoverage) return { type: 'FeatureCollection', features: [] } as GeoJSON.FeatureCollection;
+    const features: GeoJSON.Feature[] = [];
+    units
+      .filter((u) => u.status === 'operational')
+      .forEach((u) => {
         const pos = draggingUnitId === u.id && dragPos ? dragPos : u.position;
-        const circle = createCircleGeoJSON(pos, u.rangeRadius);
-        return {
-          ...circle,
-          properties: {
-            id: u.id,
-            status: u.status,
-          },
-        };
+        [0.25, 0.5, 0.75].forEach((frac) => {
+          const c = createCircleGeoJSON(pos, u.rangeRadius * frac);
+          features.push({ ...c, properties: { id: u.id, frac } });
+        });
       });
-
-    return {
-      type: 'FeatureCollection',
-      features,
-    } as GeoJSON.FeatureCollection;
+    return { type: 'FeatureCollection', features } as GeoJSON.FeatureCollection;
   }, [units, draggingUnitId, dragPos, showCoverage]);
 
-  // 2. Consolidated detection GeoJSON (Inner Rings)
-  const innerRingsGeoJSON = useMemo(() => {
-    if (!showCoverage) return { type: 'FeatureCollection', features: [] };
+  // Coverage GeoJSON — every unit (including maintenance) so coverage gaps are visible
+  const coverageGeoJSON = useMemo(() => {
+    if (!showCoverage) return { type: 'FeatureCollection', features: [] } as GeoJSON.FeatureCollection;
 
-    const features = units
-      .filter((u) => u.status === 'operational' && u.detectedContactIds.length > 0)
-      .map((u) => {
-        const pos = draggingUnitId === u.id && dragPos ? dragPos : u.position;
-        const circle = createCircleGeoJSON(pos, u.rangeRadius * 0.15);
-        return {
-          ...circle,
-          properties: {
-            id: u.id,
-          },
-        };
-      });
+    const features = units.map((u) => {
+      const pos = draggingUnitId === u.id && dragPos ? dragPos : u.position;
+      const circle = createCircleGeoJSON(pos, u.rangeRadius);
+      return {
+        ...circle,
+        properties: {
+          id: u.id,
+          status: u.status,
+        },
+      };
+    });
 
     return {
       type: 'FeatureCollection',
@@ -90,78 +83,67 @@ export const RadarLayer: React.FC<RadarLayerProps> = ({
 
   return (
     <>
-      <Source id="radar-src-outer-all" type="geojson" data={coverageGeoJSON}>
-        {/* Background Fill - High contrast */}
+      {/* Graticule — thin 25/50/75% range rings */}
+      <Source id="radar-src-graticule" type="geojson" data={graticuleGeoJSON}>
         <Layer
-          id="radar-fill-layer-all"
-          type="fill"
-          paint={{
-            'fill-color': radarTeal,
-            'fill-opacity': [
-              'case',
-              ['==', ['get', 'status'], 'operational'],
-              0.08, // Increased opacity
-              0.04
-            ],
-          }}
-        />
-
-        {/* White Outline "Halo" for contrast against water/land */}
-        <Layer
-          id="radar-stroke-halo-all"
+          id="radar-graticule-line"
           type="line"
           paint={{
-            'line-color': '#FFFFFF',
-            'line-width': 5,
-            'line-opacity': 0.3,
-          }}
-        />
-        
-        {/* Main Glow Layer */}
-        <Layer
-          id="radar-glow-layer-all"
-          type="line"
-          paint={{
-            'line-color': radarTeal,
-            'line-width': 8,
-            'line-opacity': 0.2,
-            'line-blur': 6,
-          }}
-        />
-
-        {/* Primary Tactical Stroke */}
-        <Layer
-          id="radar-stroke-layer-all"
-          type="line"
-          paint={{
-            'line-color': radarTeal,
-            'line-width': 3,
-            'line-opacity': [
-              'case',
-              ['==', ['get', 'status'], 'standby'],
-              0.5,
-              1.0 // FULL opacity for operational
-            ],
-            'line-dasharray': [
-              'case',
-              ['==', ['get', 'status'], 'standby'],
-              ['literal', [4, 3]],
-              ['literal', [1, 0]]
-            ],
+            'line-color': RADAR_TEAL,
+            'line-width': 0.75,
+            'line-opacity': 0.22,
+            'line-dasharray': [2, 4],
           }}
         />
       </Source>
 
-      {/* Threat Rings */}
-      <Source id="radar-src-inner-all" type="geojson" data={innerRingsGeoJSON}>
+      <Source id="radar-src-outer-all" type="geojson" data={coverageGeoJSON}>
         <Layer
-          id="radar-inner-stroke-all"
+          id="radar-fill-layer-all"
+          type="fill"
+          paint={{
+            'fill-color': [
+              'match', ['get', 'status'],
+              'operational', RADAR_TEAL,
+              'standby', RADAR_AMBER,
+              'maintenance', RADAR_GREY,
+              RADAR_TEAL,
+            ],
+            'fill-opacity': [
+              'match', ['get', 'status'],
+              'operational', 0.04,
+              'standby', 0.02,
+              'maintenance', 0,
+              0,
+            ],
+          }}
+        />
+
+        <Layer
+          id="radar-stroke-layer-all"
           type="line"
           paint={{
-            'line-color': '#FF3B3B',
-            'line-width': 4,
-            'line-opacity': 0.9,
-            'line-dasharray': [2, 2],
+            'line-color': [
+              'match', ['get', 'status'],
+              'operational', RADAR_TEAL,
+              'standby', RADAR_AMBER,
+              'maintenance', RADAR_GREY,
+              RADAR_TEAL,
+            ],
+            'line-width': 1.5,
+            'line-opacity': [
+              'match', ['get', 'status'],
+              'operational', 0.85,
+              'standby', 0.55,
+              'maintenance', 0.4,
+              0.85,
+            ],
+            'line-dasharray': [
+              'case',
+              ['==', ['get', 'status'], 'standby'], ['literal', [4, 3]],
+              ['==', ['get', 'status'], 'maintenance'], ['literal', [1, 4]],
+              ['literal', [1, 0]],
+            ],
           }}
         />
       </Source>
