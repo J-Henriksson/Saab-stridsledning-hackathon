@@ -22,3 +22,49 @@ export const STOCKHOLM_CENTER = { lat: 59.33, lng: 18.07 };
 export const TACTICAL_ZOOM = 7.5;
 
 export const MAP_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
+
+export const MINIMAL_STYLE = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+
+export const TOPO_STYLE = {
+  version: 8 as const,
+  sources: {
+    opentopomap: {
+      type: "raster" as const,
+      tiles: [
+        "https://a.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://b.tile.opentopomap.org/{z}/{x}/{y}.png",
+        "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+      ],
+      tileSize: 256,
+      maxzoom: 17,
+      attribution: "© OpenTopoMap (CC-BY-SA), kartdata © OpenStreetMap-bidragsgivare",
+    },
+  },
+  layers: [{ id: "opentopomap", type: "raster" as const, source: "opentopomap" }],
+};
+
+export const SATELLITE_STYLE = {
+  version: 8 as const,
+  sources: {
+    esri_satellite: {
+      type: "raster" as const,
+      // Esri uses {z}/{y}/{x} (row before column) — MapLibre substitutes named params correctly
+      tiles: [
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      ],
+      tileSize: 256,
+      maxzoom: 18,
+      attribution: "Tiles © Esri",
+    },
+  },
+  layers: [{ id: "esri_satellite", type: "raster" as const, source: "esri_satellite" }],
+};
+
+export const HILLSHADE_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+];
+
+export const BUILDINGS_TILES = [
+  "https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
+  "https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png",
+];

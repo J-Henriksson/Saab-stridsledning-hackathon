@@ -1,13 +1,20 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import MapGL, { NavigationControl, MapRef } from "react-map-gl/maplibre";
+import MapGL, { NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, MapPin } from "lucide-react";
 
-import { BASE_COORDS, STOCKHOLM_CENTER, TACTICAL_ZOOM, MAP_STYLE } from "./map/constants";
+import {
+  BASE_COORDS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
+  MAP_STYLE, TOPO_STYLE, SATELLITE_STYLE, MINIMAL_STYLE,
+  HILLSHADE_TILES, BUILDINGS_TILES,
+} from "./map/constants";
+import { useMapLayers } from "@/hooks/useMapLayers";
+import { MapFilterPanel } from "@/components/map/MapFilterPanel";
+import { ElevationHeatmapLayer } from "@/components/map/ElevationHeatmapLayer";
 import { SelectedEntity } from "./map/helpers";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
@@ -30,6 +37,8 @@ export default function MapPage() {
   const location = useLocation();
   const [selected, setSelected] = useState<SelectedEntity>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
+  const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
+  const { mapLayerState, setBaseMap, toggleOverlay, setOpacity, toggleDampColors } = useMapLayers();
   const mapRef = useRef<MapRef>(null);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
@@ -174,7 +183,10 @@ export default function MapPage() {
       <div className="flex-1 overflow-hidden flex">
 
         {/* Map area */}
-        <div className="flex-1 relative overflow-hidden">
+        <div
+          className="flex-1 relative overflow-hidden"
+          style={mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : undefined}
+        >
           <MapGL
             ref={mapRef}
             initialViewState={{
@@ -183,12 +195,55 @@ export default function MapPage() {
               zoom: TACTICAL_ZOOM,
               pitch: 0,
             }}
-            mapStyle={MAP_STYLE}
+            mapStyle={
+              mapLayerState.baseMap === "topo"      ? TOPO_STYLE :
+              mapLayerState.baseMap === "satellite" ? SATELLITE_STYLE :
+              mapLayerState.baseMap === "minimal"   ? MINIMAL_STYLE :
+              MAP_STYLE
+            }
             onClick={handleMapClick}
             onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
             style={{ width: "100%", height: "100%" }}
           >
             <NavigationControl position="top-right" />
+
+            {/* Terrain overlays — rendered before zone/asset layers so they sit below */}
+            {mapLayerState.overlays.hillshade && (
+              <Source
+                id="terrain-hillshade"
+                type="raster"
+                tiles={HILLSHADE_TILES}
+                tileSize={256}
+                attribution="Tiles © Esri"
+              >
+                <Layer
+                  id="terrain-hillshade-layer"
+                  type="raster"
+                  paint={{ "raster-opacity": mapLayerState.overlayOpacity / 100 }}
+                />
+              </Source>
+            )}
+
+            {mapLayerState.overlays.buildings && (
+              <Source
+                id="terrain-buildings"
+                type="raster"
+                tiles={BUILDINGS_TILES}
+                tileSize={256}
+                attribution="© CARTO"
+              >
+                <Layer
+                  id="terrain-buildings-layer"
+                  type="raster"
+                  paint={{ "raster-opacity": (mapLayerState.overlayOpacity / 100) * 0.35 }}
+                />
+              </Source>
+            )}
+
+            {/* Elevation heatmap canvas overlay */}
+            {mapLayerState.overlays.elevationHeatmap && (
+              <ElevationHeatmapLayer opacity={mapLayerState.overlayOpacity / 100} />
+            )}
 
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
@@ -253,7 +308,23 @@ export default function MapPage() {
             visibility={state.overlayVisibility}
             onToggleVisibility={handleToggleVisibility}
             activeZoneCount={userZoneCount}
+            terrainFilterOpen={terrainFilterOpen}
+            onOpenTerrainFilter={() => setTerrainFilterOpen((v) => !v)}
           />
+
+          {/* Terrain filter panel */}
+          <AnimatePresence>
+            {terrainFilterOpen && (
+              <MapFilterPanel
+                state={mapLayerState}
+                onBaseMapChange={setBaseMap}
+                onToggleOverlay={toggleOverlay}
+                onOpacityChange={setOpacity}
+                onToggleDampColors={toggleDampColors}
+                onClose={() => setTerrainFilterOpen(false)}
+              />
+            )}
+          </AnimatePresence>
 
           {/* Active aircraft bar */}
           <ActiveAircraftBar
