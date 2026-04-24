@@ -3,93 +3,70 @@ import { RadarStatus } from '../../types/radarUnit';
 
 interface RadarSymbolProps {
   status: RadarStatus;
-  echelon?: 'team' | 'platoon' | 'battalion';
   size?: number;
 }
 
-export const RadarSymbol: React.FC<RadarSymbolProps> = ({
-  status,
-  echelon = 'platoon',
-  size = 48,
-}) => {
-  const radarTeal = '#00E5C7';
-  
+const GREEN      = '#22c55e';
+const GREEN_DIM  = '#16a34a';
+const AMBER      = '#D7AB3A';
+const GREY       = '#6B7280';
+
+export const RadarSymbol: React.FC<RadarSymbolProps> = ({ status, size = 42 }) => {
   const isOperational = status === 'operational';
-  const isStandby = status === 'standby';
-  const isMaintenance = status === 'maintenance';
+  const isStandby     = status === 'standby';
 
-  const containerStyle: React.CSSProperties = {
-    width: size,
-    height: (size * 44) / 56,
-    opacity: isMaintenance ? 0.5 : isStandby ? 0.7 : 1,
-    boxShadow: isOperational ? `0 0 8px ${radarTeal}` : 'none',
-    transition: 'all 0.3s ease',
-  };
-
-  const echelonMarker = {
-    team: '●',
-    platoon: '●●',
-    battalion: 'II',
-  }[echelon];
+  const ringColor  = isOperational ? GREEN : isStandby ? AMBER : GREY;
+  const dotColor   = isOperational ? GREEN : isStandby ? AMBER : GREY;
+  const opacity    = status === 'maintenance' ? 0.45 : 1;
 
   return (
-    <div 
-      className={`relative flex items-center justify-center ${isOperational ? 'animate-pulse' : ''}`}
-      style={containerStyle}
+    <div
+      style={{
+        width: size,
+        height: size,
+        opacity,
+        position: 'relative',
+        flexShrink: 0,
+      }}
     >
       <svg
-        viewBox="0 0 56 44"
+        viewBox="0 0 42 42"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         style={{ width: '100%', height: '100%' }}
       >
-        {/* Frame */}
-        <rect
-          x="2"
-          y="10"
-          width="52"
-          height="32"
-          stroke={radarTeal}
-          strokeWidth="2"
-          strokeDasharray={isMaintenance ? '4 2' : 'none'}
-          fill="rgba(0, 229, 199, 0.05)"
+        {/* Outer ring */}
+        <circle
+          cx="21" cy="21" r="18"
+          stroke={ringColor}
+          strokeWidth="1.5"
+          strokeDasharray={status === 'maintenance' ? '4 3' : undefined}
+          fill={isOperational ? 'rgba(34,197,94,0.07)' : 'transparent'}
         />
-
-        {/* Echelon */}
-        <text
-          x="28"
-          y="8"
-          fill={radarTeal}
-          textAnchor="middle"
-          fontSize="9"
-          fontWeight="600"
-        >
-          {echelonMarker}
-        </text>
-
-        {/* Radar Inner Symbol */}
-        <g transform="translate(10, 16)">
-          <circle cx="18" cy="11" r="2" fill={radarTeal} />
-          <path
-            d="M18 11L18 20"
-            stroke={radarTeal}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M10 15C10 11.134 13.134 8 17 8M26 15C26 11.134 22.866 8 19 8"
-            stroke={radarTeal}
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M6 18C6 11.3726 11.3726 6 18 6C24.6274 6 30 11.3726 30 18"
-            stroke={radarTeal}
+        {/* Inner ring */}
+        <circle
+          cx="21" cy="21" r="11"
+          stroke={ringColor}
+          strokeWidth="1"
+          opacity={0.45}
+          fill="none"
+        />
+        {/* Center dot */}
+        <circle
+          cx="21" cy="21" r="4"
+          fill={dotColor}
+          style={isOperational ? { filter: `drop-shadow(0 0 4px ${GREEN})` } : undefined}
+        />
+        {/* Status tick — standby shows dashed outer */}
+        {isStandby && (
+          <circle
+            cx="21" cy="21" r="18"
+            stroke={AMBER}
             strokeWidth="1.5"
-            strokeLinecap="round"
-            opacity="0.6"
+            strokeDasharray="5 3"
+            fill="none"
           />
-        </g>
+        )}
       </svg>
     </div>
   );

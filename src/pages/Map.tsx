@@ -238,14 +238,20 @@ export default function MapPage() {
   const [zoom, setZoom] = useState(TACTICAL_ZOOM);
   const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
   const { focusedBaseId, filterLevel, setFocusedBase, setFilterLevel, clearFilter, filterEvents } = useBaseFilter();
+  const [showAllBaseRings, setShowAllBaseRings] = useState(false);
 
-  // Fly to focused base whenever the focused base changes
-  useEffect(() => {
-    if (!focusedBaseId || !mapRef.current) return;
-    const coords = BASE_COORDS[focusedBaseId];
-    if (!coords) return;
-    mapRef.current.flyTo({ center: [coords.lng, coords.lat], zoom: 10, duration: 1300, pitch: 25 });
-  }, [focusedBaseId]);
+  // Compute which airbase IDs should show rings:
+  //   - "show all" toggle on → null (MarkerRingsLayer draws all)
+  //   - focused base set     → only that base
+  //   - a base detail panel open → only that base
+  //   - otherwise            → empty set (no rings)
+  const ringBaseIds = useMemo<Set<string> | null>(() => {
+    if (showAllBaseRings) return null;
+    const ids = new Set<string>();
+    if (focusedBaseId) ids.add(focusedBaseId);
+    if (selected?.kind === "base" || selected?.kind === "aircraft") ids.add((selected as any).baseId);
+    return ids;
+  }, [showAllBaseRings, focusedBaseId, selected]);
 
   // Merge live game events with static dummy events (dummy comes first so it's always present)
   const allEvents = useMemo(
@@ -679,6 +685,18 @@ export default function MapPage() {
             )}
           </AnimatePresence>
           <button
+            onClick={() => setShowAllBaseRings((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+              showAllBaseRings
+                ? "border-green-600/60 bg-green-600/15 text-green-400"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            }`}
+            title="Visa AOR-ringar för alla baser"
+          >
+            <Layers3 className="h-3 w-3" />
+            ALLA RINGAR
+          </button>
+          <button
             onClick={() => { setIsPlanMode((v) => !v); setPlacingMode(null); }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all ${
               isPlanMode
@@ -1005,9 +1023,9 @@ export default function MapPage() {
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
 
-            {/* Tactical zone fills */}
+            {/* Tactical zone fills — exclude auto-generated fixed-asset protection zones */}
             <TacticalZonesLayer
-              zones={state?.tacticalZones ?? []}
+              zones={(state?.tacticalZones ?? []).filter((z) => z.category !== "fixed")}
               visible={state?.overlayVisibility?.activeZones ?? false}
             />
 
@@ -1016,6 +1034,7 @@ export default function MapPage() {
               aorOverrides={aorOverrides}
               visibleLayers={state?.overlayVisibility ?? ({} as any)}
               roadBases={state?.roadBases ?? []}
+              visibleBaseIds={ringBaseIds}
             />
 
             <SupplyLinesLayer bases={state?.bases ?? []} />
@@ -1040,6 +1059,7 @@ export default function MapPage() {
               onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
               tacticalZones={state.tacticalZones}
               dispatch={dispatch}
+              focusedBaseId={focusedBaseId}
             />
 
             {/* Fixed military & civilian asset markers */}
@@ -1067,6 +1087,7 @@ export default function MapPage() {
               units={visibleUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+              focusedBaseId={focusedBaseId}
             />
 
             {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}

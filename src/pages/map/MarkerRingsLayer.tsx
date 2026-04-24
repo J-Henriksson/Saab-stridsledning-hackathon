@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import { BASE_COORDS, BASE_RINGS, GIS_COLORS } from "./constants";
-import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { FOOTPRINT_POLYGONS } from "@/data/footprints";
 import type { OverlayLayerVisibility } from "@/types/overlay";
 import type { RoadBase } from "@/types/game";
@@ -19,6 +18,8 @@ interface Props {
   aorOverrides: Record<string, number>;
   visibleLayers?: OverlayLayerVisibility;
   roadBases?: RoadBase[];
+  /** IDs of airbases whose rings should be drawn. null/undefined = draw all. Empty set = draw none. */
+  visibleBaseIds?: Set<string> | null;
 }
 
 function drawPolygon(
@@ -51,7 +52,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
-export function MarkerRingsLayer({ aorOverrides, visibleLayers, roadBases }: Props) {
+export function MarkerRingsLayer({ aorOverrides, visibleLayers, roadBases, visibleBaseIds }: Props) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -77,55 +78,33 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers, roadBases }: Pro
 
     const project = (lngLat: [number, number]) => map.project(lngLat);
 
+    // Scale rings with zoom: invisible ≤5, full size+opacity ≥7
+    const zoom = map.getZoom();
+    const zoomAlpha = Math.max(0, Math.min(1, (zoom - 5) / 2));
+    if (zoomAlpha <= 0) return;
+    // AOR ring shrinks at low zoom so it doesn't dominate the viewport.
+    // At zoom≤6 the displayed radius is capped to ~30px; above zoom 7 it grows freely.
+    const aorCapPx = zoom < 7 ? 30 + (zoom - 5) * 40 : Infinity;
+
     const markers: MarkerDef[] = [];
 
-    const showAirbases = visibleLayers ? visibleLayers.militaryBases !== false : true;
-    if (showAirbases) {
-      Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {
-        const rings = BASE_RINGS[id];
-        if (!rings) return;
-        markers.push({
-          id,
-          lng,
-          lat,
-          sizeRadiusKm: rings.sizeRadiusKm,
-          aorRadiusKm: aorOverrides[id] ?? rings.defaultAorRadiusKm,
-          ringColor: GIS_COLORS.militaryBase,
-        });
-      });
-    }
-
-    const showMilitaryBases = visibleLayers ? visibleLayers.militaryBases !== false : true;
-    const showCriticalInfra = visibleLayers ? visibleLayers.criticalInfra !== false : true;
-
-    FIXED_MILITARY_ASSETS.forEach((asset) => {
-      const isMilitary = ["army_regiment", "marine_regiment", "naval_base"].includes(asset.type);
-      const isInfra = ["airport_civilian"].includes(asset.type);
-      if (isMilitary && !showMilitaryBases) return;
-      if (isInfra && !showCriticalInfra) return;
+    // Airbase rings — only draw for bases in visibleBaseIds.
+    // null/undefined means "show all"; empty Set means "show none".
+    Object.entries(BASE_COORDS).forEach(([id, { lat, lng }]) => {
+      if (visibleBaseIds !== null && visibleBaseIds !== undefined && !visibleBaseIds.has(id)) return;
+      const rings = BASE_RINGS[id];
+      if (!rings) return;
       markers.push({
-        id: asset.id,
-        lng: asset.lng,
-        lat: asset.lat,
-        sizeRadiusKm: asset.sizeRadiusKm,
-        aorRadiusKm: aorOverrides[asset.id] ?? asset.defaultAorRadiusKm,
-        ringColor: isMilitary ? GIS_COLORS.militaryBase : GIS_COLORS.criticalInfra,
+        id,
+        lng,
+        lat,
+        sizeRadiusKm: rings.sizeRadiusKm,
+        aorRadiusKm: aorOverrides[id] ?? rings.defaultAorRadiusKm,
+        ringColor: GIS_COLORS.militaryBase,
       });
     });
 
-    if (showCriticalInfra) {
-      AMMO_DEPOTS.forEach((asset) => {
-        markers.push({
-          id: asset.id,
-          lng: asset.lng,
-          lat: asset.lat,
-          sizeRadiusKm: asset.sizeRadiusKm,
-          aorRadiusKm: aorOverrides[asset.id] ?? asset.defaultAorRadiusKm,
-          ringColor: GIS_COLORS.criticalInfra,
-        });
-      });
-    }
-
+    // Road-base range rings (these are plan-placed, always contextual)
     if (roadBases) {
       roadBases.forEach((rb) => {
         markers.push({
@@ -139,44 +118,49 @@ export function MarkerRingsLayer({ aorOverrides, visibleLayers, roadBases }: Pro
       });
     }
 
+    // Fixed military assets and ammo depots intentionally excluded —
+    // their footprint/AOR rings add clutter and are not base-centric.
+
     for (const m of markers) {
       const center = project([m.lng, m.lat]);
       const footprint = FOOTPRINT_POLYGONS[m.id];
-      const glowColor = hexToRgba(m.ringColor, 0.08);
-      const outlineColor = hexToRgba(m.ringColor, 0.65);
-      const aorColor = hexToRgba(m.ringColor, 0.55);
+      const glowColor = hexToRgba(m.ringColor, 0.08 * zoomAlpha);
+      const outlineColor = hexToRgba(m.ringColor, 0.65 * zoomAlpha);
+      const aorColor = hexToRgba(m.ringColor, 0.55 * zoomAlpha);
 
       ctx.setLineDash([]);
 
       if (footprint) {
         drawPolygon(ctx, footprint, project);
-        ctx.lineWidth = 6;
+        ctx.lineWidth = 6 * zoomAlpha;
         ctx.strokeStyle = glowColor;
         ctx.stroke();
         drawPolygon(ctx, footprint, project);
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * zoomAlpha;
         ctx.strokeStyle = outlineColor;
         ctx.stroke();
       } else {
         const sizeEdge = project([m.lng, m.lat + m.sizeRadiusKm / 111.32]);
-        const sizePx = Math.max(10, Math.hypot(center.x - sizeEdge.x, center.y - sizeEdge.y));
+        const sizePx = Math.hypot(center.x - sizeEdge.x, center.y - sizeEdge.y);
+        if (sizePx < 0.5) continue;
         drawCircle(ctx, center.x, center.y, sizePx);
-        ctx.lineWidth = 6;
+        ctx.lineWidth = 6 * zoomAlpha;
         ctx.strokeStyle = glowColor;
         ctx.stroke();
         drawCircle(ctx, center.x, center.y, sizePx);
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * zoomAlpha;
         ctx.strokeStyle = outlineColor;
         ctx.stroke();
       }
 
-      // Outer AOR dashed ring — per-asset color
+      // Outer AOR dashed ring — per-asset color, capped at low zoom
       const aorEdge = project([m.lng, m.lat + m.aorRadiusKm / 111.32]);
-      const aorPx = Math.hypot(center.x - aorEdge.x, center.y - aorEdge.y);
+      const aorPxGeo = Math.hypot(center.x - aorEdge.x, center.y - aorEdge.y);
+      const aorPx = Math.min(aorPxGeo, aorCapPx);
 
       drawCircle(ctx, center.x, center.y, aorPx);
-      ctx.setLineDash([10, 6]);
-      ctx.lineWidth = 1.5;
+      ctx.setLineDash([10 * zoomAlpha + 2, 6 * zoomAlpha + 2]);
+      ctx.lineWidth = 1.5 * zoomAlpha;
       ctx.strokeStyle = aorColor;
       ctx.stroke();
     }
