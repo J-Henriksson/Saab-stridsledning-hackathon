@@ -342,6 +342,30 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         friendlyEntities: state.friendlyEntities.filter((e) => e.id !== action.id),
       };
 
+    case "PLAN_ADD_ROAD_BASE":
+      return {
+        ...state,
+        roadBases: [...state.roadBases, { ...action.roadBase, id: `rob-${uuid()}`, createdAt: state.day }],
+      };
+
+    case "PLAN_EDIT_ROAD_BASE":
+      return {
+        ...state,
+        roadBases: state.roadBases.map((rb) => rb.id === action.id ? { ...rb, ...action.updates } : rb),
+      };
+
+    case "PLAN_DELETE_ROAD_BASE":
+      return {
+        ...state,
+        roadBases: state.roadBases.filter((rb) => rb.id !== action.id),
+      };
+
+    case "PLAN_UPDATE_COORDS_ROAD_BASE":
+      return {
+        ...state,
+        roadBases: state.roadBases.map((rb) => rb.id === action.id ? { ...rb, coords: action.coords } : rb),
+      };
+
     case "DEPLOY_UNIT": {
       const loc = findUnit(state, action.unitId);
       if (!loc) return state;

@@ -162,6 +162,10 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "PLAN_ADD_FRIENDLY_ENTITY":
     case "PLAN_EDIT_FRIENDLY_ENTITY":
     case "PLAN_DELETE_FRIENDLY_ENTITY":
+    case "PLAN_ADD_ROAD_BASE":
+    case "PLAN_EDIT_ROAD_BASE":
+    case "PLAN_DELETE_ROAD_BASE":
+    case "PLAN_UPDATE_COORDS_ROAD_BASE":
     case "ADD_TACTICAL_ZONE":
     case "REMOVE_TACTICAL_ZONE":
     case "SET_OVERLAY_VISIBILITY":

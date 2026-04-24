@@ -31,6 +31,7 @@ import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSide
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
 import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
+import { RoadBaseMarker } from "./map/RoadBaseMarker";
 import { EnemyBaseDetailPanel, EnemyEntityDetailPanel } from "./map/EnemyDetailPanel";
 import { UnitsLayer } from "./map/UnitsLayer";
 import { UnitDetailPanel } from "./map/UnitDetailPanel";
@@ -68,6 +69,7 @@ const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_entity: "vänlig enhet",
   enemy_base:      "fiendens bas",
   enemy_entity:    "fiendens enhet",
+  road_base:       "vägbas",
 };
 
 const MAP_MODE_OPTIONS: {
@@ -339,6 +341,9 @@ export default function MapPage() {
           break;
         case "friendly_entity":
           dispatch({ type: "PLAN_ADD_FRIENDLY_ENTITY", entity: { name: d.name, category: d.category as any, notes: d.notes ?? "", coords } });
+          break;
+        case "road_base":
+          dispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
           break;
       }
       setPlacingMode(null);
@@ -658,6 +663,9 @@ export default function MapPage() {
             ))}
             {state.friendlyEntities.map((fe) => (
               <FriendlyEntityPin key={fe.id} entity={fe} />
+            ))}
+            {state.roadBases.map((rb) => (
+              <RoadBaseMarker key={rb.id} roadBase={rb} isPlanMode={isPlanMode} dispatch={dispatch} />
             ))}
 
             {/* Drawing preview SVG overlay (inside MapGL so it uses map coordinates) */}

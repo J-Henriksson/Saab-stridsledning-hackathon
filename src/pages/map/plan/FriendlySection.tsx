@@ -1,27 +1,31 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Fuel, Zap, Wrench, Plus, Trash2, MapPin } from "lucide-react";
-import type { Base, BaseType, FriendlyMarker, FriendlyMarkerCategory, FriendlyEntity, FriendlyEntityCategory, GameAction } from "@/types/game";
+import type { Base, BaseType, FriendlyMarker, FriendlyMarkerCategory, FriendlyEntity, FriendlyEntityCategory, RoadBase, RoadBaseStatus, RoadBaseEchelon, GameAction } from "@/types/game";
 import { Slider } from "@/components/ui/slider";
 import { getAircraft } from "@/core/units/helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-type PlacingKind = "friendly_base" | "friendly_entity";
+type PlacingKind = "friendly_base" | "friendly_entity" | "road_base";
 
 interface PlacingPayload {
   kind: PlacingKind;
   data: Record<string, string>;
 }
 
+// Extends FriendlyEntityCategory with "road_base" for the form only
+type EntityFormCategory = FriendlyEntityCategory | "road_base";
+
 interface Props {
   bases: Base[];
   friendlyMarkers: FriendlyMarker[];
   friendlyEntities: FriendlyEntity[];
+  roadBases: RoadBase[];
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
 }
 
-// ── Existing base editor ──────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────
 
 const BASE_CATEGORIES: { value: FriendlyMarkerCategory; label: string }[] = [
   { value: "airbase",   label: "Flygbas" },
@@ -31,14 +35,27 @@ const BASE_CATEGORIES: { value: FriendlyMarkerCategory; label: string }[] = [
   { value: "navy",      label: "Marinenhet" },
 ];
 
-const ENTITY_CATEGORIES: { value: FriendlyEntityCategory; label: string }[] = [
-  { value: "aircraft",    label: "Luftfart" },
-  { value: "infantry",    label: "Infanteri" },
-  { value: "armor",       label: "Pansarfordon" },
-  { value: "artillery",   label: "Artilleri" },
-  { value: "air_defense", label: "Luftvärn" },
-  { value: "support",     label: "Stödenhet" },
+const ENTITY_CATEGORIES: { value: EntityFormCategory; label: string }[] = [
+  { value: "aircraft",   label: "Flygplan" },
+  { value: "air_defense",label: "Luftvärn"  },
+  { value: "road_base",  label: "Vägbas"    },
+  { value: "radar",      label: "Radar"     },
+  { value: "drone",      label: "Drönare"   },
 ];
+
+const ROAD_BASE_STATUSES: { value: RoadBaseStatus; label: string }[] = [
+  { value: "Beredskap", label: "Beredskap" },
+  { value: "Operativ",  label: "Operativ"  },
+  { value: "Underhåll", label: "Underhåll" },
+];
+
+const ROAD_BASE_ECHELONS: { value: RoadBaseEchelon; label: string }[] = [
+  { value: "Group",    label: "Grupp"   },
+  { value: "Platoon",  label: "Pluton"  },
+  { value: "Battalion",label: "Bataljon"},
+];
+
+// ── Existing base editor ──────────────────────────────────────────────────
 
 function ExistingBaseRow({ base, dispatch }: { base: Base; dispatch: (a: GameAction) => void }) {
   const [open, setOpen] = useState(false);
@@ -165,7 +182,7 @@ function AddForm({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, dispatch, onStartPlacement }: Props) {
+export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, dispatch, onStartPlacement }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingEntity, setAddingEntity] = useState(false);
 
@@ -175,10 +192,15 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
   const [baseNotes, setBaseNotes] = useState("");
   const [baseEstimates, setBaseEstimates] = useState("");
 
-  // Add entity form state
-  const [entityName, setEntityName] = useState("");
-  const [entityCategory, setEntityCategory] = useState<FriendlyEntityCategory>("infantry");
-  const [entityNotes, setEntityNotes] = useState("");
+  // Add entity form state — unified for all entity types incl. road_base
+  const [entityName, setEntityName]           = useState("");
+  const [entityCategory, setEntityCategory]   = useState<EntityFormCategory>("aircraft");
+  const [entityNotes, setEntityNotes]         = useState("");
+  // Road-base-specific fields (shown when entityCategory === "road_base")
+  const [robStatus, setRobStatus]             = useState<RoadBaseStatus>("Operativ");
+  const [robEchelon, setRobEchelon]           = useState<RoadBaseEchelon>("Platoon");
+  const [robParentBase, setRobParentBase]     = useState("F16");
+  const [robRange, setRobRange]               = useState(15);
 
   function handlePlaceBase() {
     if (!baseName.trim()) return;
@@ -189,9 +211,23 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
 
   function handlePlaceEntity() {
     if (!entityName.trim()) return;
-    onStartPlacement({ kind: "friendly_entity", data: { name: entityName, category: entityCategory, notes: entityNotes } });
+    if (entityCategory === "road_base") {
+      onStartPlacement({
+        kind: "road_base",
+        data: {
+          name:         entityName,
+          status:       robStatus,
+          echelon:      robEchelon,
+          parentBaseId: robParentBase,
+          rangeRadius:  String(robRange),
+        },
+      });
+    } else {
+      onStartPlacement({ kind: "friendly_entity", data: { name: entityName, category: entityCategory, notes: entityNotes } });
+    }
     setAddingEntity(false);
-    setEntityName(""); setEntityCategory("infantry"); setEntityNotes("");
+    setEntityName(""); setEntityCategory("aircraft"); setEntityNotes("");
+    setRobStatus("Operativ"); setRobEchelon("Platoon"); setRobParentBase("F16"); setRobRange(15);
   }
 
   return (
@@ -225,7 +261,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
         </>
       )}
 
-      {/* Custom friendly entities */}
+      {/* Planned entities (non-road-base) */}
       {friendlyEntities.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-3 mb-1">
@@ -238,6 +274,27 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
                 <span className="text-[10px] text-muted-foreground ml-2">{ENTITY_CATEGORIES.find(c => c.value === e.category)?.label}</span>
               </div>
               <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_ENTITY", id: e.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* Road bases list */}
+      {roadBases.length > 0 && (
+        <>
+          <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-3 mb-1">
+            Vägbaser
+          </div>
+          {roadBases.map((rb) => (
+            <div key={rb.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
+              <div className="flex-1 min-w-0">
+                <span className="text-xs font-mono font-bold" style={{ color: "#2D5A27" }}>{rb.name}</span>
+                <span className="text-[10px] text-muted-foreground ml-2">{rb.status}</span>
+                <span className="text-[10px] text-muted-foreground ml-1">· {rb.echelon} · {rb.rangeRadius} km</span>
+              </div>
+              <button onClick={() => dispatch({ type: "PLAN_DELETE_ROAD_BASE", id: rb.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -283,24 +340,52 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, disp
 
         {addingEntity ? (
           <AddForm
-            title="Ny vänlig enhet"
+            title="Ny enhet"
             onPlace={handlePlaceEntity}
             onCancel={() => setAddingEntity(false)}
             fields={
               <>
                 <input
-                  autoFocus placeholder="Enhetsbeteckning" value={entityName}
+                  autoFocus placeholder="Beteckning" value={entityName}
                   onChange={(e) => setEntityName(e.target.value)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
                 />
-                <select value={entityCategory} onChange={(e) => setEntityCategory(e.target.value as FriendlyEntityCategory)}
+                <select value={entityCategory} onChange={(e) => setEntityCategory(e.target.value as EntityFormCategory)}
                   className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
                   {ENTITY_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
-                <textarea placeholder="Anteckningar..." value={entityNotes} rows={2}
-                  onChange={(e) => setEntityNotes(e.target.value)}
-                  className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground resize-none"
-                />
+
+                {/* Extra fields shown only for Vägbas */}
+                {entityCategory === "road_base" ? (
+                  <>
+                    <select value={robStatus} onChange={(e) => setRobStatus(e.target.value as RoadBaseStatus)}
+                      className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {ROAD_BASE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <select value={robEchelon} onChange={(e) => setRobEchelon(e.target.value as RoadBaseEchelon)}
+                      className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
+                      {ROAD_BASE_ECHELONS.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+                    </select>
+                    <input placeholder="Förälderbas (t.ex. F16)" value={robParentBase}
+                      onChange={(e) => setRobParentBase(e.target.value)}
+                      className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground"
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-muted-foreground w-20 shrink-0">Räckvidd</span>
+                      <input
+                        type="number" min={1} max={100} value={robRange}
+                        onChange={(e) => setRobRange(Number(e.target.value))}
+                        className="w-16 bg-background border border-border rounded px-1.5 py-0.5 text-[11px] font-mono text-foreground text-right"
+                      />
+                      <span className="text-[10px] text-muted-foreground">km</span>
+                    </div>
+                  </>
+                ) : (
+                  <textarea placeholder="Anteckningar..." value={entityNotes} rows={2}
+                    onChange={(e) => setEntityNotes(e.target.value)}
+                    className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground resize-none"
+                  />
+                )}
               </>
             }
           />
