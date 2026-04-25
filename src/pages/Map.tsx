@@ -1767,11 +1767,11 @@ export default function MapPage() {
           {selected && panelTitle && (
             <motion.div
               key="detail"
-              initial={{ x: 340, opacity: 0 }}
+              initial={{ x: -340, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 340, opacity: 0 }}
+              exit={{ x: -340, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[340px] flex-shrink-0 border-l border-border bg-card overflow-y-auto flex flex-col"
+              className="w-[340px] flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col"
             >
               {/* Panel header */}
               <div className="px-4 py-3 border-b border-border flex items-center justify-between">
