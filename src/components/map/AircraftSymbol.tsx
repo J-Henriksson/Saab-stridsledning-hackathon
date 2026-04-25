@@ -211,23 +211,6 @@ export function AircraftSymbol({
         pointerEvents: "none",
       }}
     >
-      {/* Status / threat glow ring */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          borderRadius: "50%",
-          border: `${selected ? 2 : 1}px solid ${threatened ? "#ef4444" : statusColor}`,
-          background: `${threatened ? "rgba(239,68,68,0.10)" : `${statusColor}12`}`,
-          boxShadow: selected
-            ? `0 0 12px ${statusColor}`
-            : threatened
-              ? "0 0 10px rgba(239,68,68,0.55)"
-              : `0 0 6px ${statusColor}55`,
-          transition: "box-shadow 200ms ease, border-color 200ms ease",
-        }}
-      />
-
       {/* Silhouette */}
       <svg
         viewBox="-14 -14 28 28"
@@ -242,22 +225,6 @@ export function AircraftSymbol({
       >
         <Silhouette fill={fill} stroke={stroke} />
       </svg>
-
-      {/* Fuel pip — fixed in the upper-right, doesn't rotate */}
-      <div
-        style={{
-          position: "absolute",
-          right: -2,
-          top: -2,
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: fuelColor,
-          boxShadow: `0 0 4px ${fuelColor}`,
-          border: "1px solid rgba(8,12,20,0.85)",
-        }}
-        title={`Bränsle ${Math.round(fuel)}%`}
-      />
 
       {/* Mission badge — fixed below the silhouette, doesn't rotate */}
       {showMissionBadge && missionLabel && (
