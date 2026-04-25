@@ -29,6 +29,7 @@ import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { WindLayer } from "./map/WindLayer";
 import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSidebar";
+import { PlanReviewModal } from "@/components/game/PlanReviewModal";
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
 import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
@@ -223,6 +224,7 @@ export default function MapPage() {
     })),
   );
   const [isPlanMode, setIsPlanMode] = useState(false);
+  const [showPlanReview, setShowPlanReview] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
@@ -662,6 +664,7 @@ export default function MapPage() {
                 state={state}
                 dispatch={dispatch}
                 onStartPlacement={handleStartPlacement}
+                onFinalizePlan={() => setShowPlanReview(true)}
               />
             </motion.div>
           )}
@@ -1452,6 +1455,15 @@ export default function MapPage() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* AI Plan Review Modal */}
+      {showPlanReview && (
+        <PlanReviewModal
+          state={state}
+          onConfirm={() => { setShowPlanReview(false); setIsPlanMode(false); }}
+          onBack={() => setShowPlanReview(false)}
+        />
+      )}
     </div>
   );
 }

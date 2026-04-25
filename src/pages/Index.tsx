@@ -14,6 +14,7 @@ import { RemainingLifeGraf } from "@/components/dashboard/RemainingLifeGraf";
 import { ResursPanel } from "@/components/dashboard/ResursPanel";
 import { ResursPage } from "@/components/dashboard/ResursPage";
 import { AktivaEnheterPanel } from "@/components/dashboard/AktivaEnheterPanel";
+import { UnitRosterSidebar } from "@/components/dashboard/UnitRosterSidebar";
 import { ATOBody } from "./ATO";
 import AARPage from "./AARPage";
 import { IntelligenceSidebar } from "@/components/dashboard/IntelligenceSidebar";
@@ -27,9 +28,10 @@ import { SparePartsPickerModal } from "@/components/game/SparePartsPickerModal";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
+import { BASE_COORDS } from "@/pages/map/constants";
 import {
   ShieldCheck, Crosshair, Hammer, Siren, Clock,
-  MapPin, PlaneTakeoff, ChevronRight, BarChart3, BookOpen,
+  MapPin, PlaneTakeoff, BarChart3, BookOpen,
   Activity, AlertOctagon, Plane, Wrench, ClipboardList,
 } from "lucide-react";
 
@@ -63,6 +65,7 @@ const Index = () => {
     moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome,
     completeLandingCheck, applyRecommendation, dismissRecommendation,
     hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart,
+    launchDrone,
   } = useGame();
   const navigate = useNavigate();
   const { baseId: routeBaseId } = useParams<{ baseId: string }>();
@@ -186,22 +189,6 @@ const Index = () => {
     { id: "aar",         label: "Historik",      Icon: ClipboardList, badge: undefined },
   ];
 
-  // ─── Aircraft status styling ───────────────────────────────────────────────
-  const acColor = (status: string) =>
-    status === "ready"             ? "#22a05a"
-    : status === "on_mission"      ? "#3b82f6"
-    : status === "under_maintenance"? "#d97706"
-    : status === "unavailable"     ? "#D9192E"
-    : status === "returning"       ? "#a855f7"
-    : "#64748b";
-
-  const acLabel = (status: string) =>
-    status === "ready"             ? "MC"
-    : status === "on_mission"      ? "UP"
-    : status === "under_maintenance"? "UH"
-    : status === "unavailable"     ? "NMC"
-    : status === "returning"       ? "RET"
-    : "–";
 
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -305,46 +292,13 @@ const Index = () => {
             })}
           </div>
 
-          {/* ── Fleet list ── */}
-          <div className="flex-1 overflow-y-auto border-t" style={{ borderColor: "hsl(215 14% 88%)" }}>
-            <div className="px-3 pt-2.5 pb-1">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[8px] font-mono uppercase tracking-widest"
-                  style={{ color: "hsl(218 15% 55%)" }}>Flygplan</span>
-                <span className="text-[8px] font-mono" style={{ color: "hsl(218 15% 55%)" }}>
-                  → DASHBOARD
-                </span>
-              </div>
-              <div className="space-y-0.5">
-                {selectedAircraftList.map((ac) => {
-                  const col = acColor(ac.status);
-                  const lbl = acLabel(ac.status);
-                  return (
-                    <motion.button
-                      key={ac.id}
-                      whileHover={{ x: 2, transition: { duration: 0.1 } }}
-                      onClick={() => navigate(`/aircraft/${ac.tailNumber}`)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-black/5"
-                      style={{ border: `1px solid ${col}28` }}
-                    >
-                      <span className="text-[10px] font-mono font-black" style={{ color: "hsl(220 63% 18%)" }}>
-                        {ac.tailNumber}
-                      </span>
-                      <span className="text-[8px] font-mono font-bold px-1 py-0.5 rounded"
-                        style={{ background: `${col}1A`, color: col }}>
-                        {lbl}
-                      </span>
-                      {(ac.health ?? 100) < 50 && (
-                        <span className="text-[8px] font-mono font-bold" style={{ color: col }}>
-                          {ac.health}%
-                        </span>
-                      )}
-                      <ChevronRight className="h-2.5 w-2.5 ml-auto flex-shrink-0 opacity-20" />
-                    </motion.button>
-                  );
-                })}
-              </div>
-            </div>
+          {/* ── Theater roster — all unit categories ── */}
+          <div className="flex-1 overflow-hidden border-t" style={{ borderColor: "hsl(215 14% 88%)" }}>
+            <UnitRosterSidebar
+              base={selectedBase}
+              navalUnits={state.navalUnits ?? []}
+              deployedUnits={state.deployedUnits}
+            />
           </div>
         </nav>
 
@@ -515,6 +469,20 @@ const Index = () => {
                     <BaseMap
                       base={selectedBase}
                       onDropAircraft={handleDropAircraft}
+                      onLaunchDrone={(droneId) => {
+                        const baseCoords = BASE_COORDS[selectedBaseId];
+                        if (baseCoords) {
+                          const offset = 0.5;
+                          launchDrone(droneId, [
+                            { id: `${droneId}-wp1`, lat: baseCoords.lat + offset, lng: baseCoords.lng },
+                            { id: `${droneId}-wp2`, lat: baseCoords.lat + offset, lng: baseCoords.lng + offset },
+                            { id: `${droneId}-wp3`, lat: baseCoords.lat, lng: baseCoords.lng + offset },
+                            { id: `${droneId}-wp4`, lat: baseCoords.lat, lng: baseCoords.lng },
+                          ]);
+                        } else {
+                          launchDrone(droneId, []);
+                        }
+                      }}
                       overdueAircraftIds={overdueAircraftIds}
                       overdueMissionLabels={overdueMissionLabels}
                       onUtfallOutcome={(aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel, requiredSparePart) => {
