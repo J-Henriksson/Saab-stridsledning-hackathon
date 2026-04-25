@@ -1,11 +1,11 @@
 import { useState } from "react";
 import {
   Shield, FileText, Pencil, Sparkles, Trash2, MapPin, Plus,
-  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List,
+  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info,
 } from "lucide-react";
 import type { GameState, GameAction, BaseType, FriendlyMarkerCategory, AircraftType, EnemyBaseCategory, EnemyEntityCategory, ThreatLevel, OperationalStatus, RoadBaseStatus, RoadBaseEchelon } from "@/types/game";
 import type { UnitCategory, DroneType, GroundRadarType, AirDefenseType, GroundVehicleType } from "@/types/units";
-import type { PlanTab, DelaySpec } from "@/hooks/usePlanTabs";
+import type { PlanTab, DelaySpec, AiRecommendation } from "@/hooks/usePlanTabs";
 import { generatePlanSummary, delayToLabel } from "@/hooks/usePlanTabs";
 import { getAircraft } from "@/core/units/helpers";
 import { BASE_COORDS } from "./constants";
@@ -127,13 +127,78 @@ const STATUSES: { value: OperationalStatus; label: string }[] = [
   { value: "destroyed", label: "Neutraliserad" }, { value: "unknown", label: "Okänd" },
 ];
 
-function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay }: {
+function AiRecsPanel({ recs }: { recs: AiRecommendation[] }) {
+  const [implemented, setImplemented] = useState<Set<string>>(new Set());
+  const PRIO_COLOR: Record<AiRecommendation["priority"], string> = {
+    high: "#f87171", medium: "#facc15", low: "#4ade80",
+  };
+  const PRIO_LABEL: Record<AiRecommendation["priority"], string> = {
+    high: "HÖG", medium: "MEDEL", low: "LÅG",
+  };
+
+  return (
+    <div className="mt-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Sparkles className="h-3 w-3 text-amber-400" />
+        <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest">AI-rekommendationer</span>
+      </div>
+      <div className="space-y-2">
+        {recs.map((rec) => {
+          const done = implemented.has(rec.id);
+          return (
+            <div
+              key={rec.id}
+              className="rounded border p-2 space-y-1 transition-all"
+              style={{
+                borderColor: done ? "rgba(74,222,128,0.3)" : "rgba(215,171,58,0.25)",
+                background: done ? "rgba(74,222,128,0.05)" : "rgba(215,171,58,0.04)",
+              }}
+            >
+              <div className="flex items-start gap-1.5">
+                <span
+                  className="text-[8px] font-mono font-bold px-1 py-0.5 rounded shrink-0 mt-0.5"
+                  style={{ background: `${PRIO_COLOR[rec.priority]}22`, color: PRIO_COLOR[rec.priority], border: `1px solid ${PRIO_COLOR[rec.priority]}44` }}
+                >
+                  {PRIO_LABEL[rec.priority]}
+                </span>
+                <span className={`text-[10px] font-mono font-bold flex-1 ${done ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                  {rec.title}
+                </span>
+              </div>
+              <p className={`text-[9px] leading-relaxed ${done ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+                {rec.description}
+              </p>
+              {!done && (
+                <button
+                  onClick={() => setImplemented((prev) => new Set([...prev, rec.id]))}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono font-bold transition-colors"
+                  style={{ background: "rgba(215,171,58,0.12)", border: "1px solid rgba(215,171,58,0.35)", color: "#D7AB3A" }}
+                >
+                  <Check className="h-2.5 w-2.5" /> Implementera
+                </button>
+              )}
+              {done && (
+                <div className="flex items-center gap-1 text-[9px] font-mono text-green-400">
+                  <Check className="h-2.5 w-2.5" /> Implementerad
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay, description, aiRecommendations }: {
   state: GameState;
   dispatch: (a: GameAction) => void;
   onStartPlacement: (p: PlacingPayload) => void;
   onFlyTo: (lat: number, lng: number) => void;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, d: DelaySpec | null) => void;
+  description?: string;
+  aiRecommendations?: AiRecommendation[];
 }) {
   const [addingEnemyBase, setAddingEnemyBase] = useState(false);
   const [addingEnemyEntity, setAddingEnemyEntity] = useState(false);
@@ -174,7 +239,14 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
 
   return (
     <div className="p-3 space-y-1.5">
-      {!hasAnything && (
+      {description && (
+        <div className="flex gap-2 p-2 rounded border border-amber-500/20 bg-amber-500/5 mb-2">
+          <Info className="h-3 w-3 text-amber-400/70 shrink-0 mt-0.5" />
+          <p className="text-[9px] font-mono text-amber-300/80 leading-relaxed">{description}</p>
+        </div>
+      )}
+
+      {!hasAnything && !description && (
         <div className="text-center py-8 text-[10px] font-mono text-muted-foreground">
           Inga objekt tillagda i planen ännu.<br />Använd fliken Placera för att lägga till enheter.
         </div>
@@ -258,6 +330,10 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
             />
           ))}
         </>
+      )}
+
+      {aiRecommendations && aiRecommendations.length > 0 && (
+        <AiRecsPanel recs={aiRecommendations} />
       )}
 
       {/* Add enemy items */}
@@ -924,7 +1000,7 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "plan" ? (
-          <PlanTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} />
+          <PlanTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} description={tab.description} aiRecommendations={tab.aiRecommendations} />
         ) : (
           <PlaceTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} />
         )}

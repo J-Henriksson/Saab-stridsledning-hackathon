@@ -883,7 +883,13 @@ export default function MapPage() {
     switchTab(id);
     setPlacingMode(null);
     setIsDeployMode(false);
-    if (id !== null) setPlanMenuOpen(true);
+    if (id !== null) {
+      setPlanMenuOpen(true);
+      // Fly to ammo depot when opening the protect-ammo plan
+      if (id === "plan-protect-ammo") {
+        setTimeout(() => mapRef.current?.flyTo({ center: [17.077, 59.635], zoom: 8.5, duration: 1400, pitch: 25 }), 80);
+      }
+    }
   }, [switchTab]);
 
   const handleFlyTo = useCallback((lat: number, lng: number) => {
@@ -1132,7 +1138,7 @@ export default function MapPage() {
         </div>
 
         {/* Plan tabs */}
-        <div className="flex items-center gap-1 ml-4 flex-1 overflow-x-auto">
+        <div className="flex items-center gap-1 ml-4 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: "none" }}>
           {/* LIVE tab */}
           <button
             onClick={() => { handleSwitchTab(null); setIsDeployMode(false); setPlacingMode(null); }}
