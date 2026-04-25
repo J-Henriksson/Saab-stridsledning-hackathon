@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,6 +22,14 @@ import {
   type CriticalItem, type LogisticsRecommendation, type LogRecPriority, type LogRecCategory,
 } from "@/core/logistics";
 import type { BaseType } from "@/types/game";
+import {
+  LogisticsOrderModal,
+  type ConfirmedOrder, type ModalPrefill,
+} from "@/components/logistics/LogisticsOrderModal";
+import {
+  ActiveOrdersCard,
+  type PendingTransfer,
+} from "@/components/logistics/ActiveOrdersCard";
 
 // ── SAAB palette ─────────────────────────────────────────────────────────────
 const NAVY = "#0C234C";
@@ -402,6 +410,60 @@ export default function LogisticsAnalysis() {
   const [appliedToast, setAppliedToast] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | LogRecPriority>("all");
 
+  // ── Logistikorder (resource transfer) state ─────────────────────────────
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalPrefill, setModalPrefill] = useState<ModalPrefill | null>(null);
+  const [pendingTransfers, setPendingTransfers] = useState<PendingTransfer[]>([]);
+
+  // Demo-paced progress: walk every active transfer 0 → 1 over ~6s.
+  // Real app would tie this to game-clock; this is purely visual mockup.
+  useEffect(() => {
+    if (pendingTransfers.every((t) => t.status === "delivered" || t.status === "cancelled")) return;
+    const id = setInterval(() => {
+      setPendingTransfers((prev) => prev.map((t) => {
+        if (t.status === "delivered" || t.status === "cancelled") return t;
+        const next = Math.min(1, t.progress + 0.07);
+        const status: PendingTransfer["status"] =
+          next >= 1 ? "delivered"
+          : next >= 0.85 ? "arriving"
+          : next >= 0.10 ? "in_transit"
+          : "preparing";
+        return { ...t, progress: next, status };
+      }));
+    }, 500);
+    return () => clearInterval(id);
+  }, [pendingTransfers]);
+
+  const openModal = (prefill: ModalPrefill | null) => {
+    setModalPrefill(prefill);
+    setModalOpen(true);
+  };
+
+  const handleOrderConfirm = (order: ConfirmedOrder, recId: string | null) => {
+    const newTransfer: PendingTransfer = {
+      id: `lo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      donor: order.donor,
+      acceptor: order.acceptor,
+      resource: order.resource,
+      escort: order.escort,
+      etaMinutes: order.etaMinutes,
+      progress: 0,
+      status: "preparing",
+      dispatchedAtMs: Date.now(),
+    };
+    setPendingTransfers((prev) => [newTransfer, ...prev]);
+    if (recId) setDismissed((prev) => new Set(prev).add(recId));
+    setModalOpen(false);
+    setAppliedToast(newTransfer.id);
+    setTimeout(() => setAppliedToast(null), 2400);
+  };
+
+  const handleCancelOrder = (id: string) => {
+    setPendingTransfers((prev) => prev.map((t) =>
+      t.id === id ? { ...t, status: "cancelled" } : t
+    ));
+  };
+
   const recs = filter === "all" ? allRecs : allRecs.filter((r) => r.priority === filter);
   const criticalRecs = allRecs.filter((r) => r.priority === "critical").length;
   const highRecs = allRecs.filter((r) => r.priority === "high").length;
@@ -412,6 +474,42 @@ export default function LogisticsAnalysis() {
   const ammoBurn = AMMO_BURN_PCT_PER_DAY[state.phase];
 
   const handleApply = (id: string) => {
+    const rec = allRecs.find((r) => r.id === id);
+    // Categories that map to a resource-transfer order open the modal pre-filled.
+    // The rec is dismissed only when the user actually confirms in the modal.
+    if (rec && (
+      rec.category === "fuel_rebalance" ||
+      rec.category === "convoy_route" ||
+      rec.category === "ammo_preposition" ||
+      rec.category === "parts_reorder" ||
+      rec.category === "personnel_gap"
+    )) {
+      const prefill: ModalPrefill = {
+        recId: id,
+        title: rec.title,
+        donor: rec.affected[0],
+        acceptor: rec.affected[1] ?? rec.affected[0],
+      };
+      if (rec.category === "fuel_rebalance" || rec.category === "convoy_route") {
+        prefill.kind = "fuel";
+        // Use suggestBestConvoy if it matches the rec's bases, else half donor capacity
+        if (bestConvoy && bestConvoy.donor === rec.affected[0] && bestConvoy.acceptor === rec.affected[1]) {
+          prefill.fuelLiters = bestConvoy.liters;
+        } else {
+          const donorFleet = fleet.find((f) => f.baseId === rec.affected[0]);
+          prefill.fuelLiters = Math.round((donorFleet?.bowserCapacityLiters ?? 12000) / 2);
+        }
+      } else if (rec.category === "ammo_preposition") {
+        prefill.kind = "ammo";
+      } else if (rec.category === "parts_reorder") {
+        prefill.kind = "parts";
+      } else if (rec.category === "personnel_gap") {
+        prefill.kind = "personnel";
+      }
+      openModal(prefill);
+      return;
+    }
+    // Other rec categories: fire-and-forget toast + dismiss (legacy behaviour).
     setDismissed((prev) => new Set(prev).add(id));
     setAppliedToast(id);
     setTimeout(() => setAppliedToast(null), 2400);
@@ -729,7 +827,18 @@ export default function LogisticsAnalysis() {
             </Card>
 
             {/* ── LOGISTIKFLOTTA per bas ── */}
-            <Card title="Logistikflotta · per bas" icon={Truck} accent={PURPLE}>
+            <Card title="Logistikflotta · per bas" icon={Truck} accent={PURPLE}
+              right={
+                <button
+                  onClick={() => openModal(null)}
+                  className="flex items-center gap-1 text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-1 rounded transition-all hover:brightness-95"
+                  style={{ background: GOLD, color: NAVY, border: `1px solid ${GOLD}` }}
+                >
+                  <ArrowRight size={10} />
+                  Ny order
+                </button>
+              }
+            >
               <div className="space-y-2">
                 {fleet.map((f) => {
                   const total = f.bowsers + f.trucks + f.armored;
@@ -737,13 +846,24 @@ export default function LogisticsAnalysis() {
                     ? (f.bowserCapacityLiters / 800) / (fuelBurn * 24)
                     : 0;
                   return (
-                    <button key={f.baseId}
-                      onClick={() => goBase(f.baseId)}
-                      className="w-full text-left rounded-lg p-2.5 transition-all hover:brightness-95"
+                    <div key={f.baseId}
+                      className="rounded-lg p-2.5 transition-all"
                       style={{ background: "hsl(216 18% 98%)", border: `1px solid ${BORDER}` }}>
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[11px] font-mono font-black" style={{ color: NAVY }}>{f.baseId}</span>
-                        <span className="text-[9px] font-mono" style={{ color: SLATE }}>{total} fordon</span>
+                        <button onClick={() => goBase(f.baseId)} className="text-[11px] font-mono font-black hover:underline" style={{ color: NAVY }}>
+                          {f.baseId}
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-mono" style={{ color: SLATE }}>{total} fordon</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openModal({ donor: f.baseId }); }}
+                            className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded flex items-center gap-1 transition-all hover:brightness-95"
+                            style={{ background: `${GOLD}18`, color: NAVY, border: `1px solid ${GOLD}55` }}
+                          >
+                            Skicka resurser
+                            <ArrowRight size={9} />
+                          </button>
+                        </div>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 mb-1.5">
                         <FleetMicro color={ORANGE} icon={Fuel} count={f.bowsers} label="Tankbil" />
@@ -758,7 +878,7 @@ export default function LogisticsAnalysis() {
                       ) : (
                         <div className="text-[9px] font-mono" style={{ color: SLATE }}>Ingen tankbil tillgänglig</div>
                       )}
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -767,21 +887,33 @@ export default function LogisticsAnalysis() {
                   <div className="text-[8px] font-mono uppercase tracking-wider mb-1.5" style={{ color: SLATE }}>
                     Skickbar fyllnad nu
                   </div>
-                  <div className="rounded-lg p-2.5" style={{ background: `${GOLD}0e`, border: `1px solid ${GOLD}40` }}>
+                  <button
+                    onClick={() => openModal({
+                      donor: bestConvoy.donor,
+                      acceptor: bestConvoy.acceptor,
+                      kind: "fuel",
+                      fuelLiters: bestConvoy.liters,
+                    })}
+                    className="w-full text-left rounded-lg p-2.5 transition-all hover:brightness-95"
+                    style={{ background: `${GOLD}0e`, border: `1px solid ${GOLD}40`, cursor: "pointer" }}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[10px] font-mono font-black" style={{ color: NAVY }}>{bestConvoy.donor}</span>
                       <ArrowRight size={11} color={GOLD} />
                       <span className="text-[10px] font-mono font-black" style={{ color: NAVY }}>{bestConvoy.acceptor}</span>
+                      <span className="ml-auto text-[8px] font-mono font-bold" style={{ color: GOLD }}>Klicka för att dispatcha →</span>
                     </div>
                     <div className="text-[9px] font-mono leading-snug" style={{ color: SLATE }}>
                       {bestConvoy.bowsersAvailable}× tankbil · <span style={{ color: NAVY, fontWeight: 700 }}>{bestConvoy.liters.toLocaleString("sv-SE")} L</span>
                       {" · vinst ≈ "}<span style={{ color: GREEN, fontWeight: 700 }}>+{bestConvoy.dosGainDays.toFixed(1)}d</span>
                       {" DOS hos "}{bestConvoy.acceptor}
                     </div>
-                  </div>
+                  </button>
                 </div>
               )}
             </Card>
+
+            {/* ── ACTIVE ORDERS (mockup pipeline) ── */}
+            <ActiveOrdersCard orders={pendingTransfers} onCancel={handleCancelOrder} />
 
             {/* ── Resupply pipeline ── */}
             <Card title={`Påfyllningspipeline · ${resupply.length}`} icon={Truck} accent={BLUE}>
@@ -823,6 +955,15 @@ export default function LogisticsAnalysis() {
           </div>
         </div>
       </div>
+
+      {/* ── Logistikorder modal ── */}
+      <LogisticsOrderModal
+        open={modalOpen}
+        state={state}
+        prefill={modalPrefill}
+        onClose={() => setModalOpen(false)}
+        onConfirm={handleOrderConfirm}
+      />
 
       {/* ── Toast ── */}
       <AnimatePresence>
