@@ -105,6 +105,13 @@ function EnemyBaseRow({
   dispatch: (a: GameAction) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [rangeInput, setRangeInput] = useState(String(base.threatRangeKm ?? 0));
+
+  function commitRange() {
+    const km = Math.max(0, Number(rangeInput) || 0);
+    dispatch({ type: "PLAN_EDIT_ENEMY_BASE", id: base.id, updates: { threatRangeKm: km } });
+    setRangeInput(String(km));
+  }
 
   return (
     <div className="border border-border rounded mb-1.5">
@@ -113,6 +120,9 @@ function EnemyBaseRow({
         <div className="flex-1 min-w-0">
           <span className="text-xs font-mono font-bold text-red-300">{base.name}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{BASE_CATEGORIES.find(c => c.value === base.category)?.label}</span>
+          {(base.threatRangeKm ?? 0) > 0 && (
+            <span className="text-[9px] font-mono text-red-400/70 ml-1.5">⌀ {base.threatRangeKm} km</span>
+          )}
         </div>
         <button onClick={() => setOpen((v) => !v)} className="p-1 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -122,10 +132,24 @@ function EnemyBaseRow({
         </button>
       </div>
       {open && (
-        <div className="px-3 pb-2 border-t border-border/50 pt-2 space-y-1 text-[11px] font-mono text-muted-foreground">
+        <div className="px-3 pb-2 border-t border-border/50 pt-2 space-y-1.5 text-[11px] font-mono text-muted-foreground">
           {base.estimates && <div><span className="text-muted-foreground/60">Styrka:</span> {base.estimates}</div>}
           {base.notes && <div><span className="text-muted-foreground/60">Notering:</span> {base.notes}</div>}
           <div className="text-[10px] text-muted-foreground/50">{base.coords.lat.toFixed(3)}, {base.coords.lng.toFixed(3)}</div>
+          {/* Threat range editor */}
+          <div className="flex items-center gap-2 pt-0.5">
+            <span className="text-muted-foreground/60 shrink-0">Hotzon (km):</span>
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={rangeInput}
+              onChange={(e) => setRangeInput(e.target.value)}
+              onBlur={commitRange}
+              onKeyDown={(e) => e.key === "Enter" && commitRange()}
+              className="w-16 bg-background border border-border rounded px-1.5 py-0.5 text-xs font-mono text-foreground"
+            />
+          </div>
         </div>
       )}
     </div>
@@ -180,6 +204,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
   const [baseStatus, setBaseStatus] = useState<OperationalStatus>("suspected");
   const [baseEstimates, setBaseEstimates] = useState("");
   const [baseNotes, setBaseNotes] = useState("");
+  const [baseThreatRange, setBaseThreatRange] = useState("");
 
   // Entity form
   const [entityName, setEntityName] = useState("");
@@ -191,9 +216,9 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
 
   function handlePlaceBase() {
     if (!baseName.trim()) return;
-    onStartPlacement({ kind: "enemy_base", data: { name: baseName, category: baseCategory, threatLevel: baseThreat, operationalStatus: baseStatus, estimates: baseEstimates, notes: baseNotes } });
+    onStartPlacement({ kind: "enemy_base", data: { name: baseName, category: baseCategory, threatLevel: baseThreat, operationalStatus: baseStatus, estimates: baseEstimates, notes: baseNotes, threatRangeKm: baseThreatRange } });
     setAddingBase(false);
-    setBaseName(""); setBaseCategory("airfield"); setBaseThreat("unknown"); setBaseStatus("suspected"); setBaseEstimates(""); setBaseNotes("");
+    setBaseName(""); setBaseCategory("airfield"); setBaseThreat("unknown"); setBaseStatus("suspected"); setBaseEstimates(""); setBaseNotes(""); setBaseThreatRange("");
   }
 
   function handlePlaceEntity() {
@@ -248,6 +273,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
                   {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
                 <input placeholder="Uppskattad styrka (t.ex. ~12 Mig-29, 4 S-400)" value={baseEstimates} onChange={(e) => setBaseEstimates(e.target.value)} className={inputCls} />
+                <input type="number" min={0} step={10} placeholder="Hotzon (km, 0 = ingen ring)" value={baseThreatRange} onChange={(e) => setBaseThreatRange(e.target.value)} className={inputCls} />
                 <textarea placeholder="Anteckningar/underrättelser..." value={baseNotes} rows={2} onChange={(e) => setBaseNotes(e.target.value)} className={`${inputCls} resize-none`} />
               </>
             }

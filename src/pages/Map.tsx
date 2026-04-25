@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MapGL, { Marker, NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
@@ -49,6 +49,7 @@ import { DroneRangeOverlay } from "./map/drones/DroneRangeOverlay";
 import { DroneConnectionLine } from "./map/drones/DroneConnectionLine";
 import { DroneDetailPanel } from "./map/drones/DroneDetailPanel";
 import { AirDefenseRingsLayer } from "./map/AirDefenseRingsLayer";
+import { ThreatRingsLayer } from "./map/ThreatRingsLayer";
 import { WTALayer } from "./map/WTALayer";
 import { useTacticalMap } from "@/hooks/useTacticalMap";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
@@ -58,12 +59,15 @@ import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
-import { Base, AircraftStatus } from "@/types/game";
+import { Base, AircraftStatus, GameState } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
 import { isDrone, type UnitCategory } from "@/types/units";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { getAircraft } from "@/core/units/helpers";
 import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
+import { gameReducer } from "@/core/engine";
+import { initialGameState } from "@/data/initialGameState";
+import { usePlanTabs } from "@/hooks/usePlanTabs";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -93,6 +97,7 @@ interface DraggingUnitState {
 
 const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_base:   "vänlig bas",
+  friendly_entity: "vänlig enhet",
   friendly_unit:   "vänlig enhet",
   enemy_base:      "fiendens bas",
   enemy_entity:    "fiendens enhet",
@@ -223,7 +228,9 @@ export default function MapPage() {
       swedishInterestCoverage: "Täcker",
     })),
   );
-  const [isPlanMode, setIsPlanMode] = useState(false);
+  const [planState, planDispatch] = useReducer(gameReducer, initialGameState);
+  const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab } = usePlanTabs(state);
+  const isPlanMode = activeTabId !== null;
   const [showPlanReview, setShowPlanReview] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
@@ -234,6 +241,9 @@ export default function MapPage() {
   const [hudCursor, setHudCursor] = useState<{ lat: number; lng: number } | null>(null);
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   const [zoom, setZoom] = useState(TACTICAL_ZOOM);
   const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
@@ -245,6 +255,42 @@ export default function MapPage() {
     },
     [state]
   );
+
+  type SearchResult = { label: string; sublabel: string; lat: number; lng: number };
+
+  const searchResults = useMemo((): SearchResult[] => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || !state) return [];
+    const results: SearchResult[] = [];
+    const match = (name: string) => name.toLowerCase().includes(q);
+
+    state.bases.forEach((b) => {
+      const c = BASE_COORDS[b.id];
+      if (c && match(b.name)) results.push({ label: b.name, sublabel: "Bas", lat: c.lat, lng: c.lng });
+    });
+    state.enemyBases.forEach((eb) => {
+      if (match(eb.name)) results.push({ label: eb.name, sublabel: "Fiendebase", lat: eb.coords.lat, lng: eb.coords.lng });
+    });
+    state.enemyEntities.forEach((ee) => {
+      if (match(ee.name)) results.push({ label: ee.name, sublabel: "Fiendeenhet", lat: ee.coords.lat, lng: ee.coords.lng });
+    });
+    state.friendlyMarkers.forEach((fm) => {
+      if (match(fm.name)) results.push({ label: fm.name, sublabel: "Vänlig markör", lat: fm.coords.lat, lng: fm.coords.lng });
+    });
+    state.friendlyEntities.forEach((fe) => {
+      if (match(fe.name)) results.push({ label: fe.name, sublabel: "Vänlig enhet", lat: fe.coords.lat, lng: fe.coords.lng });
+    });
+    state.roadBases.forEach((rb) => {
+      if (match(rb.name)) results.push({ label: rb.name, sublabel: "Vägbas", lat: rb.coords.lat, lng: rb.coords.lng });
+    });
+    state.navalUnits.forEach((nu) => {
+      if (match(nu.name)) results.push({ label: nu.name, sublabel: "Marinstyrkа", lat: nu.position.lat, lng: nu.position.lng });
+    });
+    allUnits.forEach((u) => {
+      if (match(u.name)) results.push({ label: u.name, sublabel: u.category, lat: u.position.lat, lng: u.position.lng });
+    });
+    return results.slice(0, 10);
+  }, [searchQuery, state, allUnits]);
 
   // Filter for radar units
   const radarUnits = useMemo(
@@ -305,7 +351,15 @@ export default function MapPage() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [isDropdownOpen]);
 
-  const [planningMode, setPlanningMode] = useState(false);
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    if (searchOpen) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [searchOpen]);
 
   const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
   const visibleUnits = useMemo(() => {
@@ -472,20 +526,48 @@ export default function MapPage() {
     setSelected(null);
   }, []);
 
+  // When the active tab changes, load its snapshot into the plan reducer.
+  useEffect(() => {
+    if (activeTab) {
+      planDispatch({ type: "LOAD_STATE", payload: activeTab.snapshot });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId]);
+
+  // Auto-save planState to the active tab on every change.
+  useEffect(() => {
+    if (activeTabId) {
+      updateActiveSnapshot(planState);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planState]);
+
+  const handleCreateTab = useCallback(() => {
+    createTab();
+    setPlacingMode(null);
+  }, [createTab]);
+
+  const handleSwitchTab = useCallback((id: string | null) => {
+    switchTab(id);
+    setPlacingMode(null);
+  }, [switchTab]);
+
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
     if (drawingMode !== "none") return;
     if (placingMode && e.lngLat) {
       const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       const d = placingMode.data;
+      // Plan-mode placements go to the isolated plan reducer; live dispatch otherwise.
+      const activeDispatch = isPlanMode ? planDispatch : dispatch;
       switch (placingMode.kind) {
         case "enemy_base":
-          dispatch({ type: "PLAN_ADD_ENEMY_BASE", base: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_ENEMY_BASE", base: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", threatRangeKm: d.threatRangeKm ? Number(d.threatRangeKm) : undefined, coords } });
           break;
         case "enemy_entity":
-          dispatch({ type: "PLAN_ADD_ENEMY_ENTITY", entity: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_ENEMY_ENTITY", entity: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
           break;
         case "friendly_base":
-          dispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker: { name: d.name, category: d.category as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker: { name: d.name, category: d.category as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
           break;
         case "friendly_unit": {
           const baseId = d.baseId as import("@/types/game").BaseType;
@@ -514,18 +596,18 @@ export default function MapPage() {
                   : category === "air_defense"
                     ? createAirDefenseUnit({ ...common, type: subtype as "SAM_SHORT" | "SAM_MEDIUM" | "SAM_LONG" })
                     : createGroundVehicleUnit({ ...common, type: subtype as "LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER" });
-          dispatch({ type: "PLAN_ADD_FRIENDLY_UNIT", unit });
+          activeDispatch({ type: "PLAN_ADD_FRIENDLY_UNIT", unit });
           break;
         }
         case "road_base":
-          dispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
+          activeDispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
           break;
       }
       setPlacingMode(null);
       return;
     }
     setSelected(null);
-  }, [placingMode, drawingMode, dispatch]);
+  }, [placingMode, drawingMode, dispatch, isPlanMode]);
 
   const handleSatelliteUpdate = useCallback((satellites: SatelliteLiveState[]) => {
     setLiveSatellites(satellites);
@@ -608,41 +690,72 @@ export default function MapPage() {
       <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
 
       {/* Sub-header */}
-      <div className="border-b border-border bg-card px-6 py-2.5 flex items-center gap-3">
-        <MapPin className="h-4 w-4 text-primary" />
-        <h2 className="font-sans font-bold text-sm text-foreground tracking-wider">
-          TAKTISK KARTA — FLYGBASGRUPP
+      {/* Map header */}
+      <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3">
+        <MapPin className="h-4 w-4 text-primary shrink-0" />
+        <h2 className="font-sans font-bold text-sm text-foreground tracking-wider shrink-0">
+          TAKTISK KARTA
         </h2>
-        <span className="text-[10px] font-mono text-muted-foreground ml-2">
-          Dag {state.day} · Fas: {state.phase}
+        <span className="text-[10px] font-mono text-muted-foreground">
+          Dag {state.day} · {state.phase}
         </span>
-        <div className="ml-auto flex items-center gap-4 text-[10px] font-mono text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-green inline-block" /> Hög beredskap</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-yellow inline-block" /> Medel beredskap</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-red inline-block" /> Låg beredskap</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40 inline-block" /> Inaktiv bas</span>
+
+        {/* Plan tabs */}
+        <div className="flex items-center gap-1 ml-4 flex-1 overflow-x-auto">
+          {/* LIVE tab */}
           <button
-            onClick={() => { setIsPlanMode((v) => !v); setPlacingMode(null); }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all ${
-              isPlanMode
-                ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
-                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            onClick={() => handleSwitchTab(null)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              !isPlanMode
+                ? "bg-green-600/15 border-green-600/50 text-green-400"
+                : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
-            <PenLine className="h-3.5 w-3.5" />
-            PLANLÄGE {isPlanMode ? "PÅ" : "AV"}
+            LIVE
           </button>
-          <button
-            onClick={() => setPlanningMode((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
-              planningMode
-                ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
-                : "border-green-600/40 bg-green-600/10 text-green-400"
-            }`}
-          >
-            <Radio className="h-3 w-3" />
-            {planningMode ? "PLANERING" : "SKARPT LÄGE"}
-          </button>
+
+          {tabs.map((tab) => (
+            <div key={tab.id} className="flex items-center shrink-0">
+              <button
+                onClick={() => handleSwitchTab(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-l text-[10px] font-mono font-bold border border-r-0 transition-all ${
+                  activeTabId === tab.id
+                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <PenLine className="h-2.5 w-2.5" />
+                {tab.name}
+              </button>
+              <button
+                onClick={() => deleteTab(tab.id)}
+                className={`flex items-center px-1.5 py-1 rounded-r text-[10px] border transition-all ${
+                  activeTabId === tab.id
+                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400 hover:text-red-400"
+                    : "border-border text-muted-foreground hover:text-red-400"
+                }`}
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </div>
+          ))}
+
+          {/* New plan button */}
+          {tabs.length < 8 && (
+            <button
+              onClick={handleCreateTab}
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-dashed border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-400 transition-all shrink-0"
+            >
+              + Ny plan
+            </button>
+          )}
+        </div>
+
+        {/* Legend */}
+        <div className="ml-auto flex items-center gap-3 text-[10px] font-mono text-muted-foreground shrink-0">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-green inline-block" /> Hög</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-yellow inline-block" /> Medel</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-red inline-block" /> Låg</span>
         </div>
       </div>
 
@@ -651,20 +764,22 @@ export default function MapPage() {
 
         {/* Plan mode sidebar */}
         <AnimatePresence>
-          {isPlanMode && (
+          {isPlanMode && activeTab && (
             <motion.div
               key="plan-sidebar"
               initial={{ x: -320, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -320, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col"
+              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-hidden flex flex-col"
             >
               <PlanModeSidebar
-                state={state}
-                dispatch={dispatch}
+                tab={activeTab}
+                state={planState}
+                dispatch={planDispatch}
                 onStartPlacement={handleStartPlacement}
                 onFinalizePlan={() => setShowPlanReview(true)}
+                onRename={(name) => renameTab(activeTab.id, name)}
               />
             </motion.div>
           )}
@@ -809,6 +924,7 @@ export default function MapPage() {
             <SupplyLinesLayer bases={state?.bases ?? []} />
 
             {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
+            {visibleViews.vind && <WindLayer />}
             {visibleViews.satelliter && (
               <SatelliteLayer
                 onUpdate={handleSatelliteUpdate}
@@ -875,6 +991,10 @@ export default function MapPage() {
             <AirDefenseRingsLayer
               units={deployedAdUnits}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+            />
+
+            <ThreatRingsLayer
+              enemyBases={isPlanMode ? planState.enemyBases : state.enemyBases}
             />
 
             {draggingUnit && dropCandidate && (
@@ -1029,26 +1149,56 @@ export default function MapPage() {
             </div>
           )}
 
-          {/* Wind particle flow field — shown when vind tab is active */}
-          {visibleViews.vind && <WindLayer active={true} />}
-
           {/* Search bar + combined layer dropdown — top left */}
           <div
             ref={dropdownRef}
             className="absolute top-3 left-14 z-20 flex items-center gap-2"
             style={{ pointerEvents: "auto" }}
           >
-            <input
-              type="text"
-              placeholder="Sök position eller enhet..."
-              className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
-              style={{
-                background: "rgba(255,255,255,0.90)",
-                border: "1px solid rgba(45,90,39,0.28)",
-                backdropFilter: "blur(10px)",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
-              }}
-            />
+            <div ref={searchRef} className="relative">
+              <input
+                type="text"
+                placeholder="Sök position eller enhet..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                onFocus={() => { if (searchQuery) setSearchOpen(true); }}
+                className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.90)",
+                  border: "1px solid rgba(45,90,39,0.28)",
+                  backdropFilter: "blur(10px)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
+                }}
+              />
+              {searchOpen && searchResults.length > 0 && (
+                <div
+                  className="absolute top-full left-0 mt-1 rounded-xl overflow-hidden"
+                  style={{
+                    width: 280,
+                    background: "rgba(8,17,32,0.97)",
+                    border: "1px solid rgba(103,232,249,0.18)",
+                    boxShadow: "0 8px 32px rgba(2,6,23,0.55)",
+                    backdropFilter: "blur(18px)",
+                    zIndex: 50,
+                  }}
+                >
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={i}
+                      className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors hover:bg-white/5"
+                      onClick={() => {
+                        mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: 11, duration: 900 });
+                        setSearchQuery("");
+                        setSearchOpen(false);
+                      }}
+                    >
+                      <span className="text-sm font-mono truncate" style={{ color: "#e2e8f0" }}>{r.label}</span>
+                      <span className="text-[10px] tracking-wider flex-shrink-0" style={{ color: "#67e8f9" }}>{r.sublabel}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Combined dropdown trigger */}
             <button

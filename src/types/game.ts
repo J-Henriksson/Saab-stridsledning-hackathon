@@ -58,6 +58,8 @@ export interface EnemyBase {
   estimates: string;
   notes: string;
   createdAt: number;
+  /** Threat range in km — renders a range ring on the map when > 0. */
+  threatRangeKm?: number;
 }
 
 export interface EnemyEntity {
@@ -288,6 +290,7 @@ export type GameAction =
   | { type: "PLAN_UPDATE_COORDS_ROAD_BASE"; id: string; coords: { lat: number; lng: number } }
   | { type: "PLAN_ADD_FRIENDLY_UNIT"; unit: import("./units").Unit }
   | { type: "PLAN_DELETE_FRIENDLY_UNIT"; unitId: string }
+  | { type: "PLAN_REASSIGN_UNIT_TO_BASE"; unitId: string; fromBaseId: BaseType; toBaseId: BaseType }
   | { type: "DEPLOY_UNIT"; unitId: string; destination: import("./units").GeoPosition; speed?: number }
   | { type: "TRANSFER_UNIT"; unitId: string; toBaseId: BaseType }
   | { type: "RECALL_UNIT"; unitId: string; toBaseId?: BaseType }
@@ -438,6 +441,12 @@ export interface ATOOrder {
   missionCallsign?: string;
   /** Estimated fuel percentage on arrival at destination */
   fuelOnArrival?: number;
+  /** When true, renders as desaturated/dashed placeholder until activation time. */
+  isPlaceholder?: boolean;
+  /** Day on which a placeholder order becomes active. */
+  activationDay?: number;
+  /** Hour at which a placeholder order becomes active. */
+  activationHour?: number;
 }
 
 export type { Unit, UnitCategory, Affiliation, AircraftUnit, DroneUnit, DroneWaypoint, AirDefenseUnit, GroundVehicleUnit, RadarUnit, GeoPosition, Movement, MovementState } from "./units";
