@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
 import { BASE_COORDS } from "@/pages/map/constants";
+import { isDrone } from "@/types/units";
 import {
   ShieldCheck, Crosshair, Hammer, Siren, Clock,
   MapPin, PlaneTakeoff, BarChart3, BookOpen,
@@ -98,6 +99,11 @@ const Index = () => {
 
   const selectedBase     = state.bases.find((b) => b.id === selectedBaseId)!;
   const selectedAircraftList = getAircraft(selectedBase);
+  const selectedBaseActiveDrones = state.deployedUnits.filter(
+    (unit) => isDrone(unit) &&
+      unit.affiliation !== "hostile" &&
+      (unit.parentBaseId === selectedBaseId || unit.currentBase === selectedBaseId || unit.lastBase === selectedBaseId),
+  );
   const mcTotal          = selectedAircraftList.filter((a) => a.status === "ready").length;
   const onMissionTotal   = selectedAircraftList.filter((a) => a.status === "on_mission").length;
   const inMaintTotal     = selectedAircraftList.filter((a) => a.status === "under_maintenance" || a.status === "unavailable").length;
@@ -469,7 +475,13 @@ const Index = () => {
                     <BaseMap
                       base={selectedBase}
                       onDropAircraft={handleDropAircraft}
+                      activeDrones={selectedBaseActiveDrones}
                       onLaunchDrone={(droneId) => {
+                        const drone = selectedBase.units.find((u) => u.id === droneId);
+                        if (!drone || drone.status !== "ready") {
+                          toast.error("Drönaren är inte klar för start");
+                          return;
+                        }
                         const baseCoords = BASE_COORDS[selectedBaseId];
                         if (baseCoords) {
                           const offset = 0.5;
@@ -482,6 +494,7 @@ const Index = () => {
                         } else {
                           launchDrone(droneId, []);
                         }
+                        toast.success(`${drone.name} startad — ISR-patrull aktiverad`);
                       }}
                       overdueAircraftIds={overdueAircraftIds}
                       overdueMissionLabels={overdueMissionLabels}

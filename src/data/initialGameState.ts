@@ -63,9 +63,11 @@ function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircr
   const pos = BASE_COORDS[baseId];
   const units: Unit[] = [...aircraftList]; // aircraft are first-class units now
 
-  // Drones: seeded per base. SKYM-11 (MOB, airborne) and SKYM-14 (FOB_S, airborne)
-  // are in deployedUnits below and count toward their base totals.
-  const droneCount = baseId === "MOB" ? 15 : 10;
+  // Drones: each base should have max 10 total. SKYM-11 (MOB, airborne) and
+  // SKYM-14 (FOB_S, airborne) are seeded in deployedUnits below and count
+  // toward their home-base totals.
+  const predeployedDroneCount = baseId === "MOB" || baseId === "FOB_S" ? 1 : 0;
+  const droneCount = 10 - predeployedDroneCount;
   const dronePrefix = baseId === "MOB" ? "SKYM" : baseId === "FOB_N" ? "SKYM-N" : "SKYM-S";
   const droneIdPrefix = baseId === "MOB" ? "mob" : baseId === "FOB_N" ? "fob-n" : "fob-s";
   Array.from({ length: droneCount }, (_, i) => {
@@ -672,7 +674,7 @@ const INITIAL_NAVAL_UNITS: NavalUnit[] = [
     name: "HMS Visby",
     kind: "patrol_boat",
     affiliation: "friend",
-    position: { lat: 57.6, lng: 18.1 },
+    position: { lat: 57.6, lng: 18.0 },
     patrol: { center: { lat: 57.5, lng: 17.8 }, radiusKm: 85, speedKts: 25, axisDeg: 15, clockwise: true, aspect: 0.5 },
     movement: { state: "moving", speed: 25 },
     pathHistory: [],

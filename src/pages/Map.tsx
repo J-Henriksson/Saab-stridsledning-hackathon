@@ -82,6 +82,7 @@ import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, crea
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
 import { usePlanTabs, executePlan } from "@/hooks/usePlanTabs";
+import type { RadarUnit } from "@/types/units";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -337,7 +338,7 @@ export default function MapPage() {
 
   // Filter for radar units
   const radarUnits = useMemo(
-    () => allUnits.filter((u) => u.category === "radar") as unknown as ExtendedRadarUnit[],
+    () => allUnits.filter((u): u is RadarUnit => u.category === "radar"),
     [allUnits]
   );
 
@@ -348,13 +349,27 @@ export default function MapPage() {
     setRadarContacts(prev => ({ ...prev, [radarId]: contactIds }));
   }, []);
 
+  const mapRadarStatus = useCallback((unit: RadarUnit): ExtendedRadarUnit["status"] => {
+    if (unit.deployedState === "stowed") return "maintenance";
+    return unit.emitting ? "operational" : "standby";
+  }, []);
+
   // Enriched units with detected contact info
   const enrichedRadarUnits = useMemo(() => 
     radarUnits.map(u => ({
       ...u,
+      status: mapRadarStatus(u),
+      rangeRadius: 450000,
+      sweepSpeed: 6,
+      faction: "friendly" as const,
+      basePosition:
+        (u.currentBase && BASE_COORDS[u.currentBase]) ||
+        (u.lastBase && BASE_COORDS[u.lastBase]) ||
+        (u.parentBaseId && BASE_COORDS[u.parentBaseId]) ||
+        u.position,
       detectedContactIds: radarContacts[u.id] ?? []
     })),
-    [radarUnits, radarContacts]
+    [radarUnits, radarContacts, mapRadarStatus]
   );
 
   useRadarDetection(enrichedRadarUnits, handleUpdateRadarContacts);

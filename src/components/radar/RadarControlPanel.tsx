@@ -14,9 +14,13 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
   onClose,
   onUpdate,
 }) => {
+  const effectiveBasePosition = unit.basePosition ?? unit.position;
+  const hasDistinctBasePosition = !!unit.basePosition;
   const hasMoved =
-    unit.position.lat !== unit.basePosition.lat ||
-    unit.position.lng !== unit.basePosition.lng;
+    hasDistinctBasePosition && (
+      unit.position.lat !== effectiveBasePosition.lat ||
+      unit.position.lng !== effectiveBasePosition.lng
+    );
 
 const getStatusLabel = (status: RadarStatus) => {
     switch (status) {
@@ -143,7 +147,7 @@ const getStatusLabel = (status: RadarStatus) => {
           </div>
           <button
             disabled={!hasMoved}
-            onClick={() => onUpdate({ position: unit.basePosition })}
+            onClick={() => onUpdate({ position: effectiveBasePosition })}
             className="w-full flex items-center justify-center gap-2 h-8 rounded text-[10px] font-mono font-bold uppercase tracking-wider transition-all"
             style={{
               background: hasMoved ? "rgba(0,229,199,0.12)" : "rgba(100,116,139,0.12)",
@@ -156,7 +160,11 @@ const getStatusLabel = (status: RadarStatus) => {
             Återställ position
           </button>
           <p className="text-[9px] font-mono text-center" style={{ color: hasMoved ? "#D7AB3A" : "#475569" }}>
-            {hasMoved ? "⚠ Enheten har förflyttats från basposition" : "Enheten är på sin basposition"}
+            {!hasDistinctBasePosition
+              ? "Basposition saknas för denna radarenhet"
+              : hasMoved
+                ? "⚠ Enheten har förflyttats från basposition"
+                : "Enheten är på sin basposition"}
           </p>
         </div>
       </div>
