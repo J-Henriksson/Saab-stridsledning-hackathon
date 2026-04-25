@@ -21,7 +21,10 @@
       "Bash(curl -sI \"https://a.tiles.openrailwaymap.org/standard/10/563/320.png\" -H \"User-Agent: Mozilla/5.0\" -H \"Referer: https://www.openrailwaymap.org/\")",
       "Bash(curl -sI \"https://tiles.openrailwaymap.org/standard/8/140/80.png\" -H \"User-Agent: Mozilla/5.0\")",
       "Bash(curl -sI \"https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/8/85/140\")",
-      "Bash(curl -sI \"https://tiles.stadiamaps.com/tiles/stamen_toner_lines/8/140/85.png\")"
+      "Bash(curl -sI \"https://tiles.stadiamaps.com/tiles/stamen_toner_lines/8/140/85.png\")",
+      "Bash(GIT_EDITOR=true git rebase *)",
+      "Bash(EDITOR=\"true\" GIT_EDITOR=\"true\" git *)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }
