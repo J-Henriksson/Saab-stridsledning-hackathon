@@ -3,9 +3,9 @@ import { Marker, useMap } from "react-map-gl/maplibre";
 import { Base, GameAction } from "@/types/game";
 import { BASE_COORDS } from "./constants";
 import { getAircraft } from "@/core/units/helpers";
-import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import type { TacticalZone } from "@/types/overlay";
 import { useIncursionDetection } from "./useIncursionDetection";
+import { AircraftIcon } from "@/components/map/AircraftIcon";
 
 const REBASE_TRANSIT_HOURS = 2;
 const TRAIL_POINTS = 80;
@@ -260,24 +260,19 @@ export function AircraftLayer({
         const acDimmed = focusedBaseId ? ac.baseId !== focusedBaseId : false;
         return (
           <Marker key={ac.id} longitude={ac.lng} latitude={ac.lat} anchor="center" style={{ zIndex: 1 }}>
-            <img
-              src={gripenSilhouette}
-              alt=""
-              width={20}
+            <div
               style={{
                 cursor: onSelectAircraft ? "pointer" : "default",
-                transform: `rotate(${ac.angle}deg)`,
                 opacity: acDimmed ? 0.15 : 1,
                 transition: "opacity 0.35s ease",
-                filter: ac.isRebase
-                  ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(160deg) drop-shadow(0 0 5px #22d3ee88)"
-                  : "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg) drop-shadow(0 0 4px #22c55e88)",
               }}
               onClick={(e) => {
                 e.stopPropagation();
                 onSelectAircraft?.(ac.baseId, ac.id);
               }}
-            />
+            >
+              <AircraftIcon size={28} angle={ac.angle} color={ac.isRebase ? "#22d3ee" : "#22c55e"} />
+            </div>
           </Marker>
         );
       })}
