@@ -2321,7 +2321,7 @@ export default function MapPage() {
       {/* AI Plan Review Modal */}
       {showPlanReview && (
         <PlanReviewModal
-          state={state}
+          state={planState}
           onConfirm={() => { setShowPlanReview(false); if (activeTabId) deleteTab(activeTabId); }}
           onBack={() => setShowPlanReview(false)}
         />

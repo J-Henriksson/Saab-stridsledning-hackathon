@@ -243,8 +243,8 @@ function buildProtectAmmoTab(liveState: GameState): PlanTab {
       eksLv1, eksLv2, eksLv3, eksLv4, eksRadar1, eksRadar2, eksArmor, eksFuel,
       droneCorr, droneEnk, droneEks,
     ],
-    roadBases: [roadBaseEnk, roadBaseEks],
-    enemyBases: [enemyAirfield, enemySamSite, enemyCommand],
+    roadBases: [roadBaseEnk],
+    enemyBases: [enemyAirfield, enemyCommand],
     enemyEntities: [enemyFighter, enemyMissile],
   };
 
