@@ -1,5 +1,7 @@
 import { Crosshair, Swords, MapPin, AlertTriangle, FileText, Target, Package, Brain, Activity } from "lucide-react";
 import type { EnemyBase, EnemyEntity, ThreatLevel, OperationalStatus, EnemyBaseCategory, EnemyEntityCategory, IntelReport } from "@/types/game";
+import { analyzeEnemyBase, analyzeEnemyEntity } from "@/lib/enemyAnalysis";
+import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",    cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -33,6 +35,19 @@ const ENTITY_CATEGORY_LABEL: Record<EnemyEntityCategory, string> = {
   sam_launcher: "Luftvärnsrobot",
   ship:         "Fartyg",
 };
+
+function WarningList({ warnings }: { warnings: string[] }) {
+  return (
+    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 space-y-1">
+      <div className="text-[9px] font-mono text-amber-400/80 uppercase tracking-widest mb-1.5">Identifierade varningar</div>
+      {warnings.map((w, i) => (
+        <div key={i} className="flex items-start gap-1.5 text-[10px] font-mono text-foreground">
+          <span className="text-amber-400 shrink-0">▸</span>{w}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function InfoRow({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode }) {
   return (
@@ -129,6 +144,16 @@ export function EnemyBaseDetailPanel({ base, report }: { base: EnemyBase; report
           </div>
         </>
       )}
+
+      {(() => {
+        const a = analyzeEnemyBase(base);
+        return (
+          <div className="space-y-2">
+            <ContextualRecommendation text={a.recommendation} type={a.type} />
+            {a.warnings.length > 0 && <WarningList warnings={a.warnings} />}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -163,6 +188,16 @@ export function EnemyEntityDetailPanel({ entity }: { entity: EnemyEntity }) {
           <InfoRow icon={FileText} label="Anteckningar" value={entity.notes} />
         )}
       </div>
+
+      {(() => {
+        const a = analyzeEnemyEntity(entity);
+        return (
+          <div className="space-y-2">
+            <ContextualRecommendation text={a.recommendation} type={a.type} />
+            {a.warnings.length > 0 && <WarningList warnings={a.warnings} />}
+          </div>
+        );
+      })()}
     </div>
   );
 }

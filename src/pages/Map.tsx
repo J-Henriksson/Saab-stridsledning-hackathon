@@ -294,7 +294,7 @@ export default function MapPage() {
 
   // Filter for radar units
   const radarUnits = useMemo(
-    () => allUnits.filter((u) => u.category === "radar") as ExtendedRadarUnit[],
+    () => allUnits.filter((u) => u.category === "radar") as unknown as ExtendedRadarUnit[],
     [allUnits]
   );
 
@@ -1528,7 +1528,7 @@ export default function MapPage() {
                   onUpdateWaypoints={updateDroneWaypoints}
                   onSetOverlay={setDroneOverlay}
                   onDeploy={() => {}}
-                  planningMode={planningMode}
+                  planningMode={isPlanMode}
                 />
               ) : selectedUnit ? (
                 <UnitDetailPanel
@@ -1610,7 +1610,7 @@ export default function MapPage() {
       {showPlanReview && (
         <PlanReviewModal
           state={state}
-          onConfirm={() => { setShowPlanReview(false); setIsPlanMode(false); }}
+          onConfirm={() => { setShowPlanReview(false); if (activeTabId) deleteTab(activeTabId); }}
           onBack={() => setShowPlanReview(false)}
         />
       )}
