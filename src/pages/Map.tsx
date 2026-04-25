@@ -435,8 +435,8 @@ export default function MapPage() {
       ];
     }
     const nonRadar = allUnits.filter((u) => u.category !== "radar");
-    return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
-  }, [allUnits, state?.overlayVisibility?.drones, isPlanMode, planState.bases, planState.deployedUnits]);
+    return nonRadar.filter((unit) => !isDrone(unit));
+  }, [allUnits, isPlanMode, planState.bases, planState.deployedUnits]);
 
   // ── Fog-of-war: compute friendly sensor discs, then classify hostile ships
   // and enemy bases/entities as visible / last-known / hidden. Friendlies in
@@ -1857,6 +1857,7 @@ export default function MapPage() {
                     isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
                     onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
                     isPlaceholder
+                    iconStyle={iconStyle}
                   />
                 ))
               : enemyEntityVisibility.visible.map((ee) => {
@@ -1872,6 +1873,7 @@ export default function MapPage() {
                       entity={ee}
                       isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
                       onClick={intelClick}
+                      iconStyle={iconStyle}
                       dimmed={dimmed}
                       onHoverEnter={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
                       onHoverMove={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
