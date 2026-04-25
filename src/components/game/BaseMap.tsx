@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Base, Aircraft } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
+import { isDrone } from "@/types/units";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -29,6 +30,7 @@ export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
 interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
+  onLaunchDrone?: (droneId: string) => void;
   onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string, requiredSparePart?: string) => void;
   /** Aircraft IDs whose ATO mission window is active NOW (pulsing orange) */
   overdueAircraftIds?: string[];
@@ -111,7 +113,23 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
+// Drone image using drone.png, tinted by status color, centered at (cx,cy)
+function DroneImage({ cx, cy, color = "ffffff", opacity = 1, scale = 1 }: { cx: number; cy: number; color?: string; opacity?: number; scale?: number }) {
+  const filterId = `tint-${color.replace('#', '')}`;
+  const w = 36 * scale, h = 24 * scale;
+  return (
+    <image
+      href={`${import.meta.env.BASE_URL}drone.png`}
+      x={cx - w / 2} y={cy - h / 2}
+      width={w} height={h}
+      opacity={opacity}
+      filter={`url(#${filterId})`}
+      style={{ transform: `scaleX(-1)`, transformOrigin: `${cx}px ${cy}px` }}
+    />
+  );
+}
+
+export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAmmo, setHoveredAmmo] = useState<string | null>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
@@ -128,11 +146,21 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const dragThresholdMet = useRef(false);
   const pendingDragAcId = useRef<string | null>(null);
 
+  // Drone drag state
+  const [draggingDroneId, setDraggingDroneId] = useState<string | null>(null);
+  const [dragDronePos, setDragDronePos] = useState<{ x: number; y: number } | null>(null);
+  const pendingDragDroneId = useRef<string | null>(null);
+  const dragDroneStartClient = useRef<{ x: number; y: number } | null>(null);
+  const dragDroneThresholdMet = useRef(false);
+
   const aircraft = getAircraft(base);
   const mc = aircraft.filter((a) => a.status === "ready");
   const nmc = aircraft.filter((a) => a.status === "unavailable");
   const maint = aircraft.filter((a) => a.status === "under_maintenance");
   const onMission = aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
+
+  const baseDrones = base.units.filter(isDrone).filter((d) => d.affiliation !== "hostile");
+  const readyDrones = baseDrones.filter((d) => d.status === "ready");
 
   function toggle(id: BuildingId) {
     setSelected((prev) => (prev === id ? null : id));
@@ -157,41 +185,75 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const DRAG_THRESHOLD = 6; // px movement before considered a drag
 
   function handleSVGPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!pendingDragAcId.current) return;
-    // Check if threshold met to start actual drag
-    if (!dragThresholdMet.current && dragStartClient.current) {
-      const dx = e.clientX - dragStartClient.current.x;
-      const dy = e.clientY - dragStartClient.current.y;
-      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
-      dragThresholdMet.current = true;
-      setDraggingAcId(pendingDragAcId.current);
+    // Aircraft drag
+    if (pendingDragAcId.current) {
+      if (!dragThresholdMet.current && dragStartClient.current) {
+        const dx = e.clientX - dragStartClient.current.x;
+        const dy = e.clientY - dragStartClient.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+        dragThresholdMet.current = true;
+        setDraggingAcId(pendingDragAcId.current);
+      }
+      if (!draggingAcId && !dragThresholdMet.current) return;
+      const pos = screenToSVG(e.clientX, e.clientY);
+      setDragPos(pos);
+      setDropZoneHover(getZoneAt(pos.x, pos.y));
+      return;
     }
-    if (!draggingAcId && !dragThresholdMet.current) return;
-    const pos = screenToSVG(e.clientX, e.clientY);
-    setDragPos(pos);
-    setDropZoneHover(getZoneAt(pos.x, pos.y));
+    // Drone drag
+    if (pendingDragDroneId.current) {
+      if (!dragDroneThresholdMet.current && dragDroneStartClient.current) {
+        const dx = e.clientX - dragDroneStartClient.current.x;
+        const dy = e.clientY - dragDroneStartClient.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+        dragDroneThresholdMet.current = true;
+        setDraggingDroneId(pendingDragDroneId.current);
+      }
+      if (!draggingDroneId && !dragDroneThresholdMet.current) return;
+      const pos = screenToSVG(e.clientX, e.clientY);
+      setDragDronePos(pos);
+      setDropZoneHover(getZoneAt(pos.x, pos.y));
+    }
   }
 
   function handleSVGPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    const acId = pendingDragAcId.current;
-    const wasDrag = dragThresholdMet.current;
-    // Reset all drag state
-    pendingDragAcId.current = null;
-    dragStartClient.current = null;
-    dragThresholdMet.current = false;
-    setDraggingAcId(null);
-    setDragPos(null);
-    setDropZoneHover(null);
-    if (!acId) return;
-    if (wasDrag) {
-      // It was a real drag — handle drop
-      const pos = screenToSVG(e.clientX, e.clientY);
-      const zone = getZoneAt(pos.x, pos.y);
-      if (zone) onDropAircraft(acId, zone);
-    } else {
-      // It was a click — navigate to aircraft dashboard
-      const ac = aircraft.find((a) => a.id === acId);
-      if (ac) navigate(`/aircraft/${ac.tailNumber}`);
+    // Aircraft drop
+    if (pendingDragAcId.current) {
+      const acId = pendingDragAcId.current;
+      const wasDrag = dragThresholdMet.current;
+      pendingDragAcId.current = null;
+      dragStartClient.current = null;
+      dragThresholdMet.current = false;
+      setDraggingAcId(null);
+      setDragPos(null);
+      setDropZoneHover(null);
+      if (wasDrag) {
+        const pos = screenToSVG(e.clientX, e.clientY);
+        const zone = getZoneAt(pos.x, pos.y);
+        if (zone) onDropAircraft(acId, zone);
+      } else {
+        const ac = aircraft.find((a) => a.id === acId);
+        if (ac) navigate(`/aircraft/${ac.tailNumber}`);
+      }
+      return;
+    }
+    // Drone drop
+    if (pendingDragDroneId.current) {
+      const droneId = pendingDragDroneId.current;
+      const wasDrag = dragDroneThresholdMet.current;
+      pendingDragDroneId.current = null;
+      dragDroneStartClient.current = null;
+      dragDroneThresholdMet.current = false;
+      setDraggingDroneId(null);
+      setDragDronePos(null);
+      setDropZoneHover(null);
+      if (wasDrag) {
+        const pos = screenToSVG(e.clientX, e.clientY);
+        const zone = getZoneAt(pos.x, pos.y);
+        if (zone === "runway") onLaunchDrone?.(droneId);
+      } else {
+        navigate(`/drone/${droneId}`);
+      }
     }
   }
 
@@ -201,6 +263,11 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
     dragThresholdMet.current = false;
     setDraggingAcId(null);
     setDragPos(null);
+    pendingDragDroneId.current = null;
+    dragDroneStartClient.current = null;
+    dragDroneThresholdMet.current = false;
+    setDraggingDroneId(null);
+    setDragDronePos(null);
     setDropZoneHover(null);
   }
 
@@ -222,7 +289,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           ref={svgRef}
           viewBox="0 0 900 500"
           className="w-full relative z-0"
-          style={{ minWidth: 600, cursor: draggingAcId ? "grabbing" : "default", touchAction: "none" }}
+          style={{ minWidth: 600, cursor: (draggingAcId || draggingDroneId) ? "grabbing" : "default", touchAction: "none" }}
           onClick={() => { if (!draggingAcId) { setSelected(null); setSelectedAcId(null); } }}
           onPointerMove={handleSVGPointerMove}
           onPointerUp={handleSVGPointerUp}
@@ -236,7 +303,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0C234C" strokeWidth="0.3" opacity="0.15" />
             </pattern>
-            {["0C234C","D7AB3A","D9192E","6B7280","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222"].map((hex) => (
+            {["0C234C","D7AB3A","D9192E","6B7280","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222","ffffff","22c55e","d97706"].map((hex) => (
               <filter key={hex} id={`tint-${hex}`}>
                 <feFlood floodColor={`#${hex}`} result="c" />
                 <feComposite in="c" in2="SourceAlpha" operator="in" />
@@ -678,6 +745,64 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
 
           {/* NO ROADS — only taxiway strip drawn above */}
 
+          {/* ── Drone Panel (left of legend) ── */}
+          {(() => {
+            const panelX = 430, panelY = 38, panelW = 210, panelH = 105;
+            const cols = 5, colW = 36, rowH = 30;
+            const droneColor = (status: string) =>
+              status === "ready" ? "ffffff"
+              : status === "under_maintenance" ? "d97706"
+              : status === "unavailable" ? "6B7280" : "ffffff";
+            return (
+              <g>
+                <rect x={panelX} y={panelY} width={panelW} height={panelH} rx="4"
+                  fill="#0C234C" opacity="0.92" />
+                <rect x={panelX} y={panelY} width={panelW} height={5} rx="2"
+                  fill="#D7AB3A" />
+                <text x={panelX + panelW / 2} y={panelY + 16} textAnchor="middle" fontSize="8" fill="#D7AB3A"
+                  fontFamily="monospace" fontWeight="bold" letterSpacing="2">
+                  DRÖNARE — {readyDrones.length} KLARA / {baseDrones.length}
+                </text>
+                {baseDrones.length === 0 && (
+                  <text x={panelX + panelW / 2} y={panelY + 65} textAnchor="middle" fontSize="7.5"
+                    fill="#5566aa" fontFamily="monospace">— inga drönare —</text>
+                )}
+                {baseDrones.slice(0, 10).map((d, i) => {
+                  const col = i % cols;
+                  const row = Math.floor(i / cols);
+                  const cx = panelX + 22 + col * colW;
+                  const cy = panelY + 38 + row * rowH;
+                  const col_hex = droneColor(d.status);
+                  const isDragging = draggingDroneId === d.id;
+                  return (
+                    <g key={d.id}
+                      style={{ cursor: isDragging ? "grabbing" : d.status === "ready" ? "grab" : "pointer", opacity: isDragging ? 0.3 : 1 }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        svgRef.current?.setPointerCapture(e.pointerId);
+                        pendingDragDroneId.current = d.id;
+                        dragDroneStartClient.current = { x: e.clientX, y: e.clientY };
+                        dragDroneThresholdMet.current = false;
+                        const pos = screenToSVG(e.clientX, e.clientY);
+                        setDragDronePos(pos);
+                        setDropZoneHover(null);
+                      }}
+                    >
+                      <DroneImage cx={cx} cy={cy} color={col_hex} opacity={d.status === "ready" ? 0.9 : 0.45} scale={0.75} />
+                      {/* tiny status dot */}
+                      <circle cx={cx + 12} cy={cy - 8} r="3"
+                        fill={d.status === "ready" ? "#22c55e" : d.status === "under_maintenance" ? "#d97706" : "#6B7280"} />
+                    </g>
+                  );
+                })}
+                {/* instruction hint */}
+                <text x={panelX + panelW / 2} y={panelY + panelH - 5} textAnchor="middle" fontSize="6.5"
+                  fill="#5566aa" fontFamily="monospace">Dra till bana för att deploya</text>
+              </g>
+            );
+          })()}
+
           {/* ── Legend (SAAB styled) ── */}
           <g>
             <rect x="656" y="38" width="184" height="105" rx="4"
@@ -716,7 +841,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           </text>
 
           {/* ── Drop zone highlights — shown during pointer drag, in SVG space ── */}
-          {draggingAcId && SVG_ZONES.map((zone) => {
+          {(draggingAcId || draggingDroneId) && SVG_ZONES.filter((z) => !draggingDroneId || z.id === "runway").map((zone) => {
             const isHot = dropZoneHover === zone.id;
             return (
               <g key={`dz-${zone.id}`} style={{ pointerEvents: "none" }}>
@@ -744,6 +869,21 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
               </g>
             );
           })}
+
+          {/* ── Ghost drone follows cursor during drag ── */}
+          {draggingDroneId && dragDronePos && (() => {
+            const drone = baseDrones.find((d) => d.id === draggingDroneId);
+            if (!drone) return null;
+            return (
+              <g opacity="0.85" style={{ pointerEvents: "none" }}>
+                <DroneImage cx={dragDronePos.x} cy={dragDronePos.y} color="ffffff" opacity={1} scale={1.1} />
+                <rect x={dragDronePos.x - 18} y={dragDronePos.y - 22} width="36" height="10" rx="2" fill="#0C234C" opacity="0.9" />
+                <text x={dragDronePos.x} y={dragDronePos.y - 15} textAnchor="middle" fontSize="6" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">
+                  {drone.name}
+                </text>
+              </g>
+            );
+          })()}
 
           {/* ── Ghost aircraft follows cursor during drag ── */}
           {draggingAcId && dragPos && (() => {

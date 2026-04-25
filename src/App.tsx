@@ -27,6 +27,7 @@ import AircraftDashboard from "./pages/AircraftDashboard.tsx";
 import AARPage from "./pages/AARPage";
 import UnitDashboard from "./pages/UnitDashboard.tsx";
 import DroneDashboard from "./pages/DroneDashboard.tsx";
+import DronePage from "./pages/DronePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const MapPage = lazy(() => import("./pages/Map.tsx"));
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/aar" element={<AARPage />} />
               <Route path="/units/:id" element={<UnitDashboard />} />
               <Route path="/drones" element={<DroneDashboard />} />
+              <Route path="/drone/:droneId" element={<DronePage />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
