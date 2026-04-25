@@ -353,17 +353,19 @@ export default function MapPage() {
   }, []);
 
   const mapRadarStatus = useCallback((unit: RadarUnit): ExtendedRadarUnit["status"] => {
+    // ExtendedRadarUnit (e.g. DEMO_RADAR_UNITS) has no deployedState/emitting — honour its own status
+    if ((unit as any).deployedState === undefined) return (unit as any).status ?? "operational";
     if (unit.deployedState === "stowed") return "maintenance";
     return unit.emitting ? "operational" : "standby";
   }, []);
 
   // Enriched units with detected contact info
-  const enrichedRadarUnits = useMemo(() => 
+  const enrichedRadarUnits = useMemo(() =>
     radarUnits.map(u => ({
       ...u,
       status: mapRadarStatus(u),
-      rangeRadius: 450000,
-      sweepSpeed: 6,
+      rangeRadius: (u as any).rangeRadius ?? 450000,
+      sweepSpeed: (u as any).sweepSpeed ?? 6,
       faction: "friendly" as const,
       basePosition:
         (u.currentBase && BASE_COORDS[u.currentBase]) ||
