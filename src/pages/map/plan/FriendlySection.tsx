@@ -22,6 +22,7 @@ import type {
 } from "@/types/units";
 import { Slider } from "@/components/ui/slider";
 import { getAircraft } from "@/core/units/helpers";
+import { BASE_COORDS } from "../constants";
 
 type PlacingKind = "friendly_base" | "friendly_unit" | "road_base";
 
@@ -38,6 +39,7 @@ interface Props {
   placedUnits: Unit[];
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
+  onFlyTo?: (lat: number, lng: number) => void;
 }
 
 const BASE_CATEGORIES: { value: FriendlyMarkerCategory; label: string }[] = [
@@ -89,7 +91,7 @@ function subtypeOptions(category: UnitCategory): string[] {
   }
 }
 
-function ExistingBaseRow({ base, allBases, dispatch }: { base: Base; allBases: Base[]; dispatch: (a: GameAction) => void }) {
+function ExistingBaseRow({ base, allBases, dispatch, onFlyTo }: { base: Base; allBases: Base[]; dispatch: (a: GameAction) => void; onFlyTo?: (lat: number, lng: number) => void }) {
   const [open, setOpen] = useState(false);
   const [fuel, setFuel] = useState(base.fuel);
   const [bays, setBays] = useState(base.maintenanceBays.total);
@@ -106,17 +108,27 @@ function ExistingBaseRow({ base, allBases, dispatch }: { base: Base; allBases: B
   }
 
   const otherBases = allBases.filter((b) => b.id !== base.id);
+  const coords = BASE_COORDS[base.id];
 
   return (
     <div className="border border-border rounded bg-muted/5 overflow-hidden">
-      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-muted/20 transition-colors">
+      <div className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => setOpen(!open)}>
         <div className="flex-1 text-left">
           <span className="text-xs font-mono font-bold text-foreground">{base.id}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{base.name}</span>
         </div>
         <span className={`text-[10px] font-mono ${readinessColor}`}>{mc}/{aircraft.length} MC</span>
+        {onFlyTo && coords && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onFlyTo(coords.lat, coords.lng); }}
+            className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0"
+            title="Visa på kartan"
+          >
+            <MapPin className="h-3 w-3" />
+          </button>
+        )}
         {open ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-      </button>
+      </div>
       {open && (
         <div className="p-2 space-y-2 border-t border-border">
           <div className="flex items-center gap-2">
@@ -207,7 +219,7 @@ function AddForm({ title, onPlace, onCancel, fields }: { title: string; onPlace:
   );
 }
 
-export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement }: Props) {
+export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement, onFlyTo }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingUnit, setAddingUnit] = useState(false);
 
@@ -292,7 +304,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
         Befintliga baser
       </div>
       {bases.map((base) => (
-        <ExistingBaseRow key={base.id} base={base} allBases={bases} dispatch={dispatch} />
+        <ExistingBaseRow key={base.id} base={base} allBases={bases} dispatch={dispatch} onFlyTo={onFlyTo} />
       ))}
 
       {friendlyMarkers.length > 0 && (
@@ -307,6 +319,11 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
                 <span className="text-[10px] text-muted-foreground ml-2">{BASE_CATEGORIES.find((c) => c.value === m.category)?.label}</span>
                 {m.estimates && <div className="text-[10px] text-muted-foreground/70">{m.estimates}</div>}
               </div>
+              {onFlyTo && (
+                <button onClick={() => onFlyTo(m.coords.lat, m.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_MARKER", id: m.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -326,6 +343,11 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
                 <span className="text-xs font-mono font-bold text-blue-300">{e.name}</span>
                 <span className="text-[10px] text-muted-foreground ml-2">{e.category}</span>
               </div>
+              {onFlyTo && (e as any).coords && (
+                <button onClick={() => onFlyTo((e as any).coords.lat, (e as any).coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_ENTITY", id: e.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -353,6 +375,11 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
                   </div>
                 )}
               </div>
+              {onFlyTo && (
+                <button onClick={() => onFlyTo(unit.position.lat, unit.position.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: unit.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -373,6 +400,11 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
                 <span className="text-[10px] text-muted-foreground ml-2">{rb.status}</span>
                 <span className="text-[10px] text-muted-foreground ml-1">· {rb.echelon} · {rb.rangeRadius} km</span>
               </div>
+              {onFlyTo && (
+                <button onClick={() => onFlyTo(rb.coords.lat, rb.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+                  <MapPin className="h-3.5 w-3.5" />
+                </button>
+              )}
               <button onClick={() => dispatch({ type: "PLAN_DELETE_ROAD_BASE", id: rb.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
                 <Trash2 className="h-3.5 w-3.5" />
               </button>

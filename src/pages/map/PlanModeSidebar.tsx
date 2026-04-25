@@ -20,13 +20,14 @@ interface Props {
   onStartPlacement: (payload: PlacingPayload) => void;
   onFinalizePlan: () => void;
   onRename: (name: string) => void;
+  onFlyTo: (lat: number, lng: number) => void;
 }
 
 export type { PlacingPayload, PlacingKind };
 
 type SidebarTab = "friendly" | "enemy";
 
-export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename }: Props) {
+export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("friendly");
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(tab.name);
@@ -133,6 +134,7 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
             placedUnits={state.deployedUnits}
             dispatch={dispatch}
             onStartPlacement={onStartPlacement}
+            onFlyTo={onFlyTo}
           />
         ) : (
           <EnemySection
@@ -140,6 +142,7 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
             enemyEntities={state.enemyEntities}
             dispatch={dispatch}
             onStartPlacement={onStartPlacement}
+            onFlyTo={onFlyTo}
           />
         )}
       </div>

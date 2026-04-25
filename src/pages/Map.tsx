@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard, Zap } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -29,6 +29,7 @@ import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { WindLayer } from "./map/WindLayer";
 import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSidebar";
+import { DeployModeSidebar } from "./map/DeployModeSidebar";
 import { PlanReviewModal } from "@/components/game/PlanReviewModal";
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
@@ -232,6 +233,7 @@ export default function MapPage() {
   const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab } = usePlanTabs(state);
   const isPlanMode = activeTabId !== null;
   const [showPlanReview, setShowPlanReview] = useState(false);
+  const [isDeployMode, setIsDeployMode] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
@@ -545,12 +547,18 @@ export default function MapPage() {
   const handleCreateTab = useCallback(() => {
     createTab();
     setPlacingMode(null);
+    setIsDeployMode(false);
   }, [createTab]);
 
   const handleSwitchTab = useCallback((id: string | null) => {
     switchTab(id);
     setPlacingMode(null);
+    setIsDeployMode(false);
   }, [switchTab]);
+
+  const handleFlyTo = useCallback((lat: number, lng: number) => {
+    mapRef.current?.flyTo({ center: [lng, lat], zoom: 12, duration: 900 });
+  }, []);
 
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
     if (drawingMode !== "none") return;
@@ -704,14 +712,31 @@ export default function MapPage() {
         <div className="flex items-center gap-1 ml-4 flex-1 overflow-x-auto">
           {/* LIVE tab */}
           <button
-            onClick={() => handleSwitchTab(null)}
+            onClick={() => { handleSwitchTab(null); setIsDeployMode(false); setPlacingMode(null); }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
-              !isPlanMode
+              !isPlanMode && !isDeployMode
                 ? "bg-green-600/15 border-green-600/50 text-green-400"
                 : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
             LIVE
+          </button>
+
+          {/* Deploy button */}
+          <button
+            onClick={() => {
+              if (isPlanMode) handleSwitchTab(null);
+              setIsDeployMode((v) => !v);
+              setPlacingMode(null);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              isDeployMode
+                ? "bg-orange-600/15 border-orange-600/50 text-orange-400"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Zap className="h-2.5 w-2.5" />
+            DEPLOY
           </button>
 
           {tabs.map((tab) => (
@@ -780,6 +805,25 @@ export default function MapPage() {
                 onStartPlacement={handleStartPlacement}
                 onFinalizePlan={() => setShowPlanReview(true)}
                 onRename={(name) => renameTab(activeTab.id, name)}
+                onFlyTo={handleFlyTo}
+              />
+            </motion.div>
+          )}
+          {isDeployMode && (
+            <motion.div
+              key="deploy-sidebar"
+              initial={{ x: -320, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -320, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-hidden flex flex-col"
+            >
+              <DeployModeSidebar
+                state={state}
+                dispatch={dispatch}
+                onStartPlacement={handleStartPlacement}
+                onClose={() => { setIsDeployMode(false); setPlacingMode(null); }}
+                onFlyTo={handleFlyTo}
               />
             </motion.div>
           )}

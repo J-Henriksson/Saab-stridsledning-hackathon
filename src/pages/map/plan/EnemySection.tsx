@@ -16,6 +16,7 @@ interface Props {
   enemyEntities: EnemyEntity[];
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
+  onFlyTo?: (lat: number, lng: number) => void;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -100,9 +101,11 @@ function AddForm({
 function EnemyBaseRow({
   base,
   dispatch,
+  onFlyTo,
 }: {
   base: EnemyBase;
   dispatch: (a: GameAction) => void;
+  onFlyTo?: (lat: number, lng: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [rangeInput, setRangeInput] = useState(String(base.threatRangeKm ?? 0));
@@ -124,6 +127,11 @@ function EnemyBaseRow({
             <span className="text-[9px] font-mono text-red-400/70 ml-1.5">⌀ {base.threatRangeKm} km</span>
           )}
         </div>
+        {onFlyTo && (
+          <button onClick={() => onFlyTo(base.coords.lat, base.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+            <MapPin className="h-3 w-3" />
+          </button>
+        )}
         <button onClick={() => setOpen((v) => !v)} className="p-1 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
@@ -159,9 +167,11 @@ function EnemyBaseRow({
 function EnemyEntityRow({
   entity,
   dispatch,
+  onFlyTo,
 }: {
   entity: EnemyEntity;
   dispatch: (a: GameAction) => void;
+  onFlyTo?: (lat: number, lng: number) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -173,6 +183,11 @@ function EnemyEntityRow({
           <span className="text-xs font-mono font-bold text-red-200">{entity.name}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{ENTITY_CATEGORIES.find(c => c.value === entity.category)?.label}</span>
         </div>
+        {onFlyTo && (
+          <button onClick={() => onFlyTo(entity.coords.lat, entity.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+            <MapPin className="h-3 w-3" />
+          </button>
+        )}
         <button onClick={() => setOpen((v) => !v)} className="p-1 text-muted-foreground hover:text-foreground">
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </button>
@@ -193,7 +208,7 @@ function EnemyEntityRow({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlacement }: Props) {
+export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlacement, onFlyTo }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingEntity, setAddingEntity] = useState(false);
 
@@ -236,7 +251,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
       {enemyBases.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Fiendebaser</div>
-          {enemyBases.map((b) => <EnemyBaseRow key={b.id} base={b} dispatch={dispatch} />)}
+          {enemyBases.map((b) => <EnemyBaseRow key={b.id} base={b} dispatch={dispatch} onFlyTo={onFlyTo} />)}
         </>
       )}
 
@@ -244,7 +259,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
       {enemyEntities.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-2 mb-1">Fiendeenheter</div>
-          {enemyEntities.map((e) => <EnemyEntityRow key={e.id} entity={e} dispatch={dispatch} />)}
+          {enemyEntities.map((e) => <EnemyEntityRow key={e.id} entity={e} dispatch={dispatch} onFlyTo={onFlyTo} />)}
         </>
       )}
 
