@@ -10,7 +10,7 @@ export interface ExtendedRadarUnit extends UnitBase {
   sweepSpeed: number;            // degrees per second (default: 6 = full rotation in 60s)
   faction: 'friendly';
   detectedContactIds: string[];  // IDs of threats/objects currently within range
-  basePosition: { lat: number; lng: number }; // For reset position
+  basePosition?: { lat: number; lng: number }; // Optional legacy reset point; UI should fall back to current position
 }
 
 export const RADAR_DEFAULTS = {

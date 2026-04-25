@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Base, Aircraft } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
-import { isDrone } from "@/types/units";
+import { isDrone, type DroneUnit } from "@/types/units";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -31,6 +31,7 @@ interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
   onLaunchDrone?: (droneId: string) => void;
+  activeDrones?: DroneUnit[];
   onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string, requiredSparePart?: string) => void;
   /** Aircraft IDs whose ATO mission window is active NOW (pulsing orange) */
   overdueAircraftIds?: string[];
@@ -124,12 +125,13 @@ function DroneImage({ cx, cy, color = "ffffff", opacity = 1, scale = 1 }: { cx: 
       width={w} height={h}
       opacity={opacity}
       filter={`url(#${filterId})`}
+      pointerEvents="none"
       style={{ transform: `scaleX(-1)`, transformOrigin: `${cx}px ${cy}px` }}
     />
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
+export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = [], onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAmmo, setHoveredAmmo] = useState<string | null>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
@@ -158,8 +160,13 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
   const nmc = aircraft.filter((a) => a.status === "unavailable");
   const maint = aircraft.filter((a) => a.status === "under_maintenance");
   const onMission = aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
+  const onMissionDrones = activeDrones.filter((d) => d.status === "on_mission" || d.status === "returning");
+  const missionCount = onMission.length + onMissionDrones.length;
 
-  const baseDrones = base.units.filter(isDrone).filter((d) => d.affiliation !== "hostile");
+  const activeDroneIds = new Set(activeDrones.map((d) => d.id));
+  const baseDrones = base.units
+    .filter(isDrone)
+    .filter((d) => d.affiliation !== "hostile" && !activeDroneIds.has(d.id));
   const readyDrones = baseDrones.filter((d) => d.status === "ready");
 
   function toggle(id: BuildingId) {
@@ -271,6 +278,11 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
     setDropZoneHover(null);
   }
 
+  function handleSVGPointerLeave() {
+    if (pendingDragAcId.current || pendingDragDroneId.current || draggingAcId || draggingDroneId) return;
+    cancelDrag();
+  }
+
   // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
   const apronX = 60;
   const apronWidth = 780;
@@ -293,7 +305,8 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
           onClick={() => { if (!draggingAcId) { setSelected(null); setSelectedAcId(null); } }}
           onPointerMove={handleSVGPointerMove}
           onPointerUp={handleSVGPointerUp}
-          onPointerLeave={cancelDrag}
+          onPointerLeave={handleSVGPointerLeave}
+          onPointerCancel={cancelDrag}
         >
           {/* ── Background */}
           <rect width="900" height="500" fill="transparent" />
@@ -646,9 +659,9 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
                   fill="#1a3a6a" />
                 <text x={boxX + boxW / 2} y={boxY + 11} textAnchor="middle" fontSize="8"
                   fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" letterSpacing="2">
-                  PÅ UPPDRAG ({onMission.length})
+                  PÅ UPPDRAG ({missionCount})
                 </text>
-                {onMission.length === 0 && (
+                {missionCount === 0 && (
                   <text x={boxX + boxW / 2} y={boxY + 90} textAnchor="middle" fontSize="8"
                     fill="#5566aa" fontFamily="monospace">— inga aktiva uppdrag —</text>
                 )}
@@ -682,6 +695,40 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
                           <rect x={cx-20} y={cy-34} width="40" height="13" rx="2" fill="#0C234C" opacity="0.95" />
                           <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
                             {isRet ? "Återvänder" : ac.currentMission ?? "UPP"}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+                {onMissionDrones.slice(0, Math.max(0, 16 - onMission.length)).map((drone, i) => {
+                  const idx = onMission.length + i;
+                  const col = idx % cols;
+                  const row = Math.floor(idx / cols);
+                  const cx = boxX + 32 + col * 60;
+                  const cy = boxY + 42 + row * 50;
+                  const isRet = drone.status === "returning";
+                  const color = isRet ? "d97706" : "ffffff";
+                  return (
+                    <g key={`uppdrag-drone-${drone.id}`}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setHoveredAc(drone.id)}
+                      onMouseLeave={() => setHoveredAc(null)}
+                      onClick={() => navigate(`/drone/${drone.id}`)}
+                    >
+                      <DroneImage cx={cx} cy={cy} color={color} opacity={isRet ? 0.7 : 1} scale={0.8} />
+                      {isRet && (
+                        <text x={cx} y={cy - 18} textAnchor="middle" fontSize="7" fill="#f59e0b" fontFamily="monospace">↩</text>
+                      )}
+                      <rect x={cx-17} y={cy+8} width="34" height="11" rx="2"
+                        fill="#0C234C" fillOpacity="0.9" />
+                      <text x={cx} y={cy+16} textAnchor="middle" fontSize="6"
+                        fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{drone.name}</text>
+                      {hoveredAc === drone.id && (
+                        <g>
+                          <rect x={cx-24} y={cy-34} width="48" height="13" rx="2" fill="#0C234C" opacity="0.95" />
+                          <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
+                            {isRet ? "Återvänder" : (drone.currentMission ?? "ISR")}
                           </text>
                         </g>
                       )}
@@ -776,11 +823,12 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
                   const isDragging = draggingDroneId === d.id;
                   return (
                     <g key={d.id}
-                      style={{ cursor: isDragging ? "grabbing" : d.status === "ready" ? "grab" : "pointer", opacity: isDragging ? 0.3 : 1 }}
+                      style={{ cursor: isDragging ? "grabbing" : d.status === "ready" ? "grab" : "not-allowed", opacity: isDragging ? 0.3 : 1 }}
                       onPointerDown={(e) => {
+                        if (d.status !== "ready") return;
                         e.preventDefault();
                         e.stopPropagation();
-                        svgRef.current?.setPointerCapture(e.pointerId);
+                        e.currentTarget.setPointerCapture(e.pointerId);
                         pendingDragDroneId.current = d.id;
                         dragDroneStartClient.current = { x: e.clientX, y: e.clientY };
                         dragDroneThresholdMet.current = false;
@@ -789,6 +837,15 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
                         setDropZoneHover(null);
                       }}
                     >
+                      <rect
+                        x={cx - 20}
+                        y={cy - 14}
+                        width={40}
+                        height={28}
+                        rx={4}
+                        fill="rgba(0,0,0,0.001)"
+                        pointerEvents="all"
+                      />
                       <DroneImage cx={cx} cy={cy} color={col_hex} opacity={d.status === "ready" ? 0.9 : 0.45} scale={0.75} />
                     </g>
                   );
@@ -827,7 +884,7 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
           <rect x="20" y="470" width="860" height="20" rx="3" fill="#0C234C" opacity="0.88" />
           <rect x="20" y="470" width="860" height="2" rx="1" fill="#D7AB3A" opacity="0.7" />
           <text x="40" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">MC: {mc.length}</text>
-          <text x="105" y="483" fontSize="8" fill="#7aaef0" fontFamily="monospace">UPP: {onMission.length}</text>
+          <text x="105" y="483" fontSize="8" fill="#7aaef0" fontFamily="monospace">UPP: {missionCount}</text>
           <text x="175" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace">UH: {maint.length}</text>
           <text x="235" y="483" fontSize="8" fill="#D9192E" fontFamily="monospace">NMC: {nmc.length}</text>
           <text x="330" y="483" fontSize="8" fill="#D7DEE1" fontFamily="monospace">
@@ -905,8 +962,8 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
             const acIdx = apronAircraft.findIndex((a) => a.id === selectedAcId);
             if (acIdx < 0) return null;
             const ac = apronAircraft[acIdx];
-            const col = acIdx % cols;
-            const cx = 60 + (col + 0.5) * (780 / cols);
+            const col = acIdx % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
             const cy = 263;
 
             const pw = 195, ph = 225;
@@ -1558,4 +1615,3 @@ function RunwayDetail({ base }: { base: Base }) {
     </div>
   );
 }
-
