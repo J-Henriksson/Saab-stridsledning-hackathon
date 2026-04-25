@@ -206,7 +206,7 @@ export function EventsSidebar({ events, allEvents, bases }: Props) {
   }, [events.length]);
 
   return (
-    <div className="flex flex-shrink-0 h-full" style={{ width: open ? 280 : 36, transition: "width 0.25s ease" }}>
+    <div className="flex flex-shrink-0 h-full" style={{ width: open ? 380 : 36, transition: "width 0.25s ease" }}>
 
       {/* ── Toggle strip ─────────────────────────────────────────────────── */}
       <div
@@ -247,7 +247,7 @@ export function EventsSidebar({ events, allEvents, bases }: Props) {
           <motion.div
             key="events-panel"
             initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 244, opacity: 1 }}
+            animate={{ width: 344, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 340, damping: 34 }}
             className="flex flex-col overflow-hidden border-l border-border bg-card"

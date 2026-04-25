@@ -39,7 +39,7 @@ export const RadarLayer: React.FC<RadarLayerProps> = ({
     onUpdateUnit(id, { position });
   };
 
-  const RADAR_TEAL = '#00E5C7';
+  const RADAR_TEAL = '#22c55e';
   const RADAR_AMBER = '#D7AB3A';
   const RADAR_GREY = '#6B7280';
 

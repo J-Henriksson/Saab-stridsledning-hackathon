@@ -61,18 +61,15 @@ export const RadarMarker: React.FC<RadarMarkerProps> = ({
       }}
     >
       <div className="relative flex items-center justify-center cursor-pointer group">
-        {/* Sweep Animation */}
+        {/* Pulse rings */}
         <RadarSweep
           radiusPx={radiusPx}
           sweepSpeed={unit.sweepSpeed}
           isOperational={unit.status === 'operational'}
         />
 
-        {/* NATO Symbol */}
-        <RadarSymbol
-          status={unit.status}
-          size={42}
-        />
+        {/* Hit-area for dragging/clicking */}
+        <div style={{ width: 20, height: 20 }} />
 
         {/* Tooltip on hover */}
         <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 font-mono border border-slate-700">

@@ -5,7 +5,8 @@ import { Base } from "@/types/game";
 import { SUPPLY_LINES, BASE_COORDS } from "./constants";
 import { getAircraft } from "@/core/units/helpers";
 
-export function SupplyLinesLayer({ bases }: { bases: Base[] }) {
+export function SupplyLinesLayer({ bases: _bases }: { bases: Base[] }) {
+  return null;
   const { geojson, stressedMidpoints } = useMemo(() => {
     const features: GeoJSON.Feature[] = [];
     const midpoints: { lng: number; lat: number }[] = [];

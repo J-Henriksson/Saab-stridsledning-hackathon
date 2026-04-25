@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
 import type { Unit, GeoPosition } from "@/types/units";
-import { isAircraft, isAirDefense } from "@/types/units";
+import { isAircraft, isAirDefense, isRadar, isGroundVehicle } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
@@ -37,6 +37,7 @@ interface UnitsLayerProps {
   units: Unit[];
   onSelectUnit?: (unitId: string) => void;
   selectedUnitId?: string | null;
+  focusedBaseId?: string | null;
 }
 
 function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnitId?: string | null }) {
@@ -83,13 +84,19 @@ function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnit
   );
 }
 
-export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
+export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId }: UnitsLayerProps) {
   const { state, dispatch } = useGame();
   const tickMs = expectedTickMs(state.gameSpeed);
   // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
   // plus all other unit categories to render through the shared unit layer.
   const renderable = useMemo(
-    () => units.filter((u) => !isAircraft(u) || u.movement.state !== "stationary"),
+    () => units.filter((u) => {
+      if (isRadar(u)) return false;
+      if (isGroundVehicle(u)) return false;
+      if (isAirDefense(u) && (u as any).isStatic) return false;
+      if (isAircraft(u) && u.movement.state === "stationary") return false;
+      return true;
+    }),
     [units]
   );
 
@@ -184,13 +191,16 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
             : "drop-shadow(0 0 4px #D7AB3A)"
           : undefined;
 
+        const unitBase = (unit as any).currentBase ?? (unit as any).parentBaseId ?? null;
+        const isDimmed = !!focusedBaseId && unitBase !== focusedBaseId;
+
         return (
           <Marker
             key={unit.id}
             longitude={pos.lng}
             latitude={pos.lat}
             anchor="center"
-            draggable={isDraggable}
+            draggable={isDraggable && !isDimmed}
             onDragEnd={(e) => {
               dispatch({
                 type: "RELOCATE_UNIT",
@@ -212,8 +222,9 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
                 cursor: isDraggable ? "grab" : "pointer",
                 filter: glowFilter,
                 transform: selectedUnitId === unit.id ? "scale(1.15)" : undefined,
-                transition: "transform 120ms ease",
+                transition: "transform 120ms ease, opacity 0.35s ease",
                 position: "relative",
+                opacity: isDimmed ? 0.15 : 1,
               }}
               title={`${unit.name} — ${unit.category} (${unit.affiliation})`}
             >
