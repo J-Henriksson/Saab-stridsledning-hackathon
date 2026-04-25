@@ -1,5 +1,8 @@
 import { Ship, AlertTriangle, MapPin, Clock, Target, Crosshair, Anchor, Waves } from "lucide-react";
 import type { NavalUnit, ThreatLevel } from "@/types/game";
+import { analyzeNavalUnit } from "@/lib/enemyAnalysis";
+import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
+import { WarningList, BorderAlertPanel } from "@/components/game/EnemyAnalysisPanels";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",   cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -58,6 +61,7 @@ export function NavalDetailPanel({ unit }: { unit: NavalUnit }) {
   const Icon = KIND_ICON[unit.kind];
   const detected = unit.lastDetectedAt;
   const intent = inferIntent(unit);
+  const analysis = unit.affiliation === "hostile" ? analyzeNavalUnit(unit) : null;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -112,6 +116,14 @@ export function NavalDetailPanel({ unit }: { unit: NavalUnit }) {
           <div>Fart: {unit.patrol.speedKts} knop</div>
         </div>
       </div>
+
+      {analysis && (
+        <div className="space-y-2">
+          <ContextualRecommendation text={analysis.recommendation} type={analysis.type} />
+          {analysis.warnings.length > 0 && <WarningList warnings={analysis.warnings} />}
+          {analysis.borderAlert && <BorderAlertPanel alert={analysis.borderAlert} />}
+        </div>
+      )}
     </div>
   );
 }

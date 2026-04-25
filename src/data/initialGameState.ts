@@ -530,6 +530,80 @@ const GLOBAL_EYE_AEW: AircraftUnit = {
   pathHistory: [],
 };
 
+// ── Waypoint-following drones (back-and-forth between base areas) ─────────────
+
+// SKYM-15: ISR drone shuttling between MOB area and FOB_N corridor
+const WP_15 = [
+  { id: "skym15-wp0", lat: 60.2, lng: 16.8 },   // southern leg (MOB corridor)
+  { id: "skym15-wp1", lat: 64.2, lng: 21.0 },   // northern leg (FOB_N corridor)
+];
+const SKYM_15 = {
+  ...createDroneUnit({
+    id: "drone-skym-15",
+    name: "SKYM-15",
+    type: "ISR_DRONE" as const,
+    position: { lat: 62.1, lng: 18.9 },
+    currentBase: "MOB",
+    status: "on_mission",
+    fuel: 78,
+    enduranceHours: 18,
+  }),
+  parentBaseId: "MOB" as const,
+  waypoints: WP_15,
+  currentWaypointIdx: 1,
+  currentMission: "ISR_DRONE" as const,
+  movement: { state: "airborne" as const, speed: 120, destination: WP_15[1] },
+  pathHistory: [] as { lat: number; lng: number }[],
+};
+
+// SKYM-16: ISR drone patrolling the central corridor MOB ↔ ROB_E
+const WP_16 = [
+  { id: "skym16-wp0", lat: 58.7, lng: 15.9 },   // near MOB
+  { id: "skym16-wp1", lat: 61.0, lng: 17.6 },   // near ROB_E
+];
+const SKYM_16 = {
+  ...createDroneUnit({
+    id: "drone-skym-16",
+    name: "SKYM-16",
+    type: "ISR_DRONE" as const,
+    position: { lat: 59.8, lng: 16.7 },
+    currentBase: "ROB_E",
+    status: "on_mission",
+    fuel: 55,
+    enduranceHours: 18,
+  }),
+  parentBaseId: "ROB_E" as const,
+  waypoints: WP_16,
+  currentWaypointIdx: 0,
+  currentMission: "ISR_DRONE" as const,
+  movement: { state: "airborne" as const, speed: 120, destination: WP_16[0] },
+  pathHistory: [] as { lat: number; lng: number }[],
+};
+
+// SGBM-01: Strike drone patrolling Baltic approach routes
+const WP_SGBM = [
+  { id: "sgbm01-wp0", lat: 56.6, lng: 16.8 },   // southern Baltic
+  { id: "sgbm01-wp1", lat: 57.6, lng: 20.2 },   // eastern Baltic / Gotland east
+];
+const SGBM_01 = {
+  ...createDroneUnit({
+    id: "drone-sgbm-01",
+    name: "SGBM-01",
+    type: "STRIKE_DRONE" as const,
+    position: { lat: 57.1, lng: 18.5 },
+    currentBase: "FOB_S",
+    status: "on_mission",
+    fuel: 82,
+    enduranceHours: 14,
+  }),
+  parentBaseId: "FOB_S" as const,
+  waypoints: WP_SGBM,
+  currentWaypointIdx: 1,
+  currentMission: "ISR_DRONE" as const,
+  movement: { state: "airborne" as const, speed: 130, destination: WP_SGBM[1] },
+  pathHistory: [] as { lat: number; lng: number }[],
+};
+
 // ISR drone loitering east of Gotland — small N-S orbit at slow speed.
 const ISR_DRONE_GOTLAND = {
   ...createDroneUnit({
@@ -598,8 +672,8 @@ const INITIAL_NAVAL_UNITS: NavalUnit[] = [
     name: "HMS Visby",
     kind: "patrol_boat",
     affiliation: "friend",
-    position: { lat: 57.6, lng: 18.5 },
-    patrol: { center: { lat: 57.7, lng: 18.6 }, radiusKm: 85, speedKts: 25, axisDeg: 15, clockwise: true, aspect: 0.5 },
+    position: { lat: 57.6, lng: 18.1 },
+    patrol: { center: { lat: 57.5, lng: 17.8 }, radiusKm: 85, speedKts: 25, axisDeg: 15, clockwise: true, aspect: 0.5 },
     movement: { state: "moving", speed: 25 },
     pathHistory: [],
     threatLevel: "low",
@@ -658,6 +732,9 @@ export const initialGameState: GameState = {
   deployedUnits: [
     ...DEMO_RADAR_UNITS,
     SKYM_11,
+    SKYM_15,
+    SKYM_16,
+    SGBM_01,
     RED_UAV_01,
     CAP_GRIPEN_1,
     CAP_GRIPEN_2,

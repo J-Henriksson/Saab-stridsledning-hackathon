@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Marker } from "react-map-gl/maplibre";
 import type { DroneUnit } from "@/types/units";
+import { ISRDroneIcon, StrikeDroneIcon } from "@/components/symbols/UnitIcons";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 
 const AIRBORNE_PULSE = `
@@ -22,6 +23,7 @@ interface DroneLayerProps {
   drones: DroneUnit[];
   selectedDroneId?: string | null;
   onSelectDrone?: (droneId: string) => void;
+  iconStyle?: "custom" | "nato";
 }
 
 interface TooltipState {
@@ -30,7 +32,7 @@ interface TooltipState {
   y: number;
 }
 
-export function DroneLayer({ drones, selectedDroneId, onSelectDrone }: DroneLayerProps) {
+export function DroneLayer({ drones, selectedDroneId, onSelectDrone, iconStyle = "custom" }: DroneLayerProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   const hoveredDrone = tooltip ? drones.find((d) => d.id === tooltip.droneId) : null;
@@ -66,8 +68,7 @@ export function DroneLayer({ drones, selectedDroneId, onSelectDrone }: DroneLaye
         </div>
       )}
 
-      {drones.map((drone) => {
-        const isAirborne = drone.movement.state === "airborne";
+      {drones.filter((d) => d.movement.state === "airborne" || (d.movement.state !== "airborne" && d.currentBase === null)).map((drone) => {
         const color = AFFIL_COLORS[drone.affiliation] ?? "#e2e8f0";
         const isSelected = selectedDroneId === drone.id;
 
@@ -96,7 +97,12 @@ export function DroneLayer({ drones, selectedDroneId, onSelectDrone }: DroneLaye
               onMouseMove={(e) => setTooltip({ droneId: drone.id, x: e.clientX, y: e.clientY })}
               onMouseLeave={() => setTooltip(null)}
             >
-              <UnitSymbol sidc={drone.sidc} size={28} title={drone.name} />
+              {iconStyle === "nato"
+                ? <UnitSymbol sidc={drone.sidc} size={28} title={drone.name} />
+                : drone.type === "STRIKE_DRONE"
+                  ? <StrikeDroneIcon size={28} color={color} />
+                  : <ISRDroneIcon    size={28} color={color} />
+              }
             </div>
           </Marker>
         );

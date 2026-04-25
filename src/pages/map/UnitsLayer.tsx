@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
-import type { Unit, GeoPosition, AircraftUnit } from "@/types/units";
-import { isAircraft, isAirDefense } from "@/types/units";
+import type { Unit, GeoPosition, AircraftUnit, GroundVehicleUnit, AirDefenseUnit } from "@/types/units";
+import { isAircraft, isAirDefense, isRadar, isGroundVehicle } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 import { AircraftSymbol } from "@/components/map/AircraftSymbol";
+import { TankIcon, TruckIcon, SAMLauncherIcon } from "@/components/symbols/UnitIcons";
 import { useGame } from "@/context/GameContext";
 
 // Matches useGameClock: tickMs = max(1000 / gameSpeed, FRAME_MS).
@@ -37,6 +38,8 @@ interface UnitsLayerProps {
   units: Unit[];
   onSelectUnit?: (unitId: string) => void;
   selectedUnitId?: string | null;
+  focusedBaseId?: string | null;
+  iconStyle?: "custom" | "nato";
 }
 
 function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnitId?: string | null }) {
@@ -83,14 +86,21 @@ function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnit
   );
 }
 
-export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
+export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId, iconStyle = "custom" }: UnitsLayerProps) {
   const { state, dispatch } = useGame();
   const tickMs = expectedTickMs(state.gameSpeed);
   // All non-aircraft units render through this layer; airborne aircraft also
   // route through here (modernized — replaces the legacy AircraftLayer).
-  // Stationary aircraft (parked at base) are not rendered here.
+  // Stationary units sitting at a base are not rendered here (base panel shows them).
   const renderable = useMemo(
-    () => units.filter((u) => !isAircraft(u) || u.movement.state !== "stationary"),
+    () => units.filter((u) => {
+      if (isRadar(u)) return false;
+      // Static pre-placed AD batteries are shown via MarkerRingsLayer, not here
+      if (isAirDefense(u) && (u as any).isStatic) return false;
+      // Hide anything sitting idle inside a base — base panel shows them
+      if (u.movement.state === "stationary" && u.currentBase !== null) return false;
+      return true;
+    }),
     [units]
   );
 
@@ -168,17 +178,12 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const isAD = isAirDefense(unit);
         const aircraft = isAircraft(unit) ? (unit as AircraftUnit) : null;
         // Pre-placed static Lv batteries never accept drag, even when deployed.
-        const isStaticAD = isAD && (unit as import("@/types/units").AirDefenseUnit).isStatic === true;
-        const isDraggable = unit.currentBase === null && !isStaticAD;
+        const isStaticAD = isAD && (unit as AirDefenseUnit).isStatic === true;
         const isSelected = selectedUnitId === unit.id;
-        const glowFilter = isSelected && !aircraft
-          ? isAD
-            ? "drop-shadow(0 0 6px #DC2626)"
-            : "drop-shadow(0 0 4px #D7AB3A)"
-          : undefined;
 
         // For aircraft, derive a smooth display heading from the current
-        // motion vector (lerp delta, falling back to movement.heading or 0).
+        // motion vector (lerp delta), falling back to movement.heading or
+        // a Mercator-corrected bearing toward destination, then 0.
         let aircraftHeading = aircraft?.movement.heading ?? 0;
         if (aircraft && snap) {
           const dLat = snap.currPos.lat - snap.prevPos.lat;
@@ -187,6 +192,15 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
             aircraftHeading = ((Math.atan2(dLng, dLat) * 180) / Math.PI + 360) % 360;
           }
         }
+
+        const unitBase = (unit as any).currentBase ?? (unit as any).parentBaseId ?? null;
+        const isDimmed = !!focusedBaseId && unitBase !== focusedBaseId;
+        const isDraggable = unit.currentBase === null && !isStaticAD && !isDimmed;
+        const glowFilter = isSelected && !aircraft
+          ? isAD
+            ? "drop-shadow(0 0 6px #DC2626)"
+            : "drop-shadow(0 0 4px #D7AB3A)"
+          : undefined;
 
         return (
           <Marker
@@ -218,17 +232,42 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
                 cursor: isDraggable ? "grab" : "pointer",
                 filter: glowFilter,
                 transform: isSelected ? "scale(1.15)" : undefined,
-                transition: "transform 120ms ease",
+                transition: "transform 120ms ease, opacity 0.35s ease",
                 position: "relative",
+                opacity: isDimmed ? 0.15 : 1,
               }}
               title={`${unit.name} — ${unit.category} (${unit.affiliation})`}
             >
               {aircraft ? (
-                <AircraftSymbol
-                  aircraft={{ ...aircraft, movement: { ...aircraft.movement, heading: aircraftHeading } }}
-                  size={36}
-                  selected={isSelected}
-                  showMissionBadge={isSelected}
+                iconStyle === "nato" ? (
+                  <UnitSymbol sidc={aircraft.sidc} size={28} title={aircraft.name} />
+                ) : (
+                  <AircraftSymbol
+                    aircraft={{
+                      ...aircraft,
+                      movement: { ...aircraft.movement, heading: aircraftHeading },
+                    }}
+                    size={36}
+                    selected={isSelected}
+                    showMissionBadge={isSelected}
+                  />
+                )
+              ) : iconStyle === "nato" ? (
+                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+              ) : isGroundVehicle(unit) ? (
+                (() => {
+                  const gv = unit as GroundVehicleUnit;
+                  const col = unit.affiliation === "hostile" ? "#ef4444"
+                    : unit.affiliation === "friend" ? "#22c55e" : "#a3a3a3";
+                  if (gv.type === "ARMORED_TRANSPORT") return <TankIcon  size={26} color={col} />;
+                  return <TruckIcon size={26} color={col} />;
+                })()
+              ) : isAirDefense(unit) ? (
+                <SAMLauncherIcon
+                  size={26}
+                  color={(unit as AirDefenseUnit).operationalStatus === "ready" ? "#22c55e"
+                    : (unit as AirDefenseUnit).operationalStatus === "firing" ? "#ef4444"
+                    : "#D7AB3A"}
                 />
               ) : (
                 <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />

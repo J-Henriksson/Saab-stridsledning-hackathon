@@ -21,6 +21,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GameProvider } from "@/context/GameContext";
+import { BaseFilterProvider } from "@/context/BaseFilterContext";
 import Index from "./pages/Index.tsx";
 import ATO from "./pages/ATO.tsx";
 import AircraftDashboard from "./pages/AircraftDashboard.tsx";
@@ -31,6 +32,7 @@ import DronePage from "./pages/DronePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const MapPage = lazy(() => import("./pages/Map.tsx"));
+const LogisticsAnalysis = lazy(() => import("./pages/LogisticsAnalysis.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -40,6 +42,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <GameProvider>
+        <BaseFilterProvider>
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <ErrorBoundary>
           <Suspense fallback={<div className="min-h-screen bg-background text-foreground flex items-center justify-center font-mono text-sm">Laddar karta...</div>}>
@@ -49,6 +52,7 @@ const App = () => (
               <Route path="/dashboard/:baseId" element={<Index />} />
               <Route path="/ato" element={<ATO />} />
               <Route path="/map" element={<MapPage />} />
+              <Route path="/logistics" element={<LogisticsAnalysis />} />
               <Route path="/aircraft/:tailNumber" element={<AircraftDashboard />} />
               <Route path="/aar" element={<AARPage />} />
               <Route path="/units/:id" element={<UnitDashboard />} />
@@ -60,6 +64,7 @@ const App = () => (
           </Suspense>
           </ErrorBoundary>
         </BrowserRouter>
+        </BaseFilterProvider>
       </GameProvider>
     </TooltipProvider>
   </QueryClientProvider>

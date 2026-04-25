@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { GameState } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
 import { PhaseBadge } from "./StatusBadge";
-import { Pause, Play, RotateCcw, Map } from "lucide-react";
+import { Pause, Play, RotateCcw, Map, Brain } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
@@ -84,6 +84,21 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
           >
             <Map className="h-3.5 w-3.5" />
             KARTA
+          </NavLink>
+          <NavLink
+            to="/logistics"
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-semibold rounded transition-all duration-150 tracking-wider ${
+                isActive ? "text-white" : "hover:text-white"
+              }`
+            }
+            style={({ isActive }) => isActive
+              ? { background: "hsl(42 64% 53% / 0.2)", color: "hsl(42 64% 62%)", borderBottom: "2px solid hsl(42 64% 53%)" }
+              : { color: "hsl(200 12% 72%)" }
+            }
+          >
+            <Brain className="h-3.5 w-3.5" />
+            LOGISTIK ANALYS
           </NavLink>
         </nav>
       </div>
