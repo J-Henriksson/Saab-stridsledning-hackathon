@@ -28,6 +28,7 @@ import { SparePartsPickerModal } from "@/components/game/SparePartsPickerModal";
 import { toast } from "sonner";
 import { BaseType } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
+import { BASE_COORDS } from "@/pages/map/constants";
 import {
   ShieldCheck, Crosshair, Hammer, Siren, Clock,
   MapPin, PlaneTakeoff, BarChart3, BookOpen,
@@ -64,6 +65,7 @@ const Index = () => {
     moveAircraftToMaintenance, sendMissionDrop, applyUtfallOutcome,
     completeLandingCheck, applyRecommendation, dismissRecommendation,
     hangarDropConfirm, pauseMaintenance, markFaultNMC, consumeSparePart,
+    launchDrone,
   } = useGame();
   const navigate = useNavigate();
   const { baseId: routeBaseId } = useParams<{ baseId: string }>();
@@ -187,22 +189,6 @@ const Index = () => {
     { id: "aar",         label: "Historik",      Icon: ClipboardList, badge: undefined },
   ];
 
-  // ─── Aircraft status styling ───────────────────────────────────────────────
-  const acColor = (status: string) =>
-    status === "ready"             ? "#22a05a"
-    : status === "on_mission"      ? "#3b82f6"
-    : status === "under_maintenance"? "#d97706"
-    : status === "unavailable"     ? "#D9192E"
-    : status === "returning"       ? "#a855f7"
-    : "#64748b";
-
-  const acLabel = (status: string) =>
-    status === "ready"             ? "MC"
-    : status === "on_mission"      ? "UP"
-    : status === "under_maintenance"? "UH"
-    : status === "unavailable"     ? "NMC"
-    : status === "returning"       ? "RET"
-    : "–";
 
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -483,6 +469,20 @@ const Index = () => {
                     <BaseMap
                       base={selectedBase}
                       onDropAircraft={handleDropAircraft}
+                      onLaunchDrone={(droneId) => {
+                        const baseCoords = BASE_COORDS[selectedBaseId];
+                        if (baseCoords) {
+                          const offset = 0.5;
+                          launchDrone(droneId, [
+                            { id: `${droneId}-wp1`, lat: baseCoords.lat + offset, lng: baseCoords.lng },
+                            { id: `${droneId}-wp2`, lat: baseCoords.lat + offset, lng: baseCoords.lng + offset },
+                            { id: `${droneId}-wp3`, lat: baseCoords.lat, lng: baseCoords.lng + offset },
+                            { id: `${droneId}-wp4`, lat: baseCoords.lat, lng: baseCoords.lng },
+                          ]);
+                        } else {
+                          launchDrone(droneId, []);
+                        }
+                      }}
                       overdueAircraftIds={overdueAircraftIds}
                       overdueMissionLabels={overdueMissionLabels}
                       onUtfallOutcome={(aircraftId, repairTime, maintenanceTypeKey, weaponLoss, actionLabel, requiredSparePart) => {

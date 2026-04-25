@@ -190,7 +190,7 @@ function deriveSnagReports(ac: Aircraft, pilotCallsign: string) {
       id: "live-nmc", severity: "red", label: "RÖD – MARKVISTELSE", pilot, date: "2026-03-19  04:17Z",
       text: ac.maintenanceType
         ? `Flygplan deklarerat NMC. Pågående underhåll: ${ac.maintenanceType.replace(/_/g, " ")}. Alla flygtillstånd återkallade tills teknisk godkänning erhållits.`
-        : `Hälsovärde ${ac.health}% — under operativ minimigräns (30%). Felsökning krävs. Inga flygningar tillåtna.`,
+        : `Hälsovärde ${Math.round(ac.health)}% — under operativ minimigräns (30%). Felsökning krävs. Inga flygningar tillåtna.`,
       action: `${ac.tailNumber} GROUNDED – Tekniker tillkallad. Åtgärd pågår.`,
     });
   }
@@ -216,7 +216,7 @@ function deriveSnagReports(ac: Aircraft, pilotCallsign: string) {
   if (ac.health < 60 && ac.health >= 30 && ac.status !== "unavailable" && ac.status !== "under_maintenance") {
     reports.push({
       id: "live-deg", severity: "yellow", label: "GUL – FÖRSÄMRAD PRESTANDA", pilot, date: "2026-03-17  11:15Z",
-      text: `Komponenthälsa ${ac.health}% — under nominellt intervall (70%). Prestandabegränsningar kan förekomma vid extrema rörelser.`,
+      text: `Komponenthälsa ${Math.round(ac.health)}% — under nominellt intervall (70%). Prestandabegränsningar kan förekomma vid extrema rörelser.`,
       action: `Loggad – fortsatt flygtillstånd med restriktioner. Max G begränsat till 7.0.`,
     });
   }
@@ -252,7 +252,7 @@ function deriveSnagReports(ac: Aircraft, pilotCallsign: string) {
   if (ac.health < 40) {
     reports.push({
       id: "s6", severity: "red", label: "RÖD – MARKVISTELSE", pilot, date: "2026-03-17  09:55Z",
-      text: `Hydraulic pressure drop Sys B under high-g maneuver. Hälsovärde nu ${ac.health}% — systemet bedömt som ej flytsäkert.`,
+      text: `Hydraulic pressure drop Sys B under high-g maneuver. Hälsovärde nu ${Math.round(ac.health)}% — systemet bedömt som ej flytsäkert.`,
       action: "Sys B offline – hydraulenhet byts. Teknisk chef har bekräftat markvistelse.",
     });
   } else {
@@ -380,7 +380,7 @@ function ComponentCard({ comp }: { comp: ReturnType<typeof deriveComponents>[0] 
           </div>
         </div>
         <div className="text-right">
-          <div className="text-lg font-black font-mono" style={{ color }}>{comp.health}%</div>
+          <div className="text-lg font-black font-mono" style={{ color }}>{Math.round(comp.health)}%</div>
           <div className="text-[9px] font-mono uppercase tracking-widest" style={{ color }}>{healthLabel(comp.health)}</div>
         </div>
       </div>
@@ -605,7 +605,7 @@ function CrewModal({ ac, onClose }: { ac: Aircraft; onClose: () => void }) {
             <MRow label="Skift" value={c.shift} />
             <MRow label="Telefon (intern)" value={`ext. ${c.ext}`} />
             <MRow label="Ansvarig för" value={c.aircraft.join(" · ")} accent />
-            <MRow label="Nuvarande plan hälsa" value={`${ac.health}%`} />
+            <MRow label="Nuvarande plan hälsa" value={`${Math.round(ac.health)}%`} />
             <MRow label="Plan status" value={STATUS_META[ac.status]?.label ?? ac.status} />
           </div>
         </div>
@@ -700,7 +700,7 @@ function MissionsModal({ ac, onClose }: { ac: Aircraft; onClose: () => void }) {
             { label: "Totala uppdrag",     value: String(total),                           color: "#D7DEE1" },
             { label: "Flygtimmar (plan)",  value: `${ac.flightHours} h`,                  color: "hsl(42 64% 53%)" },
             { label: "Till nästa service", value: `${ac.hoursToService.toFixed(1)} h`,     color: ac.hoursToService < 20 ? "#D9192E" : "hsl(152 60% 38%)" },
-            { label: "Planhälsa",          value: `${ac.health}%`,                         color: healthColor(ac.health) },
+            { label: "Planhälsa",          value: `${Math.round(ac.health)}%`,                         color: healthColor(ac.health) },
           ].map((k) => (
             <div key={k.label} className="rounded-xl p-3 text-center" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(215,222,225,0.1)" }}>
               <div className="text-xl font-black font-mono" style={{ color: k.color }}>{k.value}</div>
@@ -925,7 +925,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
             {[
               { label: "Flygtimmar totalt",  value: `${ac.flightHours} h`,              color: "#D7DEE1" },
               { label: "Till nästa service", value: `${ac.hoursToService.toFixed(1)} h`, color: ac.hoursToService < 20 ? "#D9192E" : "hsl(152 60% 38%)" },
-              { label: "Planhälsa",          value: `${ac.health}%`,                    color: healthColor(ac.health) },
+              { label: "Planhälsa",          value: `${Math.round(ac.health)}%`,                    color: healthColor(ac.health) },
               { label: "Genomförda uppdrag", value: String(missionCount),               color: "#D7DEE1" },
             ].map((s) => (
               <div key={s.label} className="text-center">
@@ -1013,7 +1013,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
                       <div className="text-[11px] font-mono font-bold"
                         style={{ color: anyCritical ? "#D9192E" : "hsl(42 64% 53%)" }}>
                         {anyCritical
-                          ? `${ac.tailNumber} GROUNDED — NMC. Hälsovärde ${ac.health}% under operativ minimigräns (30%).`
+                          ? `${ac.tailNumber} GROUNDED — NMC. Hälsovärde ${Math.round(ac.health)}% under operativ minimigräns (30%).`
                           : `Under service: ${ac.maintenanceType?.replace(/_/g, " ")}${ac.maintenanceTimeRemaining != null ? ` · Klar om ${ac.maintenanceTimeRemaining}h` : ""}`}
                       </div>
                       <div className="text-[9px] font-mono text-[#D7DEE1]/45 mt-0.5">
@@ -1058,7 +1058,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
                             <CompIcon className="h-4 w-4" style={{ color: col }} />
                           </div>
                           <div className="text-base font-black font-mono leading-none" style={{ color: col }}>
-                            {c.health}%
+                            {Math.round(c.health)}%
                           </div>
                           <div className="text-[8px] font-mono text-[#D7DEE1]/40 uppercase tracking-wide leading-tight">
                             {c.label}
@@ -1335,7 +1335,7 @@ export default function AircraftDashboard({ embedded = false, aircraftTailNumber
                         <div className="flex items-center gap-2">
                           <TrendingUp className="h-4 w-4" style={{ color: "hsl(42 64% 53%)" }} />
                           <span className="text-[10px] font-mono text-[#D7DEE1]/50 uppercase tracking-widest">
-                            Airframe: {components[2].health}% {healthLabel(components[2].health)}
+                            Airframe: {Math.round(components[2].health)}% {healthLabel(components[2].health)}
                           </span>
                         </div>
                         <div className="flex gap-4 text-[9px] font-mono">
