@@ -76,7 +76,7 @@ export function AIAgent({ getResourceSummary }: AIAgentProps) {
             AI RÅDGIVARE
           </div>
           <div className="text-[8px] font-mono" style={{ color: "hsl(218 15% 55%)" }}>
-            SMART AIRBASE INTEL
+            SMART STRIDSLEDNING INTEL
           </div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">

@@ -175,7 +175,7 @@ function ChoiceView({
           </div>
         </div>
 
-        <div style={S.label}>SMART AIRBASE — ROAD2AIR</div>
+        <div style={S.label}>SMART STRIDSLEDNING — ROAD2AIR</div>
         <div style={S.title}>SIMULERINGSKONFIGURATION</div>
         <div style={S.subtitle}>
           Välj om du vill starta med standardresurser eller konfigurera startresurserna manuellt innan simuleringen börjar.
