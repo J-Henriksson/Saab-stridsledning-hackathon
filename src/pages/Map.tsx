@@ -61,6 +61,7 @@ import { RegionBordersLayer } from "./map/RegionBordersLayer";
 import { GeoBoundariesLayer, type BoundaryVisibility } from "./map/GeoBoundariesLayer";
 import { useBoundaryCrossing } from "./map/useBoundaryCrossing";
 import { RadarPulseLayer } from "./map/RadarPulseLayer";
+import { SelectionRangeRing } from "./map/SelectionRangeRing";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { EventsSidebar } from "./map/EventsSidebar";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
@@ -1069,7 +1070,7 @@ export default function MapPage() {
                 ? "border-green-600/60 bg-green-600/15 text-green-400"
                 : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
             }`}
-            title="Visa AOR-ringar för alla baser"
+            title="Visa bekämpningsringar för alla enheter"
           >
             <Layers3 className="h-3 w-3" />
             ALLA RINGAR
@@ -1916,6 +1917,19 @@ export default function MapPage() {
             {state?.overlayVisibility?.radarUnits && (
               <RadarPulseLayer units={enrichedRadarUnits} />
             )}
+
+            {/* Firing / engagement range ring(s) */}
+            <SelectionRangeRing
+              selectedUnit={selectedUnit}
+              selectedNaval={selectedNaval}
+              selectedEnemyEntity={selectedEnemyEntity}
+              selectedEnemyBase={selectedEnemyBase}
+              showAll={showAllBaseRings}
+              allUnits={visibleUnits}
+              allNaval={state.navalUnits}
+              allEnemyEntities={state.enemyEntities}
+              allEnemyBases={state.enemyBases}
+            />
           </MapGL>
 
           {/* Battle-intel hover tooltip (positioned above the map in screen space) */}
