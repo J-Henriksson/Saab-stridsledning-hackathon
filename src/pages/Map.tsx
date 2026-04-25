@@ -991,7 +991,7 @@ export default function MapPage() {
                   onUpdateWaypoints={updateDroneWaypoints}
                   onSetOverlay={setDroneOverlay}
                   onDeploy={() => {}}
-                  planningMode={planningMode}
+                  planningMode={isPlanMode}
                 />
               ) : selectedUnit ? (
                 <UnitDetailPanel
