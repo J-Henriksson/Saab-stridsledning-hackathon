@@ -13,9 +13,24 @@ interface Props {
   isSelected: boolean;
   onClick: () => void;
   isPlaceholder?: boolean;
+  /** Optional mouse handlers (used by battle-intel hover tooltip). */
+  onHoverEnter?: (x: number, y: number) => void;
+  onHoverMove?: (x: number, y: number) => void;
+  onHoverLeave?: () => void;
+  /** Dim opacity when this target is out of reach for the active travel-range unit. */
+  dimmed?: boolean;
 }
 
-export function EnemyEntityMarker({ entity, isSelected, onClick, isPlaceholder }: Props) {
+export function EnemyEntityMarker({
+  entity,
+  isSelected,
+  onClick,
+  isPlaceholder,
+  onHoverEnter,
+  onHoverMove,
+  onHoverLeave,
+  dimmed,
+}: Props) {
   const fill = THREAT_FILL[entity.threatLevel];
 
   return (
@@ -23,10 +38,13 @@ export function EnemyEntityMarker({ entity, isSelected, onClick, isPlaceholder }
       <div
         title={`${entity.name} — ${entity.category}${isPlaceholder ? " [PLAN]" : ""}`}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
+        onMouseEnter={(e) => onHoverEnter?.(e.clientX, e.clientY)}
+        onMouseMove={(e) => onHoverMove?.(e.clientX, e.clientY)}
+        onMouseLeave={() => onHoverLeave?.()}
         className="cursor-pointer"
         style={{
           filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined,
-          opacity: isPlaceholder ? 0.65 : 1,
+          opacity: dimmed ? 0.35 : isPlaceholder ? 0.65 : 1,
         }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24">

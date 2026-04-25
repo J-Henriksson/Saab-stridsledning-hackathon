@@ -21,7 +21,7 @@ import { MapFilterPanel } from "@/components/map/MapFilterPanel";
 import { RadarShadowOverlay } from "@/components/map/RadarShadowOverlay";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
-import { AircraftLayer } from "./map/AircraftLayer";
+import { AircraftIncursionWatcher } from "./map/AircraftIncursionWatcher";
 import { CloudLayer, CloudSummary } from "./map/CloudLayer";
 import { ACTIVE_SATELLITE_DEFS, SatelliteLayer, SatelliteLiveState } from "./map/SatelliteLayer";
 import { SatelliteDetailPanel } from "./map/SatelliteDetailPanel";
@@ -62,7 +62,13 @@ import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus, GameState } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
-import { isDrone, type UnitCategory } from "@/types/units";
+import { isDrone, isAircraft, type UnitCategory } from "@/types/units";
+import { TravelRangeOverlay } from "./map/TravelRangeOverlay";
+import { BattleIntelOverlay, type TargetIntel } from "./map/BattleIntelOverlay";
+import { BattleIntelTooltip } from "./map/BattleIntelTooltip";
+import type { TravelRangeMode, BattleIntelSummary } from "./map/TravelRangeSection";
+import { DEFAULT_TRAVEL_OPTS, computeTravelRange, etaHoursTo, isTravelRangeUnit } from "@/utils/travelRange";
+import { collectThreatRings, classifyTarget, findBestReturnBase, pathCrossesThreatRings, type Reachability, type BestReturnBase } from "@/utils/battleIntel";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
 import { getAircraft } from "@/core/units/helpers";
 import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
@@ -368,11 +374,19 @@ export default function MapPage() {
   const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
   const visibleUnits = useMemo(() => {
     if (isPlanMode) {
-      return planState.deployedUnits.filter((u) => u.affiliation === "friend");
+      // Include airborne aircraft that still live in planState.bases.units —
+      // they were previously rendered by AircraftLayer; now harmonized via UnitsLayer.
+      const baseAirborne = planState.bases
+        .flatMap((b) => b.units)
+        .filter((u) => u.affiliation === "friend");
+      return [
+        ...baseAirborne,
+        ...planState.deployedUnits.filter((u) => u.affiliation === "friend"),
+      ];
     }
     const nonRadar = allUnits.filter((u) => u.category !== "radar");
     return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
-  }, [allUnits, state?.overlayVisibility?.drones, isPlanMode, planState.deployedUnits]);
+  }, [allUnits, state?.overlayVisibility?.drones, isPlanMode, planState.bases, planState.deployedUnits]);
 
   // ── Fog-of-war: compute friendly sensor discs, then classify hostile ships
   // and enemy bases/entities as visible / last-known / hidden. Friendlies in
@@ -478,6 +492,246 @@ export default function MapPage() {
       ? enrichedRadarUnits.find((r) => r.id === selected.radarId)
       : undefined;
 
+  // ── Travel range + battle intel ──────────────────────────────────────────
+  const [travelRange, setTravelRange] = useState<TravelRangeMode>({
+    enabled: false,
+    returnBaseId: null,
+    options: DEFAULT_TRAVEL_OPTS,
+    autoPickBase: false,
+    pinnedTargetId: null,
+  });
+  const [intelHover, setIntelHover] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Resolve which unit drives the travel-range overlay (mid-air unit OR aircraft at base).
+  const travelRangeUnit = useMemo(() => {
+    if (selectedUnit && isTravelRangeUnit(selectedUnit)) return selectedUnit;
+    if (selectedAircraft) return selectedAircraft;
+    return null;
+  }, [selectedUnit, selectedAircraft]);
+
+  // Reset travel-range mode when switching to a different selectable.
+  const travelKey = travelRangeUnit?.id ?? "";
+  useEffect(() => {
+    setTravelRange((prev) => ({
+      ...prev,
+      pinnedTargetId: null,
+      // Keep enabled state and options across the same unit; reset on unit change.
+    }));
+  }, [travelKey]);
+
+  // Friendly bases (id + coords) for return-base picking.
+  const friendlyBaseList = useMemo(
+    () =>
+      state.bases
+        .map((b) => {
+          const c = BASE_COORDS[b.id];
+          return c ? { id: b.id, name: b.name, coords: c } : null;
+        })
+        .filter((x): x is { id: typeof state.bases[number]["id"]; name: string; coords: { lat: number; lng: number } } => x !== null),
+    [state.bases]
+  );
+
+  // Effective max range + cruise speed for the active unit.
+  const travelRangeStats = useMemo(() => {
+    if (!travelRangeUnit) return null;
+    return computeTravelRange(travelRangeUnit, travelRange.options);
+  }, [travelRangeUnit, travelRange.options]);
+
+  // Threat rings (SAM + radar) — used for path-threat warnings.
+  const threatRings = useMemo(
+    () => collectThreatRings(state.enemyBases, state.enemyEntities),
+    [state.enemyBases, state.enemyEntities]
+  );
+
+  // Per-target intel (reachability + path threats).
+  const intelByTarget = useMemo<TargetIntel[]>(() => {
+    if (!travelRange.enabled || !travelRangeUnit || !travelRangeStats) return [];
+    const maxRangeKm = travelRangeStats.maxRangeKm;
+    const returnBase = travelRange.returnBaseId
+      ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+      : null;
+
+    type Target = { id: string; name: string; category: string; position: { lat: number; lng: number } };
+    const targets: Target[] = [
+      ...state.enemyBases
+        .filter((b) => b.operationalStatus !== "destroyed")
+        .map((b) => ({ id: `eb_${b.id}`, name: b.name, category: b.category, position: b.coords })),
+      ...state.enemyEntities
+        .filter((e) => e.operationalStatus !== "destroyed")
+        .map((e) => ({ id: `ee_${e.id}`, name: e.name, category: e.category, position: e.coords })),
+    ];
+
+    return targets.map((t) => {
+      const cls = classifyTarget(travelRangeUnit.position, t.position, maxRangeKm, returnBase?.coords ?? null);
+
+      // Only compute path threats for reachable targets to keep cost down.
+      let pathThreatened = false;
+      if (cls.reachability !== "out_of_reach") {
+        const segment = returnBase
+          ? [travelRangeUnit.position, t.position, returnBase.coords]
+          : [travelRangeUnit.position, t.position];
+        pathThreatened = pathCrossesThreatRings(segment, threatRings).engagementCrossings.length > 0;
+      }
+
+      return {
+        id: t.id,
+        name: t.name,
+        position: t.position,
+        reachability: cls.reachability,
+        pathThreatened,
+      };
+    });
+  }, [
+    travelRange.enabled,
+    travelRange.returnBaseId,
+    travelRangeUnit,
+    travelRangeStats,
+    state.enemyBases,
+    state.enemyEntities,
+    threatRings,
+    friendlyBaseList,
+  ]);
+
+  // Battle-intel summary for the panel.
+  const intelSummary = useMemo<BattleIntelSummary | undefined>(() => {
+    if (!travelRange.enabled || intelByTarget.length === 0) return undefined;
+    const reachable = intelByTarget.filter((i) => i.reachability !== "out_of_reach");
+    return {
+      reachableCount: reachable.length,
+      strikeReturnCount: intelByTarget.filter((i) => i.reachability === "strike_return").length,
+      strikeOnlyCount: intelByTarget.filter((i) => i.reachability === "strike_only").length,
+      threatenedCount: reachable.filter((i) => i.pathThreatened).length,
+    };
+  }, [travelRange.enabled, intelByTarget]);
+
+  // Auto-pick best return base for the pinned target (or the highest-priority reachable target).
+  useEffect(() => {
+    if (!travelRange.enabled || !travelRange.autoPickBase || !travelRangeUnit || !travelRangeStats) return;
+    const targetIntel = travelRange.pinnedTargetId
+      ? intelByTarget.find((t) => t.id === travelRange.pinnedTargetId)
+      : intelByTarget.find((t) => t.reachability !== "out_of_reach");
+    if (!targetIntel) return;
+    const best = findBestReturnBase(
+      travelRangeUnit.position,
+      targetIntel.position,
+      friendlyBaseList,
+      travelRangeStats.maxRangeKm,
+      travelRangeUnit.currentBase ?? null
+    );
+    if (best && best.baseId !== travelRange.returnBaseId) {
+      setTravelRange((prev) => ({ ...prev, returnBaseId: best.baseId }));
+    }
+  }, [
+    travelRange.enabled,
+    travelRange.autoPickBase,
+    travelRange.pinnedTargetId,
+    travelRange.returnBaseId,
+    travelRangeUnit,
+    travelRangeStats,
+    intelByTarget,
+    friendlyBaseList,
+  ]);
+
+  // Auto-unpin if the pinned target is no longer reachable.
+  useEffect(() => {
+    if (!travelRange.pinnedTargetId) return;
+    const t = intelByTarget.find((x) => x.id === travelRange.pinnedTargetId);
+    if (t && t.reachability === "out_of_reach") {
+      setTravelRange((prev) => ({ ...prev, pinnedTargetId: null }));
+    }
+  }, [travelRange.pinnedTargetId, intelByTarget]);
+
+  // Esc to unpin.
+  useEffect(() => {
+    if (!travelRange.pinnedTargetId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTravelRange((prev) => ({ ...prev, pinnedTargetId: null }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [travelRange.pinnedTargetId]);
+
+  // Coords + best-return for the currently-hovered enemy target (drives tooltip).
+  const hoverTooltipData = useMemo(() => {
+    if (!travelRange.enabled || !intelHover || !travelRangeUnit || !travelRangeStats) return null;
+    const t = intelByTarget.find((x) => x.id === intelHover.id);
+    if (!t) return null;
+    const targetMeta = (() => {
+      if (t.id.startsWith("eb_")) {
+        const eb = state.enemyBases.find((b) => `eb_${b.id}` === t.id);
+        return eb ? { name: eb.name, category: eb.category } : null;
+      }
+      const ee = state.enemyEntities.find((e) => `ee_${e.id}` === t.id);
+      return ee ? { name: ee.name, category: ee.category } : null;
+    })();
+    if (!targetMeta) return null;
+
+    const returnBase = travelRange.returnBaseId
+      ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+      : null;
+    const cls = classifyTarget(
+      travelRangeUnit.position,
+      t.position,
+      travelRangeStats.maxRangeKm,
+      returnBase?.coords ?? null
+    );
+    const segment = returnBase
+      ? [travelRangeUnit.position, t.position, returnBase.coords]
+      : [travelRangeUnit.position, t.position];
+    const pathReport = pathCrossesThreatRings(segment, threatRings);
+
+    const etaToTargetHours = etaHoursTo(travelRangeUnit.position, t.position, travelRangeStats.cruiseSpeedKts);
+    const etaTargetToBaseHours = returnBase
+      ? etaHoursTo(t.position, returnBase.coords, travelRangeStats.cruiseSpeedKts)
+      : undefined;
+
+    let bestReturn: BestReturnBase | null = null;
+    if (cls.withinOneWay) {
+      bestReturn = findBestReturnBase(
+        travelRangeUnit.position,
+        t.position,
+        friendlyBaseList,
+        travelRangeStats.maxRangeKm,
+        travelRangeUnit.currentBase ?? null
+      );
+    }
+
+    return {
+      x: intelHover.x,
+      y: intelHover.y,
+      targetName: targetMeta.name,
+      targetCategory: targetMeta.category,
+      reachability: cls.reachability as Reachability,
+      oneWayKm: cls.oneWayKm,
+      roundTripKm: cls.roundTripKm,
+      cruiseSpeedKts: travelRangeStats.cruiseSpeedKts,
+      etaToTargetHours,
+      etaTargetToBaseHours,
+      maxRangeKm: travelRangeStats.maxRangeKm,
+      pathThreats: pathReport.crossings,
+      bestReturn,
+      currentReturnBaseId: travelRange.returnBaseId,
+    };
+  }, [
+    travelRange.enabled,
+    travelRange.returnBaseId,
+    intelHover,
+    travelRangeUnit,
+    travelRangeStats,
+    intelByTarget,
+    state.enemyBases,
+    state.enemyEntities,
+    friendlyBaseList,
+    threatRings,
+  ]);
+
+  // Click an enemy intel halo → pin (or unpin if same).
+  const togglePinTarget = useCallback((id: string) => {
+    setTravelRange((prev) => ({
+      ...prev,
+      pinnedTargetId: prev.pinnedTargetId === id ? null : id,
+    }));
+  }, []);
 
   useEffect(() => {
     isFollowing.current = false;
@@ -1033,18 +1287,11 @@ export default function MapPage() {
                 onPositionUpdate={selectedSatelliteId ? handleSatellitePositionUpdate : undefined}
               />
             )}
-            <AircraftLayer
+            <AircraftIncursionWatcher
               bases={state?.bases ?? []}
               currentHour={state?.hour ?? 0}
-              currentDay={state?.day ?? 1}
-              onSelectAircraft={(baseId, aircraftId) =>
-                setSelected({ kind: "aircraft", baseId, aircraftId })
-              }
-              selectedAircraftId={selectedAircraftId}
-              onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
               tacticalZones={state.tacticalZones}
               dispatch={dispatch}
-              paused={isPlanMode}
             />
 
             {/* Fixed military & civilian asset markers */}
@@ -1097,6 +1344,34 @@ export default function MapPage() {
             <ThreatRingsLayer
               enemyBases={isPlanMode ? planState.enemyBases : state.enemyBases}
             />
+
+            {/* Travel-range geometric overlay */}
+            {travelRange.enabled && travelRangeUnit && travelRangeStats && travelRangeStats.maxRangeKm > 0 && (
+              <TravelRangeOverlay
+                unitPosition={travelRangeUnit.position}
+                maxRangeKm={travelRangeStats.maxRangeKm}
+                returnBase={
+                  travelRange.returnBaseId
+                    ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+                    : null
+                }
+              />
+            )}
+
+            {/* Battle-intel overlay (halos + strike route) */}
+            {travelRange.enabled && travelRangeUnit && travelRangeStats && intelByTarget.length > 0 && (
+              <BattleIntelOverlay
+                intelByTarget={intelByTarget}
+                unitPosition={travelRangeUnit.position}
+                pinnedTargetId={travelRange.pinnedTargetId}
+                returnBaseCoords={
+                  travelRange.returnBaseId
+                    ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId)?.coords ?? null
+                    : null
+                }
+                threatRings={threatRings}
+              />
+            )}
 
             {draggingUnit && dropCandidate && (
               <Marker longitude={dropCandidate.lng} latitude={dropCandidate.lat} anchor="center">
@@ -1177,14 +1452,26 @@ export default function MapPage() {
                     isPlaceholder
                   />
                 ))
-              : enemyBaseVisibility.visible.map((eb) => (
-                  <EnemyMarker
-                    key={eb.id}
-                    base={eb}
-                    isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
-                    onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
-                  />
-                ))
+              : enemyBaseVisibility.visible.map((eb) => {
+                  const intelId = `eb_${eb.id}`;
+                  const intel = travelRange.enabled ? intelByTarget.find((i) => i.id === intelId) : undefined;
+                  const dimmed = intel?.reachability === "out_of_reach";
+                  const intelClick = travelRange.enabled && intel
+                    ? () => togglePinTarget(intelId)
+                    : () => setSelected({ kind: "enemy_base", id: eb.id });
+                  return (
+                    <EnemyMarker
+                      key={eb.id}
+                      base={eb}
+                      isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
+                      onClick={intelClick}
+                      dimmed={dimmed}
+                      onHoverEnter={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverMove={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverLeave={travelRange.enabled ? () => setIntelHover(null) : undefined}
+                    />
+                  );
+                })
             }
             {isPlanMode
               ? planState.enemyEntities.map((ee) => (
@@ -1196,14 +1483,26 @@ export default function MapPage() {
                     isPlaceholder
                   />
                 ))
-              : enemyEntityVisibility.visible.map((ee) => (
-                  <EnemyEntityMarker
-                    key={ee.id}
-                    entity={ee}
-                    isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
-                    onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
-                  />
-                ))
+              : enemyEntityVisibility.visible.map((ee) => {
+                  const intelId = `ee_${ee.id}`;
+                  const intel = travelRange.enabled ? intelByTarget.find((i) => i.id === intelId) : undefined;
+                  const dimmed = intel?.reachability === "out_of_reach";
+                  const intelClick = travelRange.enabled && intel
+                    ? () => togglePinTarget(intelId)
+                    : () => setSelected({ kind: "enemy_entity", id: ee.id });
+                  return (
+                    <EnemyEntityMarker
+                      key={ee.id}
+                      entity={ee}
+                      isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
+                      onClick={intelClick}
+                      dimmed={dimmed}
+                      onHoverEnter={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverMove={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverLeave={travelRange.enabled ? () => setIntelHover(null) : undefined}
+                    />
+                  );
+                })
             }
             {(isPlanMode ? planState.friendlyMarkers : state.friendlyMarkers).map((fm) => (
               <FriendlyMarkerPin key={fm.id} marker={fm} isPlaceholder={isPlanMode} />
@@ -1236,6 +1535,11 @@ export default function MapPage() {
               />
             )}
           </MapGL>
+
+          {/* Battle-intel hover tooltip (positioned above the map in screen space) */}
+          {hoverTooltipData && (
+            <BattleIntelTooltip {...hoverTooltipData} />
+          )}
 
           {/* Placement mode banner */}
           {placingMode && (
@@ -1652,12 +1956,34 @@ export default function MapPage() {
                   onSetOverlay={setDroneOverlay}
                   onDeploy={() => {}}
                   planningMode={planningMode}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
+                />
+              ) : selectedUnit && isAircraft(selectedUnit) ? (
+                <AircraftDetailPanel
+                  aircraft={selectedUnit}
+                  onBack={() => setSelected(null)}
+                  onRecall={() => {
+                    // Map "Återkalla" to a unit recall (works for airborne aircraft).
+                    dispatch({ type: "RECALL_UNIT", unitId: selectedUnit.id });
+                  }}
+                  currentHour={state.hour}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
                 />
               ) : selectedUnit ? (
                 <UnitDetailPanel
                   unit={selectedUnit}
                   isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
                   allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
                 />
               ) : selectedSatellite ? (
                 <SatelliteDetailPanel satellite={selectedSatellite} />
@@ -1667,6 +1993,10 @@ export default function MapPage() {
                    onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
                    onRecall={handleRecall}
                    currentHour={state.hour}
+                   travelRange={travelRange}
+                   onTravelRangeChange={setTravelRange}
+                   travelRangeBases={friendlyBaseList}
+                   battleIntelSummary={intelSummary}
                  />
                ) : selectedRadar ? (
                  <RadarControlPanel

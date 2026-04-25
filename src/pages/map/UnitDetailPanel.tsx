@@ -1,10 +1,12 @@
-import type { Unit, Affiliation, AirDefenseUnit } from "@/types/units";
+import type { Unit, Affiliation, AirDefenseUnit, GeoPosition } from "@/types/units";
 import { isAircraft, isDrone, isAirDefense, isGroundVehicle, isRadar } from "@/types/units";
+import { isTravelRangeUnit } from "@/utils/travelRange";
 import type { BaseType } from "@/types/game";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
 import { useGame } from "@/context/GameContext";
 import { Link } from "react-router-dom";
 import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
+import { TravelRangeSection, type TravelRangeMode, type BattleIntelSummary } from "./TravelRangeSection";
 
 const AFFILIATIONS: Affiliation[] = ["friend", "hostile", "neutral", "unknown", "pending"];
 
@@ -12,10 +14,18 @@ export function UnitDetailPanel({
   unit,
   isAtBase,
   allBases,
+  travelRange,
+  onTravelRangeChange,
+  travelRangeBases,
+  battleIntelSummary,
 }: {
   unit: Unit;
   isAtBase: boolean;
   allBases: { id: BaseType; name: string }[];
+  travelRange?: TravelRangeMode;
+  onTravelRangeChange?: (next: TravelRangeMode) => void;
+  travelRangeBases?: { id: BaseType; name: string; coords: GeoPosition }[];
+  battleIntelSummary?: BattleIntelSummary;
 }) {
   const { dispatch } = useGame();
 
@@ -228,6 +238,16 @@ export function UnitDetailPanel({
             {unit.emitting ? "Stäng av sändning" : "Börja sända"}
           </button>
         </section>
+      )}
+
+      {travelRange && onTravelRangeChange && travelRangeBases && isTravelRangeUnit(unit) && (
+        <TravelRangeSection
+          unit={unit}
+          bases={travelRangeBases}
+          mode={travelRange}
+          onChange={onTravelRangeChange}
+          intelSummary={battleIntelSummary}
+        />
       )}
 
       <section className="space-y-2 pt-2 border-t border-border">

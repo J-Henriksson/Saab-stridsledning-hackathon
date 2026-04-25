@@ -80,10 +80,8 @@ function movementStateForUnit(u: Unit): "airborne" | "moving" {
 export function tickPatrol(unit: Unit): Unit {
   if (!unit.patrol) return unit;
   if (unit.pendingArrivalBase) return unit;
-  // ATO-managed / rebasing flights override patrol control.
-  if (unit.category === "aircraft") {
-    if (unit.missionEndHour !== undefined || unit.rebaseTarget !== undefined) return unit;
-  }
+  // Rebasing flights override patrol control — they fly direct to target.
+  if (unit.category === "aircraft" && unit.rebaseTarget !== undefined) return unit;
   // Dedicated waypoint-driven drones (e.g. SKYM-11 with explicit waypoints).
   if (unit.category === "drone" && unit.waypoints.length > 0) return unit;
 

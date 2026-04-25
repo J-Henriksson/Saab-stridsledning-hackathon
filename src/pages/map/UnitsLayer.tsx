@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
-import type { Unit, GeoPosition } from "@/types/units";
+import type { Unit, GeoPosition, AircraftUnit } from "@/types/units";
 import { isAircraft, isAirDefense } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import { AircraftSymbol } from "@/components/map/AircraftSymbol";
 import { useGame } from "@/context/GameContext";
 
 // Matches useGameClock: tickMs = max(1000 / gameSpeed, FRAME_MS).
@@ -85,8 +86,9 @@ function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnit
 export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerProps) {
   const { state, dispatch } = useGame();
   const tickMs = expectedTickMs(state.gameSpeed);
-  // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
-  // plus all other unit categories to render through the shared unit layer.
+  // All non-aircraft units render through this layer; airborne aircraft also
+  // route through here (modernized — replaces the legacy AircraftLayer).
+  // Stationary aircraft (parked at base) are not rendered here.
   const renderable = useMemo(
     () => units.filter((u) => !isAircraft(u) || u.movement.state !== "stationary"),
     [units]
@@ -164,14 +166,27 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
         const destIsGeo = !!dest && typeof dest === "object" && "lat" in dest;
 
         const isAD = isAirDefense(unit);
+        const aircraft = isAircraft(unit) ? (unit as AircraftUnit) : null;
         // Pre-placed static Lv batteries never accept drag, even when deployed.
         const isStaticAD = isAD && (unit as import("@/types/units").AirDefenseUnit).isStatic === true;
         const isDraggable = unit.currentBase === null && !isStaticAD;
-        const glowFilter = selectedUnitId === unit.id
+        const isSelected = selectedUnitId === unit.id;
+        const glowFilter = isSelected && !aircraft
           ? isAD
             ? "drop-shadow(0 0 6px #DC2626)"
             : "drop-shadow(0 0 4px #D7AB3A)"
           : undefined;
+
+        // For aircraft, derive a smooth display heading from the current
+        // motion vector (lerp delta, falling back to movement.heading or 0).
+        let aircraftHeading = aircraft?.movement.heading ?? 0;
+        if (aircraft && snap) {
+          const dLat = snap.currPos.lat - snap.prevPos.lat;
+          const dLng = snap.currPos.lng - snap.prevPos.lng;
+          if (Math.abs(dLat) + Math.abs(dLng) > 1e-6) {
+            aircraftHeading = ((Math.atan2(dLng, dLat) * 180) / Math.PI + 360) % 360;
+          }
+        }
 
         return (
           <Marker
@@ -179,6 +194,8 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
             longitude={pos.lng}
             latitude={pos.lat}
             anchor="center"
+            // Airborne aircraft sit above base markers / threat rings.
+            style={aircraft ? { zIndex: 50 } : undefined}
             draggable={isDraggable}
             onDragEnd={(e) => {
               dispatch({
@@ -200,14 +217,23 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId }: UnitsLayerPr
               style={{
                 cursor: isDraggable ? "grab" : "pointer",
                 filter: glowFilter,
-                transform: selectedUnitId === unit.id ? "scale(1.15)" : undefined,
+                transform: isSelected ? "scale(1.15)" : undefined,
                 transition: "transform 120ms ease",
                 position: "relative",
               }}
               title={`${unit.name} — ${unit.category} (${unit.affiliation})`}
             >
-              <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
-              {isMoving && destIsGeo && (
+              {aircraft ? (
+                <AircraftSymbol
+                  aircraft={{ ...aircraft, movement: { ...aircraft.movement, heading: aircraftHeading } }}
+                  size={36}
+                  selected={isSelected}
+                  showMissionBadge={isSelected}
+                />
+              ) : (
+                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+              )}
+              {!aircraft && isMoving && destIsGeo && (
                 <div
                   aria-hidden
                   style={{
