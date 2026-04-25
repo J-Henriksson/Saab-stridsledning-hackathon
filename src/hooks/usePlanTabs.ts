@@ -205,14 +205,14 @@ function buildProtectAmmoTab(liveState: GameState): PlanTab {
     threatLevel: "high" as const, operationalStatus: "active" as const,
     estimates: "~12 Su-35S, stridsberedskap bekräftad",
     notes: "Aktiv verksamhet observerad, start- och landningsrörelser dagligen",
-    threatRangeKm: 300, coords: { lat: 57.200, lng: 17.800 },
+    threatRangeKm: 0, coords: { lat: 57.200, lng: 17.800 },
   };
   const enemySamSite = {
     id: uuid(), name: "RU-SAM-GOTLAND", category: "sam_site" as const,
     threatLevel: "high" as const, operationalStatus: "active" as const,
     estimates: "S-400 batteri, 4 uppskjutningsramper aktiva",
     notes: "Täcker hela Östersjön. Omöjliggör direkt luftrörelsestöd utan SEAD-eskort.",
-    threatRangeKm: 400, coords: { lat: 57.500, lng: 18.500 },
+    threatRangeKm: 0, coords: { lat: 57.500, lng: 18.500 },
   };
   const enemyCommand = {
     id: uuid(), name: "RU-LEDNING-KALMAR", category: "command" as const,

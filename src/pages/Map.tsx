@@ -1289,6 +1289,7 @@ export default function MapPage() {
                 onFinalizePlan={() => setShowPlanReview(true)}
                 onRename={(name) => renameTab(activeTab.id, name)}
                 onFlyTo={handleFlyTo}
+                onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
                 delays={activeTab.delays}
                 onSetDelay={setDelay}
               />
