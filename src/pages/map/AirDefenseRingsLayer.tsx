@@ -1,11 +1,21 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useMap } from "react-map-gl/maplibre";
-import type { AirDefenseUnit } from "@/types/units";
+import type { AirDefenseUnit, RadarUnit } from "@/types/units";
 import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
+
+const RADAR_RANGE_KM: Record<string, number> = {
+  SEARCH_RADAR: 30,
+  TRACKING_RADAR: 15,
+};
+
+// In plan overview mode, skip any ring larger than this so SAM_LONG doesn't flood the map.
+const PLAN_MODE_MAX_DISPLAY_KM = 20;
 
 interface Props {
   units: AirDefenseUnit[];
   selectedUnitId?: string | null;
+  alwaysShowAll?: boolean;
+  radarUnits?: RadarUnit[];
 }
 
 function kmToPx(
@@ -22,7 +32,7 @@ function kmToPx(
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function AirDefenseRingsLayer({ units, selectedUnitId }: Props) {
+export function AirDefenseRingsLayer({ units, selectedUnitId, alwaysShowAll, radarUnits }: Props) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dashOffsetRef = useRef(0);
@@ -52,7 +62,9 @@ export function AirDefenseRingsLayer({ units, selectedUnitId }: Props) {
 
     for (const unit of units) {
       const isSelected = unit.id === selectedUnitId;
-      if (!isSelected) continue;
+      if (!alwaysShowAll && !isSelected) continue;
+      // In plan overview, skip units whose engagement range would overwhelm the map.
+      if (alwaysShowAll && !isSelected && unit.engagementRange > PLAN_MODE_MAX_DISPLAY_KM) continue;
 
       const { lng, lat } = unit.position;
       const center = project([lng, lat]);
@@ -62,43 +74,70 @@ export function AirDefenseRingsLayer({ units, selectedUnitId }: Props) {
       const detPx = kmToPx(project, lng, lat, profile.effectiveDetectionRange);
       const engPx = kmToPx(project, lng, lat, profile.effectiveEngagementRange);
       const readinessAlpha = Math.max(0.35, profile.readinessPercent / 100);
+      const planAlpha = alwaysShowAll && !isSelected ? 0.55 : 1;
 
       if (engPx > 0) {
         const hue = Math.round(profile.capacityFactor * 120);
-        const engColor = `hsla(${hue}, 92%, 52%, ${0.72 + readinessAlpha * 0.2})`;
+        const engColor = `hsla(${hue}, 92%, 52%, ${(0.72 + readinessAlpha * 0.2) * planAlpha})`;
 
         ctx.beginPath();
         ctx.arc(cx, cy, engPx, 0, 2 * Math.PI);
-        ctx.fillStyle = `hsla(${hue}, 92%, 52%, 0.12)`;
+        ctx.fillStyle = `hsla(${hue}, 92%, 52%, ${0.09 * planAlpha})`;
         ctx.fill();
-        ctx.setLineDash([]);
-        ctx.lineWidth = 2.5;
+        ctx.setLineDash(alwaysShowAll && !isSelected ? [8, 5] : []);
+        ctx.lineWidth = alwaysShowAll && !isSelected ? 1.5 : 2.5;
         ctx.strokeStyle = engColor;
         ctx.stroke();
+        ctx.setLineDash([]);
       }
 
-      if (detPx > 0) {
+      const detRangeKm = profile.effectiveDetectionRange;
+      if (detPx > 0 && !(alwaysShowAll && !isSelected && detRangeKm > PLAN_MODE_MAX_DISPLAY_KM)) {
         ctx.beginPath();
         ctx.arc(cx, cy, detPx, 0, 2 * Math.PI);
         ctx.setLineDash([10, 6]);
         ctx.lineDashOffset = -dashOffsetRef.current;
         ctx.lineWidth = 1.25;
-        ctx.strokeStyle = `rgba(245, 158, 11, ${0.28 + readinessAlpha * 0.2})`;
+        ctx.strokeStyle = `rgba(245, 158, 11, ${(0.28 + readinessAlpha * 0.2) * planAlpha})`;
         ctx.stroke();
         ctx.setLineDash([]);
       }
 
-      ctx.beginPath();
-      ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
-      ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, cy, 8.5, 0, 2 * Math.PI);
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "rgba(220, 38, 38, 0.9)";
-      ctx.stroke();
+      if (!alwaysShowAll || isSelected) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+        ctx.fillStyle = "rgba(248, 250, 252, 0.95)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(cx, cy, 8.5, 0, 2 * Math.PI);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(220, 38, 38, 0.9)";
+        ctx.stroke();
+      }
     }
-  }, [units, selectedUnitId, mapRef]);
+
+    // Radar coverage rings (plan mode)
+    for (const radar of (radarUnits ?? [])) {
+      const rangeKm = RADAR_RANGE_KM[radar.type] ?? 200;
+      const { lng, lat } = radar.position;
+      const center = project([lng, lat]);
+      const cx = center.x;
+      const cy = center.y;
+      const rPx = kmToPx(project, lng, lat, rangeKm);
+      if (rPx <= 0) continue;
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
+      ctx.fillStyle = "rgba(34, 211, 238, 0.04)";
+      ctx.fill();
+      ctx.setLineDash([12, 7]);
+      ctx.lineDashOffset = -dashOffsetRef.current * 0.5;
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(34, 211, 238, 0.45)";
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, [units, selectedUnitId, alwaysShowAll, radarUnits, mapRef]);
 
   // Animate dash offset + redraw
   useEffect(() => {

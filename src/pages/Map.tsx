@@ -69,7 +69,7 @@ import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
 import { Base, AircraftStatus, GameState } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
-import { isDrone, isAircraft, type UnitCategory } from "@/types/units";
+import { isDrone, isAircraft, isAirDefense, isRadar, type UnitCategory } from "@/types/units";
 import { TravelRangeOverlay } from "./map/TravelRangeOverlay";
 import { BattleIntelOverlay, type TargetIntel } from "./map/BattleIntelOverlay";
 import { BattleIntelTooltip } from "./map/BattleIntelTooltip";
@@ -251,6 +251,7 @@ export default function MapPage() {
   const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const isPlanMode = activeTabId !== null;
   const [showPlanReview, setShowPlanReview] = useState(false);
+  const [showPlanRings, setShowPlanRings] = useState(false);
   const [isDeployMode, setIsDeployMode] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
@@ -1292,6 +1293,8 @@ export default function MapPage() {
                 onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
                 delays={activeTab.delays}
                 onSetDelay={setDelay}
+                showRings={showPlanRings}
+                onToggleRings={() => setShowPlanRings((p) => !p)}
               />
             </motion.div>
           )}
@@ -1748,8 +1751,14 @@ export default function MapPage() {
             )}
 
             <AirDefenseRingsLayer
-              units={deployedAdUnits}
+              units={isPlanMode
+                ? (showPlanRings ? planState.deployedUnits.filter(isAirDefense) as import("@/types/units").AirDefenseUnit[] : [])
+                : deployedAdUnits}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+              alwaysShowAll={isPlanMode && showPlanRings}
+              radarUnits={isPlanMode && showPlanRings
+                ? planState.deployedUnits.filter(isRadar) as import("@/types/units").RadarUnit[]
+                : undefined}
             />
 
             <ThreatRingsLayer

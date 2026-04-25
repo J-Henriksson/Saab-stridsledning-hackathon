@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Shield, FileText, Pencil, Sparkles, Trash2, MapPin, Plus,
-  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info, Play,
+  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info, Play, Eye, EyeOff,
 } from "lucide-react";
 import type { GameState, GameAction, BaseType, FriendlyMarkerCategory, AircraftType, EnemyBaseCategory, EnemyEntityCategory, ThreatLevel, OperationalStatus, RoadBaseStatus, RoadBaseEchelon } from "@/types/game";
 import type { UnitCategory, DroneType, GroundRadarType, AirDefenseType, GroundVehicleType } from "@/types/units";
@@ -26,6 +26,8 @@ interface Props {
   onSelectUnit?: (id: string) => void;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, delay: DelaySpec | null) => void;
+  showRings: boolean;
+  onToggleRings: () => void;
 }
 
 // ── Delay helpers ──────────────────────────────────────────────────────────
@@ -820,7 +822,7 @@ function PlaceTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDel
 
 type SidebarTab = "plan" | "place";
 
-export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo, onSelectUnit, delays, onSetDelay }: Props) {
+export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo, onSelectUnit, delays, onSetDelay, showRings, onToggleRings }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("place");
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(tab.name);
@@ -877,8 +879,9 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
           </button>
         </div>
 
-        {/* Tab toggle */}
-        <div className="flex rounded overflow-hidden border border-border">
+        {/* Tab toggle + rings toggle */}
+        <div className="flex items-center gap-1.5">
+        <div className="flex flex-1 rounded overflow-hidden border border-border">
           <button
             onClick={() => setActiveTab("plan")}
             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-mono font-bold transition-colors ${
@@ -898,6 +901,18 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
             <Shield className="h-3 w-3" />
             Placera
           </button>
+        </div>
+        <button
+          onClick={onToggleRings}
+          title={showRings ? "Dölj räckviddsringar" : "Visa räckviddsringar"}
+          className={`flex items-center justify-center p-1.5 rounded border transition-colors shrink-0 ${
+            showRings
+              ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
+              : "border-border text-muted-foreground hover:text-foreground hover:border-cyan-500/30"
+          }`}
+        >
+          {showRings ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        </button>
         </div>
       </div>
 
