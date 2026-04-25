@@ -54,6 +54,9 @@ import { useTacticalMap } from "@/hooks/useTacticalMap";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
+import { GeoBoundariesLayer, type BoundaryVisibility } from "./map/GeoBoundariesLayer";
+import { useBoundaryCrossing } from "./map/useBoundaryCrossing";
+import { RadarPulseLayer } from "./map/RadarPulseLayer";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
 import { EventsSidebar } from "./map/EventsSidebar";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
@@ -239,6 +242,7 @@ export default function MapPage() {
   const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
   const { focusedBaseId, filterLevel, setFocusedBase, setFilterLevel, clearFilter, filterEvents } = useBaseFilter();
   const [showAllBaseRings, setShowAllBaseRings] = useState(false);
+  const [boundaryVis, setBoundaryVis] = useState<BoundaryVisibility>({ eez: true, fir: true, land: true });
 
   // Compute which airbase IDs should show rings:
   //   - "show all" toggle on → null (MarkerRingsLayer draws all)
@@ -332,6 +336,7 @@ export default function MapPage() {
   const [planningMode, setPlanningMode] = useState(false);
 
   const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
+  useBoundaryCrossing(allUnits);
   const visibleUnits = useMemo(() => {
     const nonRadar = allUnits.filter((u) => u.category !== "radar");
     return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
@@ -696,6 +701,29 @@ export default function MapPage() {
             <Layers3 className="h-3 w-3" />
             ALLA RINGAR
           </button>
+
+          {/* Boundary layer toggles */}
+          {(["eez","fir","land"] as const).map((key) => {
+            const labels: Record<string, string> = { eez: "EEZ", fir: "FIR", land: "LANDGRÄNS" };
+            const colors: Record<string, string> = {
+              eez:  "border-[#7B9CB0]/60 bg-[#7B9CB0]/10 text-[#7B9CB0]",
+              fir:  "border-[#93C5FD]/60 bg-[#93C5FD]/10 text-[#93C5FD]",
+              land: "border-gray-400/60 bg-gray-400/10 text-gray-400",
+            };
+            const on = boundaryVis[key];
+            return (
+              <button
+                key={key}
+                onClick={() => setBoundaryVis((v) => ({ ...v, [key]: !v[key] }))}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+                  on ? colors[key] : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+                title={`Visa/dölj ${labels[key]}-gräns`}
+              >
+                {labels[key]}
+              </button>
+            );
+          })}
           <button
             onClick={() => { setIsPlanMode((v) => !v); setPlacingMode(null); }}
             className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all ${
@@ -1023,6 +1051,9 @@ export default function MapPage() {
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
 
+            {/* EEZ + FIR boundary lines */}
+            <GeoBoundariesLayer vis={boundaryVis} />
+
             {/* Tactical zone fills — exclude auto-generated fixed-asset protection zones */}
             <TacticalZonesLayer
               zones={(state?.tacticalZones ?? []).filter((z) => z.category !== "fixed")}
@@ -1226,6 +1257,11 @@ export default function MapPage() {
                 selectedId={selected?.kind === "radar" ? selected.radarId : null}
                 onSelect={(id) => setSelected(id ? { kind: "radar", radarId: id } : null)}
               />
+            )}
+
+            {/* Canvas radar pulse — rendered inside MapGL container so it overlays the tiles */}
+            {state?.overlayVisibility?.radarUnits && (
+              <RadarPulseLayer units={enrichedRadarUnits} />
             )}
           </MapGL>
 
