@@ -31,6 +31,7 @@ import DronePage from "./pages/DronePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const MapPage = lazy(() => import("./pages/Map.tsx"));
+const LogisticsAnalysis = lazy(() => import("./pages/LogisticsAnalysis.tsx"));
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/dashboard/:baseId" element={<Index />} />
               <Route path="/ato" element={<ATO />} />
               <Route path="/map" element={<MapPage />} />
+              <Route path="/logistics" element={<LogisticsAnalysis />} />
               <Route path="/aircraft/:tailNumber" element={<AircraftDashboard />} />
               <Route path="/aar" element={<AARPage />} />
               <Route path="/units/:id" element={<UnitDashboard />} />
