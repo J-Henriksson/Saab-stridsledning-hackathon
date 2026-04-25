@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Shield, FileText, Pencil, Sparkles, Trash2, MapPin, Plus,
-  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info,
+  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info, Play,
 } from "lucide-react";
 import type { GameState, GameAction, BaseType, FriendlyMarkerCategory, AircraftType, EnemyBaseCategory, EnemyEntityCategory, ThreatLevel, OperationalStatus, RoadBaseStatus, RoadBaseEchelon } from "@/types/game";
 import type { UnitCategory, DroneType, GroundRadarType, AirDefenseType, GroundVehicleType } from "@/types/units";
@@ -865,6 +865,12 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
               <Pencil className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
           )}
+          <button
+            title="Simulera plan (ej implementerat)"
+            className="flex items-center gap-1 px-1.5 py-1 rounded border border-border text-muted-foreground text-[10px] font-mono hover:text-foreground hover:border-green-500/40 transition-colors shrink-0 cursor-not-allowed opacity-60"
+          >
+            <Play className="h-3 w-3" /> Sim
+          </button>
           <button onClick={handleExport} title="Exportera plansammanfattning"
             className="flex items-center gap-1 px-1.5 py-1 rounded border border-border text-muted-foreground text-[10px] font-mono hover:text-foreground hover:border-amber-500/40 transition-colors shrink-0">
             <FileText className="h-3 w-3" /> Export

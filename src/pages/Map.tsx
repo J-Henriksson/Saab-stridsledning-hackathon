@@ -2322,7 +2322,7 @@ export default function MapPage() {
       {showPlanReview && (
         <PlanReviewModal
           state={planState}
-          onConfirm={() => { setShowPlanReview(false); if (activeTabId) deleteTab(activeTabId); }}
+          onConfirm={() => { setShowPlanReview(false); }}
           onBack={() => setShowPlanReview(false)}
         />
       )}
