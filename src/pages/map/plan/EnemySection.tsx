@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Plus, Trash2, MapPin, ChevronDown, ChevronRight } from "lucide-react";
 import type { EnemyBase, EnemyBaseCategory, EnemyEntity, EnemyEntityCategory, ThreatLevel, OperationalStatus, GameAction } from "@/types/game";
+import type { DelaySpec } from "@/hooks/usePlanTabs";
+import { delayToLabel } from "@/hooks/usePlanTabs";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +19,48 @@ interface Props {
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
   onFlyTo?: (lat: number, lng: number) => void;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
+}
+
+const DELAY_OPTIONS: { label: string; value: string }[] = [
+  { label: "Omedelbart",  value: "" },
+  { label: "Om 15 min",   value: "15:minutes" },
+  { label: "Om 1 timme",  value: "1:hours" },
+  { label: "Om 6 timmar", value: "6:hours" },
+  { label: "Om 1 dag",    value: "1:days" },
+  { label: "Om 3 dagar",  value: "3:days" },
+  { label: "Om 1 vecka",  value: "1:weeks" },
+  { label: "Om 2 veckor", value: "2:weeks" },
+];
+
+function parseDelayValue(v: string): DelaySpec | null {
+  if (!v) return null;
+  const [valStr, unit] = v.split(":");
+  return { value: Number(valStr), unit: unit as DelaySpec["unit"] };
+}
+
+function DelaySelect({ entityId, delays, onSetDelay }: {
+  entityId: string;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
+}) {
+  if (!onSetDelay) return null;
+  const current = delays?.[entityId] ?? null;
+  const currentVal = current ? `${current.value}:${current.unit}` : "";
+  return (
+    <select
+      value={currentVal}
+      onChange={(e) => onSetDelay(entityId, parseDelayValue(e.target.value))}
+      onClick={(e) => e.stopPropagation()}
+      title={`Exekveringstid: ${delayToLabel(current)}`}
+      className="bg-background border border-amber-500/25 rounded px-1 py-0.5 text-[9px] font-mono text-amber-400/70 hover:text-amber-400 hover:border-amber-500/50 transition-colors shrink-0"
+    >
+      {DELAY_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -102,10 +146,14 @@ function EnemyBaseRow({
   base,
   dispatch,
   onFlyTo,
+  delays,
+  onSetDelay,
 }: {
   base: EnemyBase;
   dispatch: (a: GameAction) => void;
   onFlyTo?: (lat: number, lng: number) => void;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [rangeInput, setRangeInput] = useState(String(base.threatRangeKm ?? 0));
@@ -127,6 +175,7 @@ function EnemyBaseRow({
             <span className="text-[9px] font-mono text-red-400/70 ml-1.5">⌀ {base.threatRangeKm} km</span>
           )}
         </div>
+        <DelaySelect entityId={base.id} delays={delays} onSetDelay={onSetDelay} />
         {onFlyTo && (
           <button onClick={() => onFlyTo(base.coords.lat, base.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
             <MapPin className="h-3 w-3" />
@@ -168,10 +217,14 @@ function EnemyEntityRow({
   entity,
   dispatch,
   onFlyTo,
+  delays,
+  onSetDelay,
 }: {
   entity: EnemyEntity;
   dispatch: (a: GameAction) => void;
   onFlyTo?: (lat: number, lng: number) => void;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -183,6 +236,7 @@ function EnemyEntityRow({
           <span className="text-xs font-mono font-bold text-red-200">{entity.name}</span>
           <span className="text-[10px] text-muted-foreground ml-1.5">{ENTITY_CATEGORIES.find(c => c.value === entity.category)?.label}</span>
         </div>
+        <DelaySelect entityId={entity.id} delays={delays} onSetDelay={onSetDelay} />
         {onFlyTo && (
           <button onClick={() => onFlyTo(entity.coords.lat, entity.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
             <MapPin className="h-3 w-3" />
@@ -208,7 +262,7 @@ function EnemyEntityRow({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlacement, onFlyTo }: Props) {
+export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingEntity, setAddingEntity] = useState(false);
 
@@ -251,7 +305,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
       {enemyBases.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mb-1">Fiendebaser</div>
-          {enemyBases.map((b) => <EnemyBaseRow key={b.id} base={b} dispatch={dispatch} onFlyTo={onFlyTo} />)}
+          {enemyBases.map((b) => <EnemyBaseRow key={b.id} base={b} dispatch={dispatch} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} />)}
         </>
       )}
 
@@ -259,7 +313,7 @@ export function EnemySection({ enemyBases, enemyEntities, dispatch, onStartPlace
       {enemyEntities.length > 0 && (
         <>
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-2 mb-1">Fiendeenheter</div>
-          {enemyEntities.map((e) => <EnemyEntityRow key={e.id} entity={e} dispatch={dispatch} onFlyTo={onFlyTo} />)}
+          {enemyEntities.map((e) => <EnemyEntityRow key={e.id} entity={e} dispatch={dispatch} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} />)}
         </>
       )}
 

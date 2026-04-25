@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard, Zap } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard, Zap, PlayCircle } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
@@ -68,7 +68,7 @@ import { getAircraft } from "@/core/units/helpers";
 import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
 import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
-import { usePlanTabs } from "@/hooks/usePlanTabs";
+import { usePlanTabs, executePlan } from "@/hooks/usePlanTabs";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -230,7 +230,8 @@ export default function MapPage() {
     })),
   );
   const [planState, planDispatch] = useReducer(gameReducer, initialGameState);
-  const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab } = usePlanTabs(state);
+  const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab, setDelay } = usePlanTabs(state);
+  const [dragOverExecute, setDragOverExecute] = useState(false);
   const isPlanMode = activeTabId !== null;
   const [showPlanReview, setShowPlanReview] = useState(false);
   const [isDeployMode, setIsDeployMode] = useState(false);
@@ -365,9 +366,12 @@ export default function MapPage() {
 
   const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
   const visibleUnits = useMemo(() => {
+    if (isPlanMode) {
+      return planState.deployedUnits.filter((u) => u.affiliation === "friend");
+    }
     const nonRadar = allUnits.filter((u) => u.category !== "radar");
     return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
-  }, [allUnits, state?.overlayVisibility?.drones]);
+  }, [allUnits, state?.overlayVisibility?.drones, isPlanMode, planState.deployedUnits]);
 
   // ── Fog-of-war: compute friendly sensor discs, then classify hostile ships
   // and enemy bases/entities as visible / last-known / hidden. Friendlies in
@@ -377,10 +381,10 @@ export default function MapPage() {
   const enemyBaseVisibility = useMemo(() => detectEnemyBases(state, sensorDiscs), [state, sensorDiscs]);
   const enemyEntityVisibility = useMemo(() => detectEnemyEntities(state, sensorDiscs), [state, sensorDiscs]);
 
-  // Units whose path-history trail should render (airborne/moving friendlies).
+  // Units whose path-history trail should render (airborne/moving friendlies). Hidden in plan mode.
   const trailUnits = useMemo(
-    () => state.deployedUnits.filter((u) => u.pathHistory && u.pathHistory.length > 1),
-    [state.deployedUnits],
+    () => isPlanMode ? [] : state.deployedUnits.filter((u) => u.pathHistory && u.pathHistory.length > 1),
+    [state.deployedUnits, isPlanMode],
   );
 
   useEffect(() => {
@@ -740,7 +744,12 @@ export default function MapPage() {
           </button>
 
           {tabs.map((tab) => (
-            <div key={tab.id} className="flex items-center shrink-0">
+            <div
+              key={tab.id}
+              className="flex items-center shrink-0"
+              draggable
+              onDragStart={(e) => { e.dataTransfer.setData("plan-tab-id", tab.id); e.dataTransfer.effectAllowed = "move"; }}
+            >
               <button
                 onClick={() => handleSwitchTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-l text-[10px] font-mono font-bold border border-r-0 transition-all ${
@@ -774,6 +783,33 @@ export default function MapPage() {
               + Ny plan
             </button>
           )}
+
+          {/* Execution slot — drag a plan tab here to execute it */}
+          {tabs.length > 0 && (
+            <div
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("plan-tab-id")) { e.preventDefault(); setDragOverExecute(true); } }}
+              onDragLeave={() => setDragOverExecute(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverExecute(false);
+                const tabId = e.dataTransfer.getData("plan-tab-id");
+                const tabToExecute = tabs.find((t) => t.id === tabId);
+                if (!tabToExecute) return;
+                executePlan(tabToExecute, dispatch);
+                deleteTab(tabId);
+                handleSwitchTab(null);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono border border-dashed transition-all shrink-0 ml-2 ${
+                dragOverExecute
+                  ? "bg-green-600/20 border-green-500/70 text-green-400"
+                  : "border-green-700/40 text-green-700/60 hover:border-green-600/50 hover:text-green-600/80"
+              }`}
+              title="Dra en plan hit för att exekvera den"
+            >
+              <PlayCircle className="h-2.5 w-2.5" />
+              {dragOverExecute ? "Släpp för att exekvera" : "Exekvera plan"}
+            </div>
+          )}
         </div>
 
         {/* Legend */}
@@ -806,6 +842,8 @@ export default function MapPage() {
                 onFinalizePlan={() => setShowPlanReview(true)}
                 onRename={(name) => renameTab(activeTab.id, name)}
                 onFlyTo={handleFlyTo}
+                delays={activeTab.delays}
+                onSetDelay={setDelay}
               />
             </motion.div>
           )}
@@ -988,6 +1026,7 @@ export default function MapPage() {
               onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
               tacticalZones={state.tacticalZones}
               dispatch={dispatch}
+              paused={isPlanMode}
             />
 
             {/* Fixed military & civilian asset markers */}
@@ -1109,37 +1148,59 @@ export default function MapPage() {
                 </div>
               </Marker>
             ))}
-            {/* Enemy bases — only shown when inside a friendly sensor disc */}
-            {enemyBaseVisibility.visible.map((eb) => (
-              <EnemyMarker
-                key={eb.id}
-                base={eb}
-                isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
-                onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
-              />
+            {/* Enemy bases — fog-of-war in live mode; all plan entities shown as placeholders in plan mode */}
+            {isPlanMode
+              ? planState.enemyBases.map((eb) => (
+                  <EnemyMarker
+                    key={eb.id}
+                    base={eb}
+                    isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
+                    onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
+                    isPlaceholder
+                  />
+                ))
+              : enemyBaseVisibility.visible.map((eb) => (
+                  <EnemyMarker
+                    key={eb.id}
+                    base={eb}
+                    isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
+                    onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
+                  />
+                ))
+            }
+            {isPlanMode
+              ? planState.enemyEntities.map((ee) => (
+                  <EnemyEntityMarker
+                    key={ee.id}
+                    entity={ee}
+                    isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
+                    onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
+                    isPlaceholder
+                  />
+                ))
+              : enemyEntityVisibility.visible.map((ee) => (
+                  <EnemyEntityMarker
+                    key={ee.id}
+                    entity={ee}
+                    isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
+                    onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
+                  />
+                ))
+            }
+            {(isPlanMode ? planState.friendlyMarkers : state.friendlyMarkers).map((fm) => (
+              <FriendlyMarkerPin key={fm.id} marker={fm} isPlaceholder={isPlanMode} />
             ))}
-            {enemyEntityVisibility.visible.map((ee) => (
-              <EnemyEntityMarker
-                key={ee.id}
-                entity={ee}
-                isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
-                onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
-              />
+            {(isPlanMode ? planState.friendlyEntities : state.friendlyEntities).map((fe) => (
+              <FriendlyEntityPin key={fe.id} entity={fe} isPlaceholder={isPlanMode} />
             ))}
-            {state.friendlyMarkers.map((fm) => (
-              <FriendlyMarkerPin key={fm.id} marker={fm} />
-            ))}
-            {state.friendlyEntities.map((fe) => (
-              <FriendlyEntityPin key={fe.id} entity={fe} />
-            ))}
-            {state.roadBases.map((rb) => (
+            {(isPlanMode ? planState.roadBases : state.roadBases).map((rb) => (
               <RoadBaseMarker
                 key={rb.id}
                 roadBase={rb}
                 isPlanMode={isPlanMode}
                 isSelected={selected?.kind === "road_base" && selected.id === rb.id}
                 onSelect={() => setSelected({ kind: "road_base", id: rb.id })}
-                dispatch={dispatch}
+                dispatch={isPlanMode ? planDispatch : dispatch}
               />
             ))}
 

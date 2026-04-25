@@ -3,7 +3,7 @@ import { Shield, Crosshair, FileText, Pencil, Sparkles } from "lucide-react";
 import type { GameState, GameAction } from "@/types/game";
 import { FriendlySection } from "./plan/FriendlySection";
 import { EnemySection } from "./plan/EnemySection";
-import type { PlanTab } from "@/hooks/usePlanTabs";
+import type { PlanTab, DelaySpec } from "@/hooks/usePlanTabs";
 import { generatePlanSummary } from "@/hooks/usePlanTabs";
 
 type PlacingKind = "friendly_base" | "friendly_entity" | "friendly_unit" | "enemy_base" | "enemy_entity" | "road_base";
@@ -21,13 +21,15 @@ interface Props {
   onFinalizePlan: () => void;
   onRename: (name: string) => void;
   onFlyTo: (lat: number, lng: number) => void;
+  delays: Record<string, DelaySpec | null>;
+  onSetDelay: (id: string, delay: DelaySpec | null) => void;
 }
 
 export type { PlacingPayload, PlacingKind };
 
 type SidebarTab = "friendly" | "enemy";
 
-export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo }: Props) {
+export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo, delays, onSetDelay }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("friendly");
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(tab.name);
@@ -135,6 +137,8 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
             dispatch={dispatch}
             onStartPlacement={onStartPlacement}
             onFlyTo={onFlyTo}
+            delays={delays}
+            onSetDelay={onSetDelay}
           />
         ) : (
           <EnemySection
@@ -143,6 +147,8 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
             dispatch={dispatch}
             onStartPlacement={onStartPlacement}
             onFlyTo={onFlyTo}
+            delays={delays}
+            onSetDelay={onSetDelay}
           />
         )}
       </div>

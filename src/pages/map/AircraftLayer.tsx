@@ -38,6 +38,7 @@ export function AircraftLayer({
   onPositionUpdate,
   tacticalZones,
   dispatch,
+  paused,
 }: {
   bases: Base[];
   currentHour?: number;
@@ -47,12 +48,14 @@ export function AircraftLayer({
   onPositionUpdate?: (lng: number, lat: number) => void;
   tacticalZones?: TacticalZone[];
   dispatch?: (action: GameAction) => void;
+  paused?: boolean;
 }) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [phase, setPhase] = useState(0);
   useEffect(() => {
+    if (paused) return;
     let frame: number;
     const start = performance.now();
     const tick = (now: number) => {
@@ -61,7 +64,7 @@ export function AircraftLayer({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [paused]);
 
   const { aircraftPositions, orbitTrails, rebaseTrails } = useMemo(() => {
     const positions: AircraftPosition[] = [];

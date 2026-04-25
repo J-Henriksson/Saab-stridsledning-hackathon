@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import type { DelaySpec } from "@/hooks/usePlanTabs";
+import { delayToLabel } from "@/hooks/usePlanTabs";
 import { ChevronDown, ChevronRight, Fuel, Zap, Wrench, Plus, Trash2, MapPin } from "lucide-react";
 import type {
   Base,
@@ -40,6 +42,48 @@ interface Props {
   dispatch: (action: GameAction) => void;
   onStartPlacement: (payload: PlacingPayload) => void;
   onFlyTo?: (lat: number, lng: number) => void;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
+}
+
+const DELAY_OPTIONS: { label: string; value: string }[] = [
+  { label: "Omedelbart", value: "" },
+  { label: "Om 15 min",  value: "15:minutes" },
+  { label: "Om 1 timme", value: "1:hours" },
+  { label: "Om 6 timmar", value: "6:hours" },
+  { label: "Om 1 dag",   value: "1:days" },
+  { label: "Om 3 dagar", value: "3:days" },
+  { label: "Om 1 vecka", value: "1:weeks" },
+  { label: "Om 2 veckor", value: "2:weeks" },
+];
+
+function parseDelayValue(v: string): DelaySpec | null {
+  if (!v) return null;
+  const [valStr, unit] = v.split(":");
+  return { value: Number(valStr), unit: unit as DelaySpec["unit"] };
+}
+
+function DelaySelect({ entityId, delays, onSetDelay }: {
+  entityId: string;
+  delays?: Record<string, DelaySpec | null>;
+  onSetDelay?: (id: string, delay: DelaySpec | null) => void;
+}) {
+  if (!onSetDelay) return null;
+  const current = delays?.[entityId] ?? null;
+  const currentVal = current ? `${current.value}:${current.unit}` : "";
+  return (
+    <select
+      value={currentVal}
+      onChange={(e) => onSetDelay(entityId, parseDelayValue(e.target.value))}
+      onClick={(e) => e.stopPropagation()}
+      title={`Exekveringstid: ${delayToLabel(current)}`}
+      className="bg-background border border-amber-500/25 rounded px-1 py-0.5 text-[9px] font-mono text-amber-400/70 hover:text-amber-400 hover:border-amber-500/50 transition-colors shrink-0"
+    >
+      {DELAY_OPTIONS.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
 }
 
 const BASE_CATEGORIES: { value: FriendlyMarkerCategory; label: string }[] = [
@@ -219,7 +263,7 @@ function AddForm({ title, onPlace, onCancel, fields }: { title: string; onPlace:
   );
 }
 
-export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement, onFlyTo }: Props) {
+export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingUnit, setAddingUnit] = useState(false);
 
@@ -313,12 +357,13 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
             Planlagda baser
           </div>
           {friendlyMarkers.map((m) => (
-            <div key={m.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
+            <div key={m.id} className="flex items-center gap-1.5 p-2 border border-border rounded bg-muted/10">
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-mono font-bold text-blue-300">{m.name}</span>
                 <span className="text-[10px] text-muted-foreground ml-2">{BASE_CATEGORIES.find((c) => c.value === m.category)?.label}</span>
                 {m.estimates && <div className="text-[10px] text-muted-foreground/70">{m.estimates}</div>}
               </div>
+              <DelaySelect entityId={m.id} delays={delays} onSetDelay={onSetDelay} />
               {onFlyTo && (
                 <button onClick={() => onFlyTo(m.coords.lat, m.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
                   <MapPin className="h-3.5 w-3.5" />
@@ -362,7 +407,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
             Placerade enheter
           </div>
           {placedFriendlyUnits.map((unit) => (
-            <div key={unit.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
+            <div key={unit.id} className="flex items-center gap-1.5 p-2 border border-border rounded bg-muted/10">
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-mono font-bold text-blue-300">{unit.name}</span>
                 <span className="text-[10px] text-muted-foreground ml-2">{UNIT_CATEGORIES.find((c) => c.value === unit.category)?.label}</span>
@@ -375,6 +420,7 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
                   </div>
                 )}
               </div>
+              <DelaySelect entityId={unit.id} delays={delays} onSetDelay={onSetDelay} />
               {onFlyTo && (
                 <button onClick={() => onFlyTo(unit.position.lat, unit.position.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
                   <MapPin className="h-3.5 w-3.5" />
@@ -394,12 +440,13 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
             Vägbaser
           </div>
           {roadBases.map((rb) => (
-            <div key={rb.id} className="flex items-center gap-2 p-2 border border-border rounded bg-muted/10">
+            <div key={rb.id} className="flex items-center gap-1.5 p-2 border border-border rounded bg-muted/10">
               <div className="flex-1 min-w-0">
                 <span className="text-xs font-mono font-bold" style={{ color: "#2D5A27" }}>{rb.name}</span>
                 <span className="text-[10px] text-muted-foreground ml-2">{rb.status}</span>
                 <span className="text-[10px] text-muted-foreground ml-1">· {rb.echelon} · {rb.rangeRadius} km</span>
               </div>
+              <DelaySelect entityId={rb.id} delays={delays} onSetDelay={onSetDelay} />
               {onFlyTo && (
                 <button onClick={() => onFlyTo(rb.coords.lat, rb.coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
                   <MapPin className="h-3.5 w-3.5" />

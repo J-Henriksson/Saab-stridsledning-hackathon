@@ -12,18 +12,22 @@ interface Props {
   base: EnemyBase;
   isSelected: boolean;
   onClick: () => void;
+  isPlaceholder?: boolean;
 }
 
-export function EnemyMarker({ base, isSelected, onClick }: Props) {
+export function EnemyMarker({ base, isSelected, onClick, isPlaceholder }: Props) {
   const fill = THREAT_FILL[base.threatLevel];
 
   return (
     <Marker longitude={base.coords.lng} latitude={base.coords.lat} anchor="center">
       <div
-        title={`${base.name} — ${base.category}`}
+        title={`${base.name} — ${base.category}${isPlaceholder ? " [PLAN]" : ""}`}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         className="cursor-pointer"
-        style={{ filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined }}
+        style={{
+          filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined,
+          opacity: isPlaceholder ? 0.65 : 1,
+        }}
       >
         <svg width="32" height="32" viewBox="0 0 32 32">
           <polygon
@@ -32,6 +36,7 @@ export function EnemyMarker({ base, isSelected, onClick }: Props) {
             fillOpacity={isSelected ? 0.4 : 0.2}
             stroke={fill}
             strokeWidth={isSelected ? 2 : 1.5}
+            strokeDasharray={isPlaceholder ? "5,3" : undefined}
           />
           <line x1="16" y1="7" x2="16" y2="25" stroke={fill} strokeWidth={1.5} />
           <line x1="7" y1="16" x2="25" y2="16" stroke={fill} strokeWidth={1.5} />

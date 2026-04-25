@@ -12,18 +12,22 @@ interface Props {
   entity: EnemyEntity;
   isSelected: boolean;
   onClick: () => void;
+  isPlaceholder?: boolean;
 }
 
-export function EnemyEntityMarker({ entity, isSelected, onClick }: Props) {
+export function EnemyEntityMarker({ entity, isSelected, onClick, isPlaceholder }: Props) {
   const fill = THREAT_FILL[entity.threatLevel];
 
   return (
     <Marker longitude={entity.coords.lng} latitude={entity.coords.lat} anchor="center">
       <div
-        title={`${entity.name} — ${entity.category}`}
+        title={`${entity.name} — ${entity.category}${isPlaceholder ? " [PLAN]" : ""}`}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
         className="cursor-pointer"
-        style={{ filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined }}
+        style={{
+          filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined,
+          opacity: isPlaceholder ? 0.65 : 1,
+        }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24">
           <polygon
@@ -32,6 +36,7 @@ export function EnemyEntityMarker({ entity, isSelected, onClick }: Props) {
             fillOpacity={isSelected ? 0.4 : 0.2}
             stroke={fill}
             strokeWidth={isSelected ? 2 : 1.5}
+            strokeDasharray={isPlaceholder ? "4,3" : undefined}
           />
           <circle cx="12" cy="12" r="2.5" fill={fill} />
         </svg>
