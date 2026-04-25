@@ -70,4 +70,6 @@ export interface OverlayLayerVisibility {
   radarUnits: boolean;
   /** Drone / UAV layer */
   drones: boolean;
+  /** Railway network overlay */
+  railroad: boolean;
 }

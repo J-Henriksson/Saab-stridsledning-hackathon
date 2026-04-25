@@ -6,12 +6,12 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard, Zap, PlayCircle } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard, Zap, PlayCircle, TrainFront } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
   MAP_STYLE, DARK_STYLE, TOPO_STYLE, SATELLITE_STYLE, MINIMAL_STYLE,
-  TERRARIUM_TILES, OCEAN_TILES,
+  TERRARIUM_TILES, OCEAN_TILES, RAILROAD_TILES,
 } from "./map/constants";
 import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
 import { RoadBaseDetailPanel } from "./map/RoadBaseDetailPanel";
@@ -141,6 +141,7 @@ const LAYER_ITEMS: {
   { key: "radarUnits", label: "Radarstationer", Icon: Radio as any, color: RADAR_TEAL },
   { key: "activeZones", label: "Aktiva zoner", Icon: MapPin as any, color: "#2563eb" },
   { key: "drones", label: "Drönare (UAV)", Icon: Send, color: "#a855f7" },
+  { key: "railroad", label: "Järnväg", Icon: TrainFront, color: "#78350f" },
 ];
 
 
@@ -954,6 +955,23 @@ export default function MapPage() {
                     "raster-saturation": 0.4,
                     "raster-hue-rotate": 15,
                   }}
+                />
+              </Source>
+            )}
+
+            {/* Railroad overlay — Esri World Transportation */}
+            {state?.overlayVisibility?.railroad && (
+              <Source
+                id="railroad"
+                type="raster"
+                tiles={RAILROAD_TILES}
+                tileSize={256}
+                attribution="Tiles © Esri"
+              >
+                <Layer
+                  id="railroad-layer"
+                  type="raster"
+                  paint={{ "raster-opacity": 0.8 }}
                 />
               </Source>
             )}
