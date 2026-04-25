@@ -28,6 +28,10 @@ const PULSE_STYLE = `
 }
 `;
 
+// Plan-mode unit NATO rendering uses one safe generic ground symbol so the
+// protect-ammo plan never falls back to unreadable triangle/question-mark-like glyphs.
+const PLAN_MODE_SAFE_SIDC = "10031000001211000000";
+
 interface Snapshot {
   prevPos: GeoPosition;
   currPos: GeoPosition;
@@ -204,6 +208,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
             ? "drop-shadow(0 0 6px #DC2626)"
             : "drop-shadow(0 0 4px #D7AB3A)"
           : undefined;
+        const displaySidc = isPlanMode && iconStyle === "nato" ? PLAN_MODE_SAFE_SIDC : unit.sidc;
 
         return (
           <Marker
@@ -243,7 +248,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
             >
               {aircraft ? (
                 iconStyle === "nato" ? (
-                  <UnitSymbol sidc={aircraft.sidc} size={28} title={aircraft.name} />
+                  <UnitSymbol sidc={displaySidc} size={28} title={aircraft.name} />
                 ) : (
                   <AircraftSymbol
                     aircraft={{ ...aircraft, movement: { ...aircraft.movement, heading: aircraftHeading } }}
@@ -253,7 +258,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
                   />
                 )
               ) : iconStyle === "nato" ? (
-                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+                <UnitSymbol sidc={displaySidc} size={28} title={unit.name} />
               ) : isGroundVehicle(unit) ? (
                 (() => {
                   const gv = unit as GroundVehicleUnit;
@@ -270,7 +275,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
                     : "#D7AB3A"}
                 />
               ) : (
-                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+                <UnitSymbol sidc={displaySidc} size={28} title={unit.name} />
               )}
               {!aircraft && isMoving && destIsGeo && (
                 <div

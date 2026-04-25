@@ -1,8 +1,24 @@
 import { Marker } from "react-map-gl/maplibre";
 import type { FriendlyMarker, FriendlyEntity } from "@/types/game";
+import { UnitSymbol } from "@/components/map/UnitSymbol";
+// Hand-picked friend NATO symbols that render clearly on the planning map.
+const FRIEND_GROUND_SIDC = "10031000001211000000";    // armored / ground unit
+const FRIEND_NAVAL_SIDC = "10033000001202000000";     // surface combatant
 
-const BLUE = "#60a5fa";
-const BLUE_SOFT = "#3b82f6";
+const FRIENDLY_MARKER_SIDC: Record<FriendlyMarker["category"], string> = {
+  airbase: FRIEND_GROUND_SIDC,
+  logistics: FRIEND_GROUND_SIDC,
+  command: FRIEND_GROUND_SIDC,
+  army: FRIEND_GROUND_SIDC,
+  navy: FRIEND_NAVAL_SIDC,
+};
+
+const FRIENDLY_ENTITY_SIDC: Record<FriendlyEntity["category"], string> = {
+  aircraft: FRIEND_GROUND_SIDC,
+  air_defense: FRIEND_GROUND_SIDC,
+  radar: FRIEND_GROUND_SIDC,
+  drone: FRIEND_GROUND_SIDC,
+};
 
 export function FriendlyMarkerPin({ marker, isPlaceholder }: { marker: FriendlyMarker; isPlaceholder?: boolean }) {
   return (
@@ -12,18 +28,18 @@ export function FriendlyMarkerPin({ marker, isPlaceholder }: { marker: FriendlyM
         className="cursor-default"
         style={{ opacity: isPlaceholder ? 0.65 : 1 }}
       >
-        <svg width="28" height="28" viewBox="0 0 28 28">
-          <polygon
-            points="14,2 24,8 24,20 14,26 4,20 4,8"
-            fill={BLUE}
-            fillOpacity={0.2}
-            stroke={BLUE}
-            strokeWidth={1.5}
-            strokeDasharray={isPlaceholder ? "5,3" : undefined}
+        <div
+          style={{
+            transform: isPlaceholder ? "scale(0.92)" : undefined,
+            filter: isPlaceholder ? "drop-shadow(0 0 4px rgba(59,130,246,0.25))" : undefined,
+          }}
+        >
+          <UnitSymbol
+            sidc={FRIENDLY_MARKER_SIDC[marker.category]}
+            size={30}
+            title={marker.name}
           />
-          <line x1="14" y1="7" x2="14" y2="21" stroke={BLUE} strokeWidth={1.5} />
-          <line x1="7" y1="14" x2="21" y2="14" stroke={BLUE} strokeWidth={1.5} />
-        </svg>
+        </div>
       </div>
     </Marker>
   );
@@ -37,17 +53,18 @@ export function FriendlyEntityPin({ entity, isPlaceholder }: { entity: FriendlyE
         className="cursor-default"
         style={{ opacity: isPlaceholder ? 0.65 : 1 }}
       >
-        <svg width="20" height="20" viewBox="0 0 20 20">
-          <polygon
-            points="10,1 19,10 10,19 1,10"
-            fill={BLUE_SOFT}
-            fillOpacity={0.2}
-            stroke={BLUE_SOFT}
-            strokeWidth={1.5}
-            strokeDasharray={isPlaceholder ? "4,3" : undefined}
+        <div
+          style={{
+            transform: isPlaceholder ? "scale(0.92)" : undefined,
+            filter: isPlaceholder ? "drop-shadow(0 0 4px rgba(59,130,246,0.25))" : undefined,
+          }}
+        >
+          <UnitSymbol
+            sidc={FRIENDLY_ENTITY_SIDC[entity.category]}
+            size={28}
+            title={entity.name}
           />
-          <circle cx="10" cy="10" r="2.5" fill={BLUE_SOFT} />
-        </svg>
+        </div>
       </div>
     </Marker>
   );

@@ -77,16 +77,19 @@ function AssetMarker({
   onSelect,
   dimmed,
   scale,
+  selected,
 }: {
   asset: FixedMilitaryAsset;
   onSelect: (asset: FixedMilitaryAsset) => void;
   dimmed: boolean;
   scale: number;
+  selected: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const cfg = ASSET_CONFIG[asset.type];
   const { Icon } = cfg;
   const isMilitary = cfg.category === "military";
+  const isSelectedAmmoDepot = selected && asset.type === "ammo_depot";
 
   // Inner disc size and outer dashed ring scale with zoom.
   const innerSize = Math.round(34 * scale);
@@ -210,9 +213,9 @@ function AssetMarker({
               cy={outerSize / 2}
               r={outerSize / 2 - 2}
               fill="none"
-              stroke={cfg.ringColor}
-              strokeWidth={1.5}
-              strokeDasharray="5 4"
+              stroke={isSelectedAmmoDepot ? "rgba(96,165,250,0.95)" : cfg.ringColor}
+              strokeWidth={isSelectedAmmoDepot ? 2.3 : 1.5}
+              strokeDasharray={isSelectedAmmoDepot ? "6 3" : "5 4"}
             />
           </svg>
 
@@ -223,15 +226,17 @@ function AssetMarker({
               width: innerSize,
               height: innerSize,
               borderRadius: "50%",
-              background: cfg.fillColor,
-              border: `1.8px solid ${cfg.color}`,
-              boxShadow: hovered
+              background: isSelectedAmmoDepot ? "rgba(96,165,250,0.18)" : cfg.fillColor,
+              border: `1.8px solid ${isSelectedAmmoDepot ? "#60a5fa" : cfg.color}`,
+              boxShadow: isSelectedAmmoDepot
+                ? "0 0 0 3px rgba(96,165,250,0.32), 0 0 18px rgba(96,165,250,0.45), 0 2px 10px rgba(0,0,0,0.22)"
+                : hovered
                 ? `0 0 0 3px ${cfg.ringColor}, 0 2px 10px rgba(0,0,0,0.18)`
                 : "0 2px 8px rgba(0,0,0,0.13)",
               transition: "box-shadow 0.2s ease",
             }}
           >
-            <Icon size={Math.round(14 * scale)} color={cfg.color} strokeWidth={1.8} />
+            <Icon size={Math.round(14 * scale)} color={isSelectedAmmoDepot ? "#93c5fd" : cfg.color} strokeWidth={1.8} />
           </div>
         </div>
 
@@ -239,7 +244,7 @@ function AssetMarker({
         {scale > 0.5 && (
           <span
             className="font-mono font-bold mt-0.5 block text-center"
-            style={{ fontSize: Math.round(9 * scale), color: cfg.color, letterSpacing: "0.05em" }}
+            style={{ fontSize: Math.round(9 * scale), color: isSelectedAmmoDepot ? "#93c5fd" : cfg.color, letterSpacing: "0.05em" }}
           >
             {asset.shortName}
           </span>
@@ -279,11 +284,13 @@ export function FixedAssetMarkers({
   showCriticalInfra,
   flygvapnetMode,
   onSelectAsset,
+  selectedAssetId,
 }: {
   showMilitaryBases: boolean;
   showCriticalInfra: boolean;
   flygvapnetMode: boolean;
   onSelectAsset: (asset: FixedMilitaryAsset) => void;
+  selectedAssetId?: string | null;
 }) {
   const { current: mapRef } = useMap();
   const [zoom, setZoom] = useState(6);
@@ -312,11 +319,11 @@ export function FixedAssetMarkers({
     <>
       {showMilitaryBases &&
         militaryAssets.map((a) => (
-          <AssetMarker key={a.id} asset={a} onSelect={onSelectAsset} dimmed={flygvapnetMode} scale={scale} />
+          <AssetMarker key={a.id} asset={a} onSelect={onSelectAsset} dimmed={flygvapnetMode} scale={scale} selected={selectedAssetId === a.id} />
         ))}
       {showCriticalInfra &&
         infraAssets.map((a) => (
-          <AssetMarker key={a.id} asset={a} onSelect={onSelectAsset} dimmed={flygvapnetMode} scale={scale} />
+          <AssetMarker key={a.id} asset={a} onSelect={onSelectAsset} dimmed={flygvapnetMode} scale={scale} selected={selectedAssetId === a.id} />
         ))}
     </>
   );

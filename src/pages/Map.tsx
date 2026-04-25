@@ -85,6 +85,8 @@ import { initialGameState } from "@/data/initialGameState";
 import { usePlanTabs, executePlan } from "@/hooks/usePlanTabs";
 import type { RadarUnit } from "@/types/units";
 
+const PLACEMENT_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M14 2C9.03 2 5 6.03 5 11c0 6.56 7.4 14.06 8.09 14.75a1.3 1.3 0 0 0 1.82 0C15.6 25.06 23 17.56 23 11c0-4.97-4.03-9-9-9Z' fill='%2360a5fa' stroke='%230c234c' stroke-width='1.6'/%3E%3Ccircle cx='14' cy='11' r='3.6' fill='%23dbeafe' stroke='%230c234c' stroke-width='1.2'/%3E%3C/svg%3E") 14 26, auto`;
+
 type SelectedEntity =
   | { kind: "base"; baseId: string }
   | { kind: "aircraft"; baseId: string; aircraftId: string }
@@ -891,6 +893,7 @@ export default function MapPage() {
     switchTab(id);
     setPlacingMode(null);
     setIsDeployMode(false);
+    setSelected(id === "plan-protect-ammo" ? { kind: "asset", assetId: "AMMO_ENKOPING" } : null);
     if (id !== null) {
       setPlanMenuOpen(true);
       // Fly to ammo depot when opening the protect-ammo plan
@@ -1526,7 +1529,7 @@ export default function MapPage() {
         <div
           className="flex-1 relative overflow-hidden"
           style={{
-            cursor: placingMode ? "crosshair" : draggingUnit ? "grabbing" : undefined,
+            cursor: placingMode ? PLACEMENT_CURSOR : draggingUnit ? "grabbing" : undefined,
             ...(mapLayerState.dampColors ? { filter: "saturate(0.5) grayscale(0.3)" } : {}),
           }}
           onDragOver={(e) => {
@@ -1704,6 +1707,7 @@ export default function MapPage() {
               showCriticalInfra={state.overlayVisibility.criticalInfra}
               flygvapnetMode={state.overlayVisibility.flygvapnet}
               onSelectAsset={handleSelectAsset}
+              selectedAssetId={selected?.kind === "asset" ? selected.assetId : null}
             />
 
             {/* Breadcrumb trails (rendered BEFORE unit markers so they sit underneath).
@@ -1724,7 +1728,7 @@ export default function MapPage() {
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
               focusedBaseId={effectiveDimBase}
-              iconStyle={iconStyle}
+              iconStyle={isPlanMode ? "nato" : iconStyle}
               isPlanMode={isPlanMode}
             />
 

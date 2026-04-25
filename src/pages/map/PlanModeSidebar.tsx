@@ -134,61 +134,72 @@ const STATUSES: { value: OperationalStatus; label: string }[] = [
   { value: "destroyed", label: "Neutraliserad" }, { value: "unknown", label: "Okänd" },
 ];
 
+const PRIO_STYLES: Record<AiRecommendation["priority"], { bg: string; border: string; color: string; label: string }> = {
+  high:   { bg: "hsl(353 74% 47% / 0.12)", border: "hsl(353 74% 47% / 0.30)", color: "hsl(353 74% 70%)",  label: "HÖG" },
+  medium: { bg: "hsl(220 63% 38% / 0.15)", border: "hsl(220 63% 55% / 0.35)", color: "hsl(220 63% 75%)",  label: "MEDEL" },
+  low:    { bg: "hsl(152 60% 32% / 0.10)", border: "hsl(152 60% 45% / 0.28)", color: "hsl(152 60% 65%)",  label: "LÅG" },
+};
+
 function AiRecsPanel({ recs }: { recs: AiRecommendation[] }) {
   const [implemented, setImplemented] = useState<Set<string>>(new Set());
-  const PRIO_COLOR: Record<AiRecommendation["priority"], string> = {
-    high: "#f87171", medium: "#facc15", low: "#4ade80",
-  };
-  const PRIO_LABEL: Record<AiRecommendation["priority"], string> = {
-    high: "HÖG", medium: "MEDEL", low: "LÅG",
-  };
 
   return (
-    <div className="mt-3">
-      <div className="flex items-center gap-1.5 mb-2">
-        <Sparkles className="h-3 w-3 text-amber-400" />
-        <span className="text-[9px] font-mono text-amber-400 uppercase tracking-widest">AI-rekommendationer</span>
+    <div className="mt-4">
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <Sparkles className="h-3 w-3" style={{ color: "hsl(220 63% 70%)" }} />
+        <span className="text-[9px] font-mono font-bold uppercase tracking-widest" style={{ color: "hsl(220 63% 70%)" }}>
+          AI-rekommendationer
+        </span>
+        <span className="text-[8px] font-mono ml-auto" style={{ color: "hsl(220 30% 55%)" }}>
+          SYSTEM-ANALYS
+        </span>
       </div>
       <div className="space-y-2">
         {recs.map((rec) => {
           const done = implemented.has(rec.id);
+          const ps = done
+            ? { bg: "hsl(152 60% 32% / 0.10)", border: "hsl(152 60% 45% / 0.28)", color: "hsl(152 60% 65%)" }
+            : PRIO_STYLES[rec.priority];
           return (
             <div
               key={rec.id}
-              className="rounded border p-2 space-y-1 transition-all"
-              style={{
-                borderColor: done ? "rgba(74,222,128,0.3)" : "rgba(215,171,58,0.25)",
-                background: done ? "rgba(74,222,128,0.05)" : "rgba(215,171,58,0.04)",
-              }}
+              className="rounded-lg overflow-hidden transition-all"
+              style={{ background: ps.bg, border: `1px solid ${ps.border}` }}
             >
-              <div className="flex items-start gap-1.5">
-                <span
-                  className="text-[8px] font-mono font-bold px-1 py-0.5 rounded shrink-0 mt-0.5"
-                  style={{ background: `${PRIO_COLOR[rec.priority]}22`, color: PRIO_COLOR[rec.priority], border: `1px solid ${PRIO_COLOR[rec.priority]}44` }}
-                >
-                  {PRIO_LABEL[rec.priority]}
-                </span>
-                <span className={`text-[10px] font-mono font-bold flex-1 ${done ? "line-through text-muted-foreground" : "text-foreground"}`}>
-                  {rec.title}
-                </span>
-              </div>
-              <p className={`text-[9px] leading-relaxed ${done ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
-                {rec.description}
-              </p>
-              {!done && (
-                <button
-                  onClick={() => setImplemented((prev) => new Set([...prev, rec.id]))}
-                  className="flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono font-bold transition-colors"
-                  style={{ background: "rgba(215,171,58,0.12)", border: "1px solid rgba(215,171,58,0.35)", color: "#D7AB3A" }}
-                >
-                  <Check className="h-2.5 w-2.5" /> Implementera
-                </button>
-              )}
-              {done && (
-                <div className="flex items-center gap-1 text-[9px] font-mono text-green-400">
-                  <Check className="h-2.5 w-2.5" /> Implementerad
+              <div className="px-2.5 py-2">
+                <div className="flex items-start gap-1.5 mb-1">
+                  <span
+                    className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5"
+                    style={{ background: `${ps.color}22`, color: ps.color, border: `1px solid ${ps.color}44` }}
+                  >
+                    {done ? "KLAR" : PRIO_STYLES[rec.priority].label}
+                  </span>
+                  <span
+                    className="text-[10px] font-mono font-bold flex-1 leading-tight"
+                    style={{ color: done ? "hsl(152 60% 65%)" : "hsl(220 20% 90%)", textDecoration: done ? "line-through" : "none" }}
+                  >
+                    {rec.title}
+                  </span>
                 </div>
-              )}
+                <p className="text-[9px] leading-relaxed" style={{ color: done ? "hsl(220 15% 50%)" : "hsl(220 20% 70%)" }}>
+                  {rec.description}
+                </p>
+              </div>
+              <div className="flex items-center px-2.5 py-1.5" style={{ borderTop: `1px solid ${ps.border}` }}>
+                {!done ? (
+                  <button
+                    onClick={() => setImplemented((prev) => new Set([...prev, rec.id]))}
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[9px] font-mono font-bold transition-colors"
+                    style={{ background: "hsl(220 63% 38% / 0.20)", border: "1px solid hsl(220 63% 55% / 0.4)", color: "hsl(220 63% 80%)" }}
+                  >
+                    <Check className="h-2.5 w-2.5" /> IMPLEMENTERA
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 text-[9px] font-mono font-bold" style={{ color: "hsl(152 60% 65%)" }}>
+                    <Check className="h-2.5 w-2.5" /> Implementerad
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}
