@@ -703,6 +703,7 @@ export const initialGameState: GameState = {
     skyddsobjekt: true,
     radarUnits: true,
     drones: true,
+    railroad: false,
   },
   navalUnits: INITIAL_NAVAL_UNITS,
   intelReports: seedIntelReports(INITIAL_ENEMY_BASES),
