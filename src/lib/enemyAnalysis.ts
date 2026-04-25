@@ -320,20 +320,22 @@ export function analyzeEnemyDrone(drone: DroneUnit): EnemyAnalysis {
   if (drone.movement.state === "airborne") {
     warnings.push("Drönaren är luftburen och aktiv.");
   }
-  if (drone.waypoints.length > 0) {
+  const waypoints = drone.waypoints ?? [];
+  const pathHistory = drone.pathHistory ?? [];
+  if (waypoints.length > 0) {
     warnings.push("Aktiv färdplan detekterad — rörelsemönster analyseras.");
   }
-  if (drone.pathHistory.length >= 4) {
+  if (pathHistory.length >= 4) {
     warnings.push("Upprepade rörelsemönster — troligen systematisk ISR-täckning av området.");
   }
-  const waypointNearBorder = drone.waypoints.some(
+  const waypointNearBorder = waypoints.some(
     (wp) => distanceToEEZ({ lat: wp.lat, lng: wp.lng }) < 50,
   );
   if (waypointNearBorder) {
     warnings.push("Waypoints pekar mot svensk EEZ — trolig avsikt att övervaka eller penetrera gränsen.");
   }
 
-  const borderAlert = buildBorderAlert(drone.position, drone.pathHistory, undefined, drone.type);
+  const borderAlert = buildBorderAlert(drone.position, pathHistory, undefined, drone.type);
   if (borderAlert) {
     warnings.unshift(
       `⚠ ${Math.round(borderAlert.distanceKm)} km från svensk ${borderAlert.zone}${borderAlert.approaching ? " — rör sig mot gränsen" : ""}`,
