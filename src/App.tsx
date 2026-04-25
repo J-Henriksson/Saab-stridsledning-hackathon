@@ -22,6 +22,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GameProvider } from "@/context/GameContext";
 import { BaseFilterProvider } from "@/context/BaseFilterContext";
+import { RoleSelect } from "./pages/RoleSelect.tsx";
 import Index from "./pages/Index.tsx";
 import ATO from "./pages/ATO.tsx";
 import AircraftDashboard from "./pages/AircraftDashboard.tsx";
