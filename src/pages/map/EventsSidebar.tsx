@@ -176,9 +176,10 @@ interface Props {
   events: GameEvent[];
   allEvents: GameEvent[];
   bases: BaseOption[];
+  onEventClick?: (event: GameEvent) => void;
 }
 
-export function EventsSidebar({ events, allEvents, bases }: Props) {
+export function EventsSidebar({ events, allEvents, bases, onEventClick }: Props) {
   const { focusedBaseId, filterLevel, clearFilter } = useBaseFilter();
   const [open, setOpen]           = useState(true);
   const [typeTab, setTypeTab]     = useState<EventTypeFilter>("all");
@@ -368,7 +369,8 @@ export function EventsSidebar({ events, allEvents, bases }: Props) {
                         initial={{ opacity: 0, y: -4 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.15 }}
-                        className={`px-3 py-2.5 border-b border-border/30 border-l-2 ${meta.borderColor} ${meta.bgColor}`}
+                        onClick={onEventClick ? () => onEventClick(event) : undefined}
+                        className={`px-3 py-2.5 border-b border-border/30 border-l-2 ${meta.borderColor} ${meta.bgColor} ${onEventClick ? "cursor-pointer hover:bg-muted/30 transition-colors" : ""}`}
                       >
                         {/* Top row: icon + type badge + scope badge + time */}
                         <div className="flex items-center gap-1.5 mb-1.5">

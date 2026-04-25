@@ -831,9 +831,168 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "SET_DRONE_OVERLAY":
       return setDroneOverlay(state, action.droneId, action.rangeRadiusVisible, action.connectionLineVisible);
 
+    case "SET_CLOCK_MULTIPLIER":
+      return { ...state, clockMultiplier: Math.max(0.1, action.value) };
+
+    case "SCENARIO_ARM":
+      return handleScenarioArm(state);
+
+    case "SCENARIO_DISARM":
+      return { ...state, scenario: undefined, clockMultiplier: 1 };
+
+    case "SCENARIO_SET_BEAT": {
+      if (!state.scenario) return state;
+      const sec = absoluteGameSec(state);
+      const stamp =
+        action.beat === "stage1" ? { stage1AtSec: sec } :
+        action.beat === "stage2" ? { stage2AtSec: sec } :
+        action.beat === "stage3" ? { stage3AtSec: sec } :
+        action.beat === "stage4" ? { stage4AtSec: sec } :
+        action.beat === "stage5" ? { stage5AtSec: sec } : {};
+      return { ...state, scenario: { ...state.scenario, beat: action.beat, ...stamp } };
+    }
+
+    case "SCENARIO_ADD_NAVAL":
+      return { ...state, navalUnits: [...state.navalUnits, action.unit] };
+
+    case "SCENARIO_ADD_ENEMY_ENTITY":
+      return { ...state, enemyEntities: [...state.enemyEntities, action.entity] };
+
+    case "SCENARIO_REMOVE_NAVAL":
+      return { ...state, navalUnits: state.navalUnits.filter((n) => n.id !== action.id) };
+
+    case "SCENARIO_REMOVE_ENEMY_ENTITY":
+      return { ...state, enemyEntities: state.enemyEntities.filter((e) => e.id !== action.id) };
+
+    case "SCENARIO_PATCH_ENTITY": {
+      const newPos = action.position;
+      if (action.targetKind === "naval") {
+        return {
+          ...state,
+          navalUnits: state.navalUnits.map((n) => {
+            if (n.id !== action.id) return n;
+            const next: typeof n = { ...n };
+            if (newPos) {
+              next.position = newPos;
+              next.lastKnownPosition = newPos;
+              next.lastDetectedAt = { day: state.day, hour: state.hour, minute: state.minute };
+              next.pathHistory = [...(n.pathHistory ?? []), newPos].slice(-60);
+            }
+            if (action.heading !== undefined) {
+              next.movement = { ...n.movement, heading: action.heading };
+            }
+            return next;
+          }),
+        };
+      }
+      if (action.targetKind === "enemy_entity") {
+        return {
+          ...state,
+          enemyEntities: state.enemyEntities.map((e) =>
+            e.id === action.id && newPos ? { ...e, coords: newPos } : e
+          ),
+        };
+      }
+      // unit
+      const updateUnitPos = (u: Unit): Unit => {
+        if (u.id !== action.id) return u;
+        const next = { ...u } as Unit;
+        if (newPos) {
+          next.position = newPos;
+          next.pathHistory = [...(u.pathHistory ?? []), newPos].slice(-60);
+        }
+        if (action.heading !== undefined) {
+          next.movement = { ...u.movement, heading: action.heading };
+        }
+        return next;
+      };
+      return {
+        ...state,
+        deployedUnits: state.deployedUnits.map(updateUnitPos),
+        bases: state.bases.map((b) => ({ ...b, units: b.units.map(updateUnitPos) })),
+      };
+    }
+
+    case "SCENARIO_PATCH_FRIENDLY_FIGHTER": {
+      const patch = (u: Unit): Unit => {
+        if (u.id !== action.id || u.category !== "aircraft") return u;
+        return { ...u, ...action.updates } as Unit;
+      };
+      return {
+        ...state,
+        deployedUnits: state.deployedUnits.map(patch),
+        bases: state.bases.map((b) => ({ ...b, units: b.units.map(patch) })),
+      };
+    }
+
+    case "SCENARIO_SET_BOGEY_EVENT_ID":
+      if (!state.scenario) return state;
+      return { ...state, scenario: { ...state.scenario, bogeyEventId: action.eventId } };
+
+    case "SCENARIO_TICK_CLOCK_LOCAL":
+      // Reserved for future client-side counters; no-op in engine.
+      return state;
+
     default:
       return state;
   }
+}
+
+/** Compute absolute game-seconds since day-1 00:00:00 (stable monotonic counter). */
+export function absoluteGameSec(state: GameState): number {
+  return ((state.day - 1) * 24 * 3600) + state.hour * 3600 + state.minute * 60 + state.second;
+}
+
+function handleScenarioArm(state: GameState): GameState {
+  if (state.scenario && state.scenario.beat !== "done") return state;
+  const sec = absoluteGameSec(state);
+  const triggerEventId = `scn-baltic-trigger-${uuid().slice(0, 6)}`;
+  const ts = `Dag ${state.day} ${String(state.hour).padStart(2, "0")}:${String(state.minute).padStart(2, "0")}`;
+  const triggerEvent: GameEvent = {
+    id: triggerEventId,
+    timestamp: ts,
+    type: "warning",
+    message: "Möjlig okänd ytkontakt — Östersjön SE. AI rekommenderar översyn.",
+  };
+
+  // Spawn the three hostile vessels immediately so they appear in HÄNDELSER
+  // and on the map at the same moment as the trigger event.
+  const SHIP_DEFS: { id: string; name: string; kind: NavalUnit["kind"]; pos: { lat: number; lng: number }; heading: number }[] = [
+    { id: "scn-baltic-ship-01", name: "RFS Karakurt-22800", kind: "corvette", pos: { lat: 55.05, lng: 20.10 }, heading: 320 },
+    { id: "scn-baltic-ship-02", name: "RFS Steregushchiy-20380", kind: "frigate", pos: { lat: 55.18, lng: 20.32 }, heading: 320 },
+    { id: "scn-baltic-ship-03", name: "RFS Ropucha", kind: "amphib", pos: { lat: 54.92, lng: 20.45 }, heading: 320 },
+  ];
+  const newNaval: NavalUnit[] = SHIP_DEFS.map((s) => ({
+    id: s.id,
+    name: s.name,
+    kind: s.kind,
+    affiliation: "hostile",
+    position: s.pos,
+    patrol: { center: s.pos, radiusKm: 30, speedKts: 18, axisDeg: 320, clockwise: true, aspect: 0.5 },
+    movement: { state: "moving", speed: 18, heading: s.heading },
+    pathHistory: [],
+    threatLevel: "high",
+    lastDetectedAt: { day: state.day, hour: state.hour, minute: state.minute },
+    lastKnownPosition: s.pos,
+  }));
+
+  const scenario: GameState["scenario"] = {
+    id: "baltic-incursion",
+    beat: "armed",
+    startedAtSec: sec,
+    triggerEventId,
+    hostileNavalIds: SHIP_DEFS.map((s) => s.id),
+    hostileAircraftIds: [],
+    friendlyInterceptIds: ["scn-jas-rb-01", "scn-jas-rb-02"],
+    satelliteEtaSec: 4 * 60 + 12,
+    recommendedChosen: false,
+  };
+  return {
+    ...state,
+    scenario,
+    events: [triggerEvent, ...state.events].slice(0, 200),
+    navalUnits: [...state.navalUnits, ...newNaval],
+  };
 }
 
 function handleTick(state: GameState, seconds: number): GameState {

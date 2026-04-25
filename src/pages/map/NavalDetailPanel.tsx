@@ -3,6 +3,7 @@ import type { NavalUnit, ThreatLevel } from "@/types/game";
 import { analyzeNavalUnit } from "@/lib/enemyAnalysis";
 import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
 import { WarningList, BorderAlertPanel } from "@/components/game/EnemyAnalysisPanels";
+import { ScenarioSensorPanel } from "@/scenarios/baltic-incursion/sensorPanel";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",   cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -123,6 +124,10 @@ export function NavalDetailPanel({ unit }: { unit: NavalUnit }) {
           {analysis.warnings.length > 0 && <WarningList warnings={analysis.warnings} />}
           {analysis.borderAlert && <BorderAlertPanel alert={analysis.borderAlert} />}
         </div>
+      )}
+
+      {unit.affiliation === "hostile" && (
+        <ScenarioSensorPanel position={unit.position} intelId={unit.id} />
       )}
     </div>
   );

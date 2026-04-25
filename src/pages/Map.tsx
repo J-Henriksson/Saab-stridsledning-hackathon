@@ -84,6 +84,10 @@ import { gameReducer } from "@/core/engine";
 import { initialGameState } from "@/data/initialGameState";
 import { usePlanTabs, executePlan } from "@/hooks/usePlanTabs";
 import type { RadarUnit } from "@/types/units";
+import { useScenario } from "@/scenarios/baltic-incursion/useScenario";
+import { ScenarioBrief } from "@/scenarios/baltic-incursion/brief";
+import { AIActionCard } from "@/scenarios/baltic-incursion/actionCard";
+import { ScenarioOverlay } from "@/scenarios/baltic-incursion/scenarioOverlay";
 
 const PLACEMENT_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 28 28'%3E%3Cpath d='M14 2C9.03 2 5 6.03 5 11c0 6.56 7.4 14.06 8.09 14.75a1.3 1.3 0 0 0 1.82 0C15.6 25.06 23 17.56 23 11c0-4.97-4.03-9-9-9Z' fill='%2360a5fa' stroke='%230c234c' stroke-width='1.6'/%3E%3Ccircle cx='14' cy='11' r='3.6' fill='%23dbeafe' stroke='%230c234c' stroke-width='1.2'/%3E%3C/svg%3E") 14 26, auto`;
 
@@ -275,6 +279,32 @@ export default function MapPage() {
   const [boundaryVis, setBoundaryVis] = useState<BoundaryVisibility>({ eez: true, fir: true, land: true });
   const [iconStyle, setIconStyle] = useState<"custom" | "nato">("custom");
 
+  // ── Scripted Baltic-incursion scenario ─────────────────────────────────
+  const flyToScenario = useCallback((pos: { lat: number; lng: number; zoom?: number }) => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    map.flyTo({
+      center: [pos.lng, pos.lat],
+      zoom: pos.zoom ?? 6,
+      duration: 1400,
+      essential: true,
+    });
+  }, []);
+  const scenario = useScenario({ state, dispatch, flyTo: flyToScenario });
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [actionCardOpen, setActionCardOpen] = useState(false);
+  const [scnHoveredContactId, setScnHoveredContactId] = useState<string | null>(null);
+  // Brief opens at stage1, closes when operator dismisses or scenario advances past stage3.
+  useEffect(() => {
+    const beat = state.scenario?.beat;
+    if (beat === "stage1" || beat === "stage2") setBriefOpen((prev) => prev || beat === "stage1");
+    if (beat === "stage3") setBriefOpen(false);
+    if (beat === "stage3") setActionCardOpen(true);
+    if (beat === "stage4" || beat === "stage5" || beat === "done" || beat === undefined) {
+      setActionCardOpen(false);
+    }
+  }, [state.scenario?.beat]);
+
   // Compute which airbase IDs should show rings:
   //   - "show all" toggle on → null (MarkerRingsLayer draws all)
   //   - focused base set     → only that base
@@ -288,9 +318,11 @@ export default function MapPage() {
     return ids;
   }, [showAllBaseRings, focusedBaseId, selected]);
 
-  // Merge live game events with static dummy events (dummy comes first so it's always present)
+  // Merge live game events with static dummy events. Live events come first
+  // so newly-dispatched events (scenario triggers, mission updates, etc.) land
+  // at the top of HÄNDELSER, where operators look first.
   const allEvents = useMemo(
-    () => [...DUMMY_EVENTS, ...state.events],
+    () => [...state.events, ...DUMMY_EVENTS],
     [state.events]
   );
 
@@ -1970,6 +2002,13 @@ export default function MapPage() {
               <RadarPulseLayer units={enrichedRadarUnits} />
             )}
 
+            {/* Baltic-incursion scenario visualisations (vectors, group bbox,
+             *  radar→contact link, spawn pulse, hover ring, Kalibr range). */}
+            <ScenarioOverlay
+              state={state}
+              hoveredContactId={scnHoveredContactId}
+            />
+
             {/* Firing / engagement range ring(s) */}
             <SelectionRangeRing
               selectedUnit={selectedUnit}
@@ -2263,8 +2302,9 @@ export default function MapPage() {
             );
           })()}
 
-          {/* Coordinate HUD + legend — bottom left, above aircraft bar */}
-          <div className="absolute bottom-14 left-3 z-10 flex flex-col gap-2">
+          {/* Coordinate HUD + legend — bottom left, above aircraft markers
+           *  (UnitsLayer airborne markers use zIndex 50). */}
+          <div className="absolute bottom-14 left-3 z-[70] flex flex-col gap-2">
             <CoordinateHUD cursor={hudCursor} />
 
             <div
@@ -2330,9 +2370,30 @@ export default function MapPage() {
           events={filteredEvents}
           allEvents={allEvents}
           bases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+          onEventClick={(ev) => {
+            scenario.handleEventClick(ev);
+          }}
         />
 
       </div>
+
+      {/* Scripted-scenario overlays */}
+      <ScenarioBrief
+        open={briefOpen}
+        onClose={() => setBriefOpen(false)}
+        onSelectContact={(id) => setSelected({ kind: "naval", id })}
+        onHoverContact={setScnHoveredContactId}
+      />
+      <AIActionCard
+        open={actionCardOpen}
+        onAccept={() => {
+          scenario.acceptInterceptOrder();
+          setActionCardOpen(false);
+        }}
+        onClose={() => setActionCardOpen(false)}
+        onSelectBogey={(id) => setSelected({ kind: "enemy_entity", id })}
+        onHoverBogey={setScnHoveredContactId}
+      />
 
       {/* AI Plan Review Modal */}
       {showPlanReview && (

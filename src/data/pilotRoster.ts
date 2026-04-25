@@ -26,4 +26,22 @@ export const PILOT_ROSTER: Record<string, PilotInfo> = {
   GF04: { name: "Major Petra Holm",       callsign: "SABRE",  rank: "Major (OF-3)",      id: "730808-4412", contact: "Fredrik Holm · +46 70 990 7723",      awards: ["FM Förtjänstmedalj i silver", "Nordic EA 2022"] },
   GF05: { name: "Kapten Anders Falk",     callsign: "RAPTOR", rank: "Kapten (OF-2)",     id: "881117-6634", contact: "Maja Falk · +46 73 556 2290",         awards: ["Nordic DCA 2023"] },
   GF06: { name: "Löjtnant Karin Lund",    callsign: "ARROW",  rank: "Löjtnant (OF-1)",   id: "000303-9910", contact: "Sven Lund · +46 76 889 3340",         awards: [] },
+
+  // ── F17 Ronneby CAP-pair (scenario interceptors) ──────────────────────────
+  "GE-RB-01": {
+    name: "Överstelöjtnant Annika Hagström",
+    callsign: "FALCON",
+    rank: "Överstelöjtnant (OF-4)",
+    id: "740912-1147",
+    contact: "Mikael Hagström · +46 70 224 8801",
+    awards: ["FM Förtjänstmedalj i guld", "Baltic Air Policing 2024 — Lead Pilot", "NATO Article 5 Medal", "Utlandstjänst Mali"],
+  },
+  "GE-RB-02": {
+    name: "Kapten Johan Wennberg",
+    callsign: "TALON",
+    rank: "Kapten (OF-2)",
+    id: "890604-3325",
+    contact: "Sara Wennberg · +46 73 118 5562",
+    awards: ["Nordic DCA 2024", "Flygvapnets Merit 2025"],
+  },
 };

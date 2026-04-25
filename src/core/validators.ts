@@ -176,6 +176,18 @@ export function validateAction(state: GameState, action: GameAction): Validation
     case "REMOVE_TACTICAL_ZONE":
     case "SET_OVERLAY_VISIBILITY":
     case "ADD_EVENT":
+    case "SET_CLOCK_MULTIPLIER":
+    case "SCENARIO_ARM":
+    case "SCENARIO_DISARM":
+    case "SCENARIO_SET_BEAT":
+    case "SCENARIO_ADD_NAVAL":
+    case "SCENARIO_ADD_ENEMY_ENTITY":
+    case "SCENARIO_REMOVE_NAVAL":
+    case "SCENARIO_REMOVE_ENEMY_ENTITY":
+    case "SCENARIO_PATCH_ENTITY":
+    case "SCENARIO_PATCH_FRIENDLY_FIGHTER":
+    case "SCENARIO_SET_BOGEY_EVENT_ID":
+    case "SCENARIO_TICK_CLOCK_LOCAL":
       return { valid: true };
 
     case "REBASE_AIRCRAFT": {

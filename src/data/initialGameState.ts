@@ -506,6 +506,57 @@ const CAP_GRIPEN_2: AircraftUnit = {
   pathHistory: [],
 };
 
+// CAP pair over Blekinge — pre-positioned south of Ronneby, low-and-slow racetrack.
+const CAP_RONNEBY_1: AircraftUnit = {
+  ...createAircraftUnit({
+    id: "scn-jas-rb-01",
+    tailNumber: "GE-RB-01",
+    name: "GE-RB-01",
+    type: "GripenE",
+    role: "fighter",
+    position: { lat: 55.95, lng: 15.65 },
+    currentBase: "FOB_S",
+  }),
+  parentBaseId: "FOB_S",
+  status: "on_mission",
+  currentMission: "DCA",
+  movement: { state: "airborne", speed: 380 },
+  patrol: {
+    center: { lat: 55.85, lng: 15.80 },
+    radiusKm: 70,
+    speedKts: 380,
+    axisDeg: 90,
+    clockwise: true,
+    aspect: 0.5,
+  },
+  pathHistory: [],
+};
+
+const CAP_RONNEBY_2: AircraftUnit = {
+  ...createAircraftUnit({
+    id: "scn-jas-rb-02",
+    tailNumber: "GE-RB-02",
+    name: "GE-RB-02",
+    type: "GripenE",
+    role: "fighter",
+    position: { lat: 55.85, lng: 15.95 },
+    currentBase: "FOB_S",
+  }),
+  parentBaseId: "FOB_S",
+  status: "on_mission",
+  currentMission: "DCA",
+  movement: { state: "airborne", speed: 370 },
+  patrol: {
+    center: { lat: 55.85, lng: 15.80 },
+    radiusKm: 70,
+    speedKts: 370,
+    axisDeg: 90,
+    clockwise: false,
+    aspect: 0.5,
+  },
+  pathHistory: [],
+};
+
 // AEW orbiting high over Stockholm–Uppland at long range — wide E-W oval.
 const GLOBAL_EYE_AEW: AircraftUnit = {
   ...createAircraftUnit({
@@ -634,41 +685,8 @@ const ISR_DRONE_GOTLAND = {
   pathHistory: [],
 };
 
-// ── Naval units (hostile vessels + one friendly picket) ───────────────────
+// ── Naval units (one friendly picket; hostile vessels are scenario-spawned) ─
 const INITIAL_NAVAL_UNITS: NavalUnit[] = [
-  {
-    id: "red-ship-01",
-    name: "RFS Grozny",
-    kind: "corvette",
-    affiliation: "hostile",
-    position: { lat: 55.4, lng: 19.3 },
-    patrol: { center: { lat: 55.2, lng: 19.5 }, radiusKm: 70, speedKts: 18, axisDeg: 60, clockwise: true, aspect: 0.5 },
-    movement: { state: "moving", speed: 18 },
-    pathHistory: [],
-    threatLevel: "high",
-  },
-  {
-    id: "red-ship-02",
-    name: "RFS Kilo-636",
-    kind: "submarine",
-    affiliation: "hostile",
-    position: { lat: 55.8, lng: 18.2 },
-    patrol: { center: { lat: 55.7, lng: 18.1 }, radiusKm: 50, speedKts: 8, axisDeg: 30, clockwise: false, aspect: 0.6 },
-    movement: { state: "moving", speed: 8 },
-    pathHistory: [],
-    threatLevel: "high",
-  },
-  {
-    id: "red-ship-03",
-    name: "RFS Ropucha",
-    kind: "amphib",
-    affiliation: "hostile",
-    position: { lat: 56.5, lng: 19.8 },
-    patrol: { center: { lat: 56.4, lng: 19.9 }, radiusKm: 55, speedKts: 14, axisDeg: 90, clockwise: true, aspect: 0.45 },
-    movement: { state: "moving", speed: 14 },
-    pathHistory: [],
-    threatLevel: "medium",
-  },
   {
     id: "blue-picket-01",
     name: "HMS Visby",
@@ -736,12 +754,9 @@ export const initialGameState: GameState = {
     SKYM_11,
     SKYM_15,
     SKYM_16,
-    SGBM_01,
-    RED_UAV_01,
-    CAP_GRIPEN_1,
-    CAP_GRIPEN_2,
+    CAP_RONNEBY_1,
+    CAP_RONNEBY_2,
     GLOBAL_EYE_AEW,
-    ISR_DRONE_GOTLAND,
   ],
   successfulMissions: 0,
   failedMissions: 0,

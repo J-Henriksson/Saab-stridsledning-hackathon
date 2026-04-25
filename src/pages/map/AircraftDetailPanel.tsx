@@ -4,6 +4,8 @@ import { Row } from "./StatBox";
 import { Plane, RotateCcw, User } from "lucide-react";
 import { PILOT_ROSTER } from "@/data/pilotRoster";
 import { TravelRangeSection, type TravelRangeMode, type BattleIntelSummary } from "./TravelRangeSection";
+import { ScenarioSensorPanel } from "@/scenarios/baltic-incursion/sensorPanel";
+import { FIGHTER_INTEL } from "@/scenarios/baltic-incursion/intel";
 
 export function AircraftDetailPanel({
   aircraft,
@@ -166,6 +168,14 @@ export function AircraftDetailPanel({
           mode={travelRange}
           onChange={onTravelRangeChange}
           intelSummary={battleIntelSummary}
+        />
+      )}
+
+      {FIGHTER_INTEL[aircraft.id] && (
+        <ScenarioSensorPanel
+          position={aircraft.position}
+          intelId={aircraft.id}
+          ownSensorRangeKm={180}
         />
       )}
 

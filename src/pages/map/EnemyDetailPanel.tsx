@@ -3,6 +3,7 @@ import type { EnemyBase, EnemyEntity, ThreatLevel, OperationalStatus, EnemyBaseC
 import { analyzeEnemyBase, analyzeEnemyEntity } from "@/lib/enemyAnalysis";
 import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
 import { WarningList, BorderAlertPanel } from "@/components/game/EnemyAnalysisPanels";
+import { ScenarioSensorPanel } from "@/scenarios/baltic-incursion/sensorPanel";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",    cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -189,6 +190,8 @@ export function EnemyEntityDetailPanel({ entity }: { entity: EnemyEntity }) {
           </div>
         );
       })()}
+
+      <ScenarioSensorPanel position={entity.coords} intelId={entity.id} />
     </div>
   );
 }

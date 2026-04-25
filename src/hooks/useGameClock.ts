@@ -11,10 +11,12 @@ export function useGameClock(state: GameState, dispatch: Dispatch<GameAction>) {
 
     // At slow speeds (1×) tick once per second; at fast speeds cap at 60fps
     const tickMs = Math.max(1_000 / state.gameSpeed, FRAME_MS);
-    // How many game-seconds to advance each tick
-    const seconds = Math.max(1, Math.round(state.gameSpeed * tickMs / 1_000));
+    // Scripted demos can raise this hidden multiplier to advance sim time
+    // faster than the user-visible gameSpeed slider would suggest.
+    const mult = state.clockMultiplier ?? 1;
+    const seconds = Math.max(1, Math.round(state.gameSpeed * mult * tickMs / 1_000));
 
     const id = setInterval(() => dispatch({ type: "TICK", seconds }), tickMs);
     return () => clearInterval(id);
-  }, [state.isRunning, state.gameSpeed, dispatch]);
+  }, [state.isRunning, state.gameSpeed, state.clockMultiplier, dispatch]);
 }

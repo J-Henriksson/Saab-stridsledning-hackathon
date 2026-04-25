@@ -245,6 +245,39 @@ export interface ScenarioDay {
   policyRestrictions: string[];
 }
 
+// ── Scenario runtime (scripted demo controller) ───────────────────────────
+export type ScenarioBeat =
+  | "armed"
+  | "stage1"        // operator clicked trigger event; boats appear
+  | "stage2"        // bogeys revealed
+  | "stage3"        // operator clicked aircraft event; awaiting decision
+  | "stage4"        // intercept ordered, units transit
+  | "stage5"        // bogeys turning south
+  | "done";
+
+export interface ScenarioRuntimeState {
+  id: "baltic-incursion";
+  beat: ScenarioBeat;
+  /** absolute game-seconds when the scenario armed (sec since day1 06:00). */
+  startedAtSec: number;
+  /** absolute game-seconds when each milestone fired. */
+  stage1AtSec?: number;
+  stage2AtSec?: number;
+  stage3AtSec?: number;
+  stage4AtSec?: number;
+  stage5AtSec?: number;
+  triggerEventId: string;
+  bogeyEventId?: string;
+  hostileNavalIds: string[];
+  hostileAircraftIds: string[];
+  friendlyInterceptIds: string[];
+  /** seconds until the next satellite pass, used by detail panels. */
+  satelliteEtaSec: number;
+  recommendedChosen: boolean;
+}
+
+type GeoPosition = import("./units").GeoPosition;
+
 // ── Game actions (discriminated union) ────────────────────────────────────
 export type GameAction =
   | { type: "TICK"; seconds: number }
@@ -307,7 +340,19 @@ export type GameAction =
   | { type: "LAUNCH_DRONE"; droneId: string; waypoints: import("./units").DroneWaypoint[] }
   | { type: "RECALL_DRONE"; droneId: string }
   | { type: "UPDATE_DRONE_WAYPOINTS"; droneId: string; waypoints: import("./units").DroneWaypoint[] }
-  | { type: "SET_DRONE_OVERLAY"; droneId: string; rangeRadiusVisible?: boolean; connectionLineVisible?: boolean };
+  | { type: "SET_DRONE_OVERLAY"; droneId: string; rangeRadiusVisible?: boolean; connectionLineVisible?: boolean }
+  | { type: "SET_CLOCK_MULTIPLIER"; value: number }
+  | { type: "SCENARIO_ARM" }
+  | { type: "SCENARIO_DISARM" }
+  | { type: "SCENARIO_SET_BEAT"; beat: ScenarioBeat }
+  | { type: "SCENARIO_ADD_NAVAL"; unit: NavalUnit }
+  | { type: "SCENARIO_ADD_ENEMY_ENTITY"; entity: EnemyEntity }
+  | { type: "SCENARIO_REMOVE_NAVAL"; id: string }
+  | { type: "SCENARIO_REMOVE_ENEMY_ENTITY"; id: string }
+  | { type: "SCENARIO_PATCH_ENTITY"; targetKind: "naval" | "enemy_entity" | "unit"; id: string; position?: GeoPosition; heading?: number }
+  | { type: "SCENARIO_PATCH_FRIENDLY_FIGHTER"; id: string; updates: Partial<import("./units").AircraftUnit> }
+  | { type: "SCENARIO_SET_BOGEY_EVENT_ID"; eventId: string }
+  | { type: "SCENARIO_TICK_CLOCK_LOCAL"; deltaSec: number };
 
 // ── Core interfaces ───────────────────────────────────────────────────────
 // `Aircraft` is now an alias for the unit-model variant. Kept as an alias
@@ -379,6 +424,12 @@ export interface GameState {
   navalUnits: NavalUnit[];
   /** Per-enemy-base predicted stockpile / intent / activity log. */
   intelReports: Record<string, IntelReport>;
+  /** Hidden multiplier applied to TICK seconds. Defaults to 1; scripted demos
+   *  raise it during transit beats so action lands faster without revealing
+   *  the scenario via the gameSpeed slider. */
+  clockMultiplier?: number;
+  /** Active scripted scenario state — undefined when no scenario is running. */
+  scenario?: ScenarioRuntimeState;
 }
 
 export type AARActionType =
