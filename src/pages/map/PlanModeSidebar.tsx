@@ -101,8 +101,43 @@ export function PlanModeSidebar({ state, dispatch, onStartPlacement, onFinalizeP
         </div>
       </div>
 
+      {/* Readiness summary */}
+      <div className="shrink-0 px-4 pt-3 pb-0 border-t border-border">
+        <div className="grid grid-cols-3 gap-1.5 mb-3">
+          {[
+            {
+              label: "Fiender",
+              value: state.enemyBases.length + state.enemyEntities.length,
+              warn: state.enemyBases.some((b) => b.threatLevel === "high"),
+              color: state.enemyBases.some((b) => b.threatLevel === "high") ? "#f87171" : "#94a3b8",
+            },
+            {
+              label: "Egna",
+              value: state.deployedUnits.filter((u) => u.affiliation === "friend").length + state.friendlyMarkers.length,
+              warn: false,
+              color: "#60a5fa",
+            },
+            {
+              label: "Vägbaser",
+              value: state.roadBases.length,
+              warn: state.roadBases.length === 0 && state.enemyBases.length >= 2,
+              color: state.roadBases.length > 0 ? "#4ade80" : "#475569",
+            },
+          ].map(({ label, value, warn, color }) => (
+            <div
+              key={label}
+              className="rounded p-1.5 text-center"
+              style={{ background: warn ? "rgba(239,68,68,0.08)" : "rgba(100,116,139,0.08)", border: `1px solid ${warn ? "rgba(239,68,68,0.25)" : "rgba(100,116,139,0.18)"}` }}
+            >
+              <div className="text-[14px] font-mono font-bold" style={{ color }}>{value}</div>
+              <div className="text-[8px] font-mono uppercase tracking-widest mt-0.5" style={{ color: warn ? "#f87171" : "#64748b" }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Finalize plan button */}
-      <div className="shrink-0 p-4 border-t border-border">
+      <div className="shrink-0 px-4 pb-4">
         <button
           onClick={onFinalizePlan}
           disabled={!hasAnyPlanData}

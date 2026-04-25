@@ -12,28 +12,28 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
 
   const concerns: string[] = [];
 
-  const criticalBases = state.enemyBases.filter((b) => b.threatLevel === "critical");
-  const highBases = state.enemyBases.filter((b) => b.threatLevel === "high");
-  const enemySAM = state.enemyBases.filter((b) => b.category === "sam_site");
+  const highBases    = state.enemyBases.filter((b) => b.threatLevel === "high");
+  const mediumBases  = state.enemyBases.filter((b) => b.threatLevel === "medium");
+  const enemySAM     = state.enemyBases.filter((b) => b.category === "sam_site");
   const enemyAirfields = state.enemyBases.filter((b) => b.category === "airfield");
-  const enemyEntities = state.enemyEntities;
-  const friendlyUnits = state.deployedUnits.filter((u) => u.affiliation === "friend");
-  const radarUnits = friendlyUnits.filter(
-    (u) => u.type?.toLowerCase().includes("radar") || u.type?.toLowerCase().includes("ps-")
+  const enemyEntities  = state.enemyEntities;
+  const friendlyUnits  = state.deployedUnits.filter((u) => u.affiliation === "friend");
+  const radarUnits     = friendlyUnits.filter(
+    (u) => u.type?.toLowerCase().includes("radar") || u.type?.toLowerCase().includes("ps-") || u.category === "radar"
   );
-  const roadBases = state.roadBases;
+  const roadBases          = state.roadBases;
   const operativeRoadBases = roadBases.filter((r) => r.status === "Operativ");
 
   // --- Concern checks ---
-  if (criticalBases.length > 0) {
+  if (highBases.length >= 2) {
     concerns.push(
-      `${criticalBases.length} kritisk${criticalBases.length > 1 ? "a" : ""} fiendeposition${criticalBases.length > 1 ? "er" : ""} identifierad${criticalBases.length > 1 ? "e" : ""} — prioritera neutralisering omedelbart.`
+      `${highBases.length} fiendepositioner med hög hotnivå identifierade — prioritera SEAD och suppressionsinsatser innan anfallsoperationer påbörjas.`
     );
   }
 
   if (enemySAM.length > 0 && radarUnits.length === 0) {
     concerns.push(
-      `${enemySAM.length} fientlig${enemySAM.length > 1 ? "a" : ""} luftvärnssystem utan täckning från egna radarsystem — SEAD-insats rekommenderas före anfallsoperationer.`
+      `${enemySAM.length} fientligt luftvärnssystem utan täckning från egna radarsystem — SEAD-insats rekommenderas starkt före anfallsoperationer.`
     );
   }
 
@@ -58,7 +58,7 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
 
   if (enemyAirfields.length > 0 && friendlyUnits.length < 3) {
     concerns.push(
-      `${enemyAirfields.length} fientlig${enemyAirfields.length > 1 ? "a" : ""} flygbas${enemyAirfields.length > 1 ? "er" : ""} aktiv${enemyAirfields.length > 1 ? "a" : ""} — otillräckliga egna flygtillgångar för luftöverlägsenhet.`
+      `${enemyAirfields.length} fientlig flygbas${enemyAirfields.length > 1 ? "er" : ""} aktiv — otillräckliga egna flygtillgångar för luftöverlägsenhet.`
     );
   }
 
@@ -70,12 +70,12 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
 
   // --- Determine overall type and recommendation ---
   const score =
-    (criticalBases.length > 0 ? -3 : 0) +
-    (highBases.length > 1 ? -2 : 0) +
-    (enemySAM.length > radarUnits.length ? -2 : 1) +
-    (roadBases.length >= 2 ? 2 : 0) +
-    (radarUnits.length >= 2 ? 2 : 0) +
-    (friendlyUnits.length >= 4 ? 2 : 0) +
+    (highBases.length >= 2 ? -3 : highBases.length === 1 ? -1 : 0) +
+    (mediumBases.length > 2 ? -1 : 0) +
+    (enemySAM.length > radarUnits.length ? -2 : radarUnits.length > 0 ? 1 : 0) +
+    (roadBases.length >= 2 ? 2 : roadBases.length === 1 ? 1 : 0) +
+    (radarUnits.length >= 2 ? 2 : radarUnits.length === 1 ? 1 : 0) +
+    (friendlyUnits.length >= 4 ? 2 : friendlyUnits.length >= 2 ? 1 : 0) +
     (state.enemyBases.length === 0 && state.enemyEntities.length === 0 ? -1 : 0);
 
   if (concerns.length === 0 && score >= 3) {
@@ -92,8 +92,8 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
       type: "warning",
       recommendation:
         `Stridsplanen innehåller ${concerns.length} identifierade brister som bör åtgärdas innan godkännande. ` +
-        (criticalBases.length > 0
-          ? "Kritiska fiendepositioner utan adekvat motåtgärd utgör en omedelbar operativ risk. "
+        (highBases.length >= 2
+          ? "Fiendepositioner med hög hotnivå utan adekvata motåtgärder utgör en omedelbar operativ risk. "
           : "") +
         "Överväg att revidera planen eller acceptera risken och fortsätta.",
       concerns,
