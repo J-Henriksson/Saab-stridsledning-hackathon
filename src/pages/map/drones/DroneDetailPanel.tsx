@@ -3,6 +3,9 @@ import { Radio, RotateCcw, Eye, Link, Plus, Trash2, Navigation } from "lucide-re
 import type { DroneUnit, DroneWaypoint } from "@/types/units";
 import { Row } from "@/pages/map/StatBox";
 import { uuid } from "@/core/uuid";
+import { analyzeEnemyDrone } from "@/lib/enemyAnalysis";
+import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
+import { WarningList, BorderAlertPanel } from "@/components/game/EnemyAnalysisPanels";
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   ready:             { label: "Klar",         cls: "text-status-green bg-status-green/10 border-status-green/40" },
@@ -33,6 +36,8 @@ export function DroneDetailPanel({
   planningMode,
 }: DroneDetailPanelProps) {
   const [localWaypoints, setLocalWaypoints] = useState<DroneWaypoint[]>(drone.waypoints ?? []);
+
+  const analysis = drone.affiliation === "hostile" ? analyzeEnemyDrone(drone) : null;
 
   const s = STATUS_MAP[drone.status] ?? STATUS_MAP.unavailable;
   const canRecall = drone.status === "on_mission" || drone.status === "returning";
@@ -239,6 +244,18 @@ export function DroneDetailPanel({
               {drone.waypoints[drone.currentWaypointIdx].lng.toFixed(4)}°E
             </div>
           )}
+        </div>
+      )}
+
+      {/* AI analysis — hostile drones only */}
+      {analysis && (
+        <div className="space-y-2 border-t border-border pt-4">
+          <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+            AI-analys
+          </div>
+          <ContextualRecommendation text={analysis.recommendation} type={analysis.type} />
+          {analysis.warnings.length > 0 && <WarningList warnings={analysis.warnings} />}
+          {analysis.borderAlert && <BorderAlertPanel alert={analysis.borderAlert} />}
         </div>
       )}
     </div>
