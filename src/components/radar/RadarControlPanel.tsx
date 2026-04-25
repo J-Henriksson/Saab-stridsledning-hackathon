@@ -1,7 +1,6 @@
 import React from 'react';
 import { ExtendedRadarUnit, RadarStatus } from '../../types/radarUnit';
 import { X, RotateCcw, Activity, Shield } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 interface RadarControlPanelProps {
@@ -15,24 +14,15 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
   onClose,
   onUpdate,
 }) => {
+  const effectiveBasePosition = unit.basePosition ?? unit.position;
+  const hasDistinctBasePosition = !!unit.basePosition;
   const hasMoved =
-    unit.position.lat !== unit.basePosition.lat ||
-    unit.position.lng !== unit.basePosition.lng;
+    hasDistinctBasePosition && (
+      unit.position.lat !== effectiveBasePosition.lat ||
+      unit.position.lng !== effectiveBasePosition.lng
+    );
 
-  const getStatusColor = (status: RadarStatus) => {
-    switch (status) {
-      case 'operational':
-        return 'bg-emerald-500 hover:bg-emerald-600';
-      case 'standby':
-        return 'bg-amber-500 hover:bg-amber-600';
-      case 'maintenance':
-        return 'bg-rose-500 hover:bg-rose-600';
-      default:
-        return 'bg-slate-500';
-    }
-  };
-
-  const getStatusLabel = (status: RadarStatus) => {
+const getStatusLabel = (status: RadarStatus) => {
     switch (status) {
       case 'operational':
         return 'Operativ';
@@ -46,9 +36,9 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-slate-900/40 text-slate-100 font-mono overflow-hidden">
+    <div className="flex-1 flex flex-col bg-slate-900 text-slate-100 font-mono overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-slate-800/50">
+      <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-slate-800">
         <div className="flex items-center gap-2">
           <Activity size={18} className="text-[#00E5C7]" />
           <h2 className="text-sm font-bold uppercase tracking-wider">
@@ -68,26 +58,40 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">Systemstatus</span>
-            <Badge className={getStatusColor(unit.status)}>
+            <Badge
+              className={{
+                operational: "bg-emerald-500 text-white",
+                standby: "bg-amber-500 text-white",
+                maintenance: "bg-rose-500 text-white",
+              }[unit.status] ?? "bg-slate-500 text-white"}
+            >
               {getStatusLabel(unit.status)}
             </Badge>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {(['operational', 'standby', 'maintenance'] as RadarStatus[]).map(
-              (s) => (
-                <Button
+            {(['operational', 'standby', 'maintenance'] as RadarStatus[]).map((s) => {
+              const active = unit.status === s;
+              const colors: Record<RadarStatus, string> = {
+                operational: "#10b981",
+                standby: "#f59e0b",
+                maintenance: "#f43f5e",
+              };
+              const c = colors[s];
+              return (
+                <button
                   key={s}
-                  variant={unit.status === s ? 'default' : 'outline'}
-                  size="sm"
-                  className={`text-[10px] h-8 ${
-                    unit.status === s ? getStatusColor(s) : 'border-slate-600 text-slate-300'
-                  }`}
                   onClick={() => onUpdate({ status: s })}
+                  className="h-8 rounded text-[10px] font-mono font-bold uppercase tracking-wider transition-all"
+                  style={{
+                    background: active ? `${c}22` : "rgba(100,116,139,0.1)",
+                    border: `1px solid ${active ? c : "rgba(100,116,139,0.3)"}`,
+                    color: active ? c : "#94a3b8",
+                  }}
                 >
                   {getStatusLabel(s)}
-                </Button>
-              )
-            )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -131,7 +135,7 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
         {/* Position Control */}
         <div className="space-y-3 border-t border-slate-700/50 pt-4">
           <div className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">Geografisk Position</div>
-          <div className="p-2 bg-slate-950/50 rounded border border-slate-800 text-[10px] space-y-1">
+          <div className="p-2 bg-slate-950 rounded border border-slate-700 text-[10px] space-y-1">
             <div className="flex justify-between">
               <span>Lat:</span>
               <span className="text-[#00E5C7]">{unit.position.lat.toFixed(4)}</span>
@@ -141,16 +145,27 @@ export const RadarControlPanel: React.FC<RadarControlPanelProps> = ({
               <span className="text-[#00E5C7]">{unit.position.lng.toFixed(4)}</span>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-[10px] h-8 border-slate-700 gap-2"
+          <button
             disabled={!hasMoved}
-            onClick={() => onUpdate({ position: unit.basePosition })}
+            onClick={() => onUpdate({ position: effectiveBasePosition })}
+            className="w-full flex items-center justify-center gap-2 h-8 rounded text-[10px] font-mono font-bold uppercase tracking-wider transition-all"
+            style={{
+              background: hasMoved ? "rgba(0,229,199,0.12)" : "rgba(100,116,139,0.12)",
+              border: `1px solid ${hasMoved ? "#00E5C7" : "rgba(100,116,139,0.4)"}`,
+              color: hasMoved ? "#00E5C7" : "#475569",
+              cursor: hasMoved ? "pointer" : "not-allowed",
+            }}
           >
             <RotateCcw size={12} />
             Återställ position
-          </Button>
+          </button>
+          <p className="text-[9px] font-mono text-center" style={{ color: hasMoved ? "#D7AB3A" : "#475569" }}>
+            {!hasDistinctBasePosition
+              ? "Basposition saknas för denna radarenhet"
+              : hasMoved
+                ? "⚠ Enheten har förflyttats från basposition"
+                : "Enheten är på sin basposition"}
+          </p>
         </div>
       </div>
 

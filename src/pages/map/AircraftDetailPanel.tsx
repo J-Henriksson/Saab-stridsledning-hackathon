@@ -1,18 +1,28 @@
-import { Aircraft } from "@/types/game";
+import { Aircraft, BaseType } from "@/types/game";
+import type { GeoPosition } from "@/types/units";
 import { Row } from "./StatBox";
 import { Plane, RotateCcw, User } from "lucide-react";
 import { PILOT_ROSTER } from "@/data/pilotRoster";
+import { TravelRangeSection, type TravelRangeMode, type BattleIntelSummary } from "./TravelRangeSection";
 
 export function AircraftDetailPanel({
   aircraft,
   onBack,
   onRecall,
   currentHour,
+  travelRange,
+  onTravelRangeChange,
+  travelRangeBases,
+  battleIntelSummary,
 }: {
   aircraft: Aircraft;
   onBack: () => void;
   onRecall?: () => void;
   currentHour?: number;
+  travelRange?: TravelRangeMode;
+  onTravelRangeChange?: (next: TravelRangeMode) => void;
+  travelRangeBases?: { id: BaseType; name: string; coords: GeoPosition }[];
+  battleIntelSummary?: BattleIntelSummary;
 }) {
   const statusMap: Record<string, { label: string; cls: string }> = {
     ready: { label: "Mission Capable", cls: "text-status-green bg-status-green/10 border-status-green/40" },
@@ -27,7 +37,7 @@ export function AircraftDetailPanel({
   };
   const s = statusMap[aircraft.status] ?? statusMap.unavailable;
 
-  const health = aircraft.health ?? 100;
+  const health = Math.round(aircraft.health ?? 100);
   const healthColor = health < 30 ? "#ef4444" : health < 60 ? "#eab308" : "#22c55e";
   const canRecall = aircraft.status === "on_mission";
   const pilot = PILOT_ROSTER[aircraft.tailNumber];
@@ -148,6 +158,16 @@ export function AircraftDetailPanel({
           />
         </div>
       </div>
+
+      {travelRange && onTravelRangeChange && travelRangeBases && (
+        <TravelRangeSection
+          unit={aircraft}
+          bases={travelRangeBases}
+          mode={travelRange}
+          onChange={onTravelRangeChange}
+          intelSummary={battleIntelSummary}
+        />
+      )}
 
       {/* Återkalla button */}
       <div className="mt-auto pt-2">

@@ -1,10 +1,13 @@
-import type { Unit, Affiliation, AirDefenseUnit } from "@/types/units";
+import type { Unit, Affiliation, AirDefenseUnit, GeoPosition } from "@/types/units";
 import { isAircraft, isDrone, isAirDefense, isGroundVehicle, isRadar } from "@/types/units";
+import { isTravelRangeUnit } from "@/utils/travelRange";
 import type { BaseType } from "@/types/game";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
 import { Link } from "react-router-dom";
 import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
+import { TravelRangeSection, type TravelRangeMode, type BattleIntelSummary } from "./TravelRangeSection";
 
 const AFFILIATIONS: Affiliation[] = ["friend", "hostile", "neutral", "unknown", "pending"];
 
@@ -12,21 +15,46 @@ export function UnitDetailPanel({
   unit,
   isAtBase,
   allBases,
+  travelRange,
+  onTravelRangeChange,
+  travelRangeBases,
+  battleIntelSummary,
 }: {
   unit: Unit;
   isAtBase: boolean;
   allBases: { id: BaseType; name: string }[];
+  travelRange?: TravelRangeMode;
+  onTravelRangeChange?: (next: TravelRangeMode) => void;
+  travelRangeBases?: { id: BaseType; name: string; coords: GeoPosition }[];
+  battleIntelSummary?: BattleIntelSummary;
 }) {
   const { dispatch } = useGame();
 
-  const health = unit.health ?? 100;
+  const health = Math.round(unit.health ?? 100);
   const healthColor = health < 30 ? "#ef4444" : health < 60 ? "#eab308" : "#22c55e";
   const fuel = "fuel" in unit ? unit.fuel : null;
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
       <div className="flex items-center gap-3 border-b border-border pb-3">
-        <UnitSymbol sidc={unit.sidc} size={48} />
+        {isAircraft(unit) ? (
+          <img
+            src={gripenSilhouette}
+            alt={unit.name}
+            width={48}
+            style={{
+              filter: unit.affiliation === "hostile"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(320deg)"
+                : unit.affiliation === "neutral"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(200deg)"
+                : unit.affiliation === "friend"
+                ? "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg)"
+                : "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(50deg)",
+            }}
+          />
+        ) : (
+          <UnitSymbol sidc={unit.sidc} size={48} />
+        )}
         <div className="min-w-0">
           <div className="text-sm font-bold text-foreground truncate">{unit.name}</div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-widest">
@@ -130,10 +158,10 @@ export function UnitDetailPanel({
             <div>
               <div className="flex justify-between text-[10px] font-mono mb-1">
                 <span className="text-slate-500">Systemhälsa</span>
-                <span style={{ color: healthColor }}>{unit.health}%</span>
+                <span style={{ color: healthColor }}>{Math.round(unit.health ?? 100)}%</span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                <div className="h-full rounded-full" style={{ width: `${unit.health}%`, background: healthColor }} />
+                <div className="h-full rounded-full" style={{ width: `${unit.health ?? 100}%`, background: healthColor }} />
               </div>
             </div>
 
@@ -228,6 +256,16 @@ export function UnitDetailPanel({
             {unit.emitting ? "Stäng av sändning" : "Börja sända"}
           </button>
         </section>
+      )}
+
+      {travelRange && onTravelRangeChange && travelRangeBases && isTravelRangeUnit(unit) && (
+        <TravelRangeSection
+          unit={unit}
+          bases={travelRangeBases}
+          mode={travelRange}
+          onChange={onTravelRangeChange}
+          intelSummary={battleIntelSummary}
+        />
       )}
 
       <section className="space-y-2 pt-2 border-t border-border">

@@ -211,7 +211,7 @@ export function UnitRosterSidebar({ base, navalUnits, deployedUnits }: UnitRoste
                       statusColor={m.color}
                       statusLabel={m.label}
                       healthLow={(d.health ?? 100) < 50 ? d.health : undefined}
-                      onClick={() => navigate(`/units/${d.id}`)}
+                      onClick={() => navigate(`/drone/${d.id}`)}
                     />
                   );
                 })}

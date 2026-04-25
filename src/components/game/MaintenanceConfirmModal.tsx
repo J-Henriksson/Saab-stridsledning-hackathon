@@ -146,7 +146,7 @@ export function MaintenanceConfirmModal({ aircraft, baseId, onConfirm, onCancel 
                 </div>
               </div>
               {(() => {
-                const health = aircraft.health ?? 100;
+                const health = Math.round(aircraft.health ?? 100);
                 const h2s = aircraft.hoursToService;
                 if (health < 50)
                   return <ContextualRecommendation text={`Låg hälsa (${health}%) — service starkt rekommenderat för att återställa operativ kapacitet.`} type="warning" />;

@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { useGame } from "@/context/GameContext";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { isAircraft, isDrone, isAirDefense, isGroundVehicle, isRadar } from "@/types/units";
 
 export default function UnitDashboard() {
@@ -23,11 +24,28 @@ export default function UnitDashboard() {
   return (
     <div className="p-6 space-y-6 font-mono text-sm max-w-4xl mx-auto">
       <div className="flex items-center gap-4 border-b border-border pb-4">
-        <UnitSymbol sidc={unit.sidc} size={72} />
+        {isAircraft(unit) ? (
+          <img
+            src={gripenSilhouette}
+            alt={unit.name}
+            width={72}
+            style={{
+              filter: unit.affiliation === "hostile"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(320deg)"
+                : unit.affiliation === "neutral"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(200deg)"
+                : unit.affiliation === "friend"
+                ? "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg)"
+                : "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(50deg)",
+            }}
+          />
+        ) : (
+          <UnitSymbol sidc={unit.sidc} size={72} />
+        )}
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{unit.name}</h1>
           <div className="text-xs text-muted-foreground uppercase tracking-widest">
-            {unit.category} · {unit.affiliation} · hälsa {unit.health}%
+            {unit.category} · {unit.affiliation} · hälsa {Math.round(unit.health ?? 100)}%
           </div>
         </div>
         <Link to="/map" className="text-xs text-primary hover:underline">← Karta</Link>

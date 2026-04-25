@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Base, Aircraft } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
+import { isDrone, type DroneUnit } from "@/types/units";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -29,6 +30,8 @@ export type DropZone = "runway" | "hangar" | "spareparts" | "fuel" | "ammo";
 interface BaseMapProps {
   base: Base;
   onDropAircraft: (aircraftId: string, zone: DropZone) => void;
+  onLaunchDrone?: (droneId: string) => void;
+  activeDrones?: DroneUnit[];
   onUtfallOutcome?: (aircraftId: string, repairTime: number, maintenanceTypeKey: string, weaponLoss: number, actionLabel: string, requiredSparePart?: string) => void;
   /** Aircraft IDs whose ATO mission window is active NOW (pulsing orange) */
   overdueAircraftIds?: string[];
@@ -111,7 +114,24 @@ function AircraftImage({ cx, cy, color = "#0C234C", opacity = 1 }: { cx: number;
   );
 }
 
-export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
+// Drone image using drone.png, tinted by status color, centered at (cx,cy)
+function DroneImage({ cx, cy, color = "ffffff", opacity = 1, scale = 1 }: { cx: number; cy: number; color?: string; opacity?: number; scale?: number }) {
+  const filterId = `tint-${color.replace('#', '')}`;
+  const w = 36 * scale, h = 24 * scale;
+  return (
+    <image
+      href={`${import.meta.env.BASE_URL}drone.png`}
+      x={cx - w / 2} y={cy - h / 2}
+      width={w} height={h}
+      opacity={opacity}
+      filter={`url(#${filterId})`}
+      pointerEvents="none"
+      style={{ transform: `scaleX(-1)`, transformOrigin: `${cx}px ${cy}px` }}
+    />
+  );
+}
+
+export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = [], onUtfallOutcome, overdueAircraftIds = [], overdueMissionLabels = {}, upcomingAircraftIds = [], upcomingMissionLabels = {} }: BaseMapProps) {
   const [selected, setSelected] = useState<BuildingId>(null);
   const [hoveredAmmo, setHoveredAmmo] = useState<string | null>(null);
   const [hoveredAc, setHoveredAc] = useState<string | null>(null);
@@ -128,11 +148,26 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const dragThresholdMet = useRef(false);
   const pendingDragAcId = useRef<string | null>(null);
 
+  // Drone drag state
+  const [draggingDroneId, setDraggingDroneId] = useState<string | null>(null);
+  const [dragDronePos, setDragDronePos] = useState<{ x: number; y: number } | null>(null);
+  const pendingDragDroneId = useRef<string | null>(null);
+  const dragDroneStartClient = useRef<{ x: number; y: number } | null>(null);
+  const dragDroneThresholdMet = useRef(false);
+
   const aircraft = getAircraft(base);
   const mc = aircraft.filter((a) => a.status === "ready");
   const nmc = aircraft.filter((a) => a.status === "unavailable");
   const maint = aircraft.filter((a) => a.status === "under_maintenance");
   const onMission = aircraft.filter((a) => a.status === "on_mission" || a.status === "returning");
+  const onMissionDrones = activeDrones.filter((d) => d.status === "on_mission" || d.status === "returning");
+  const missionCount = onMission.length + onMissionDrones.length;
+
+  const activeDroneIds = new Set(activeDrones.map((d) => d.id));
+  const baseDrones = base.units
+    .filter(isDrone)
+    .filter((d) => d.affiliation !== "hostile" && !activeDroneIds.has(d.id));
+  const readyDrones = baseDrones.filter((d) => d.status === "ready");
 
   function toggle(id: BuildingId) {
     setSelected((prev) => (prev === id ? null : id));
@@ -157,41 +192,75 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
   const DRAG_THRESHOLD = 6; // px movement before considered a drag
 
   function handleSVGPointerMove(e: React.PointerEvent<SVGSVGElement>) {
-    if (!pendingDragAcId.current) return;
-    // Check if threshold met to start actual drag
-    if (!dragThresholdMet.current && dragStartClient.current) {
-      const dx = e.clientX - dragStartClient.current.x;
-      const dy = e.clientY - dragStartClient.current.y;
-      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
-      dragThresholdMet.current = true;
-      setDraggingAcId(pendingDragAcId.current);
+    // Aircraft drag
+    if (pendingDragAcId.current) {
+      if (!dragThresholdMet.current && dragStartClient.current) {
+        const dx = e.clientX - dragStartClient.current.x;
+        const dy = e.clientY - dragStartClient.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+        dragThresholdMet.current = true;
+        setDraggingAcId(pendingDragAcId.current);
+      }
+      if (!draggingAcId && !dragThresholdMet.current) return;
+      const pos = screenToSVG(e.clientX, e.clientY);
+      setDragPos(pos);
+      setDropZoneHover(getZoneAt(pos.x, pos.y));
+      return;
     }
-    if (!draggingAcId && !dragThresholdMet.current) return;
-    const pos = screenToSVG(e.clientX, e.clientY);
-    setDragPos(pos);
-    setDropZoneHover(getZoneAt(pos.x, pos.y));
+    // Drone drag
+    if (pendingDragDroneId.current) {
+      if (!dragDroneThresholdMet.current && dragDroneStartClient.current) {
+        const dx = e.clientX - dragDroneStartClient.current.x;
+        const dy = e.clientY - dragDroneStartClient.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+        dragDroneThresholdMet.current = true;
+        setDraggingDroneId(pendingDragDroneId.current);
+      }
+      if (!draggingDroneId && !dragDroneThresholdMet.current) return;
+      const pos = screenToSVG(e.clientX, e.clientY);
+      setDragDronePos(pos);
+      setDropZoneHover(getZoneAt(pos.x, pos.y));
+    }
   }
 
   function handleSVGPointerUp(e: React.PointerEvent<SVGSVGElement>) {
-    const acId = pendingDragAcId.current;
-    const wasDrag = dragThresholdMet.current;
-    // Reset all drag state
-    pendingDragAcId.current = null;
-    dragStartClient.current = null;
-    dragThresholdMet.current = false;
-    setDraggingAcId(null);
-    setDragPos(null);
-    setDropZoneHover(null);
-    if (!acId) return;
-    if (wasDrag) {
-      // It was a real drag — handle drop
-      const pos = screenToSVG(e.clientX, e.clientY);
-      const zone = getZoneAt(pos.x, pos.y);
-      if (zone) onDropAircraft(acId, zone);
-    } else {
-      // It was a click — navigate to aircraft dashboard
-      const ac = aircraft.find((a) => a.id === acId);
-      if (ac) navigate(`/aircraft/${ac.tailNumber}`);
+    // Aircraft drop
+    if (pendingDragAcId.current) {
+      const acId = pendingDragAcId.current;
+      const wasDrag = dragThresholdMet.current;
+      pendingDragAcId.current = null;
+      dragStartClient.current = null;
+      dragThresholdMet.current = false;
+      setDraggingAcId(null);
+      setDragPos(null);
+      setDropZoneHover(null);
+      if (wasDrag) {
+        const pos = screenToSVG(e.clientX, e.clientY);
+        const zone = getZoneAt(pos.x, pos.y);
+        if (zone) onDropAircraft(acId, zone);
+      } else {
+        const ac = aircraft.find((a) => a.id === acId);
+        if (ac) navigate(`/aircraft/${ac.tailNumber}`);
+      }
+      return;
+    }
+    // Drone drop
+    if (pendingDragDroneId.current) {
+      const droneId = pendingDragDroneId.current;
+      const wasDrag = dragDroneThresholdMet.current;
+      pendingDragDroneId.current = null;
+      dragDroneStartClient.current = null;
+      dragDroneThresholdMet.current = false;
+      setDraggingDroneId(null);
+      setDragDronePos(null);
+      setDropZoneHover(null);
+      if (wasDrag) {
+        const pos = screenToSVG(e.clientX, e.clientY);
+        const zone = getZoneAt(pos.x, pos.y);
+        if (zone === "runway") onLaunchDrone?.(droneId);
+      } else {
+        navigate(`/drone/${droneId}`);
+      }
     }
   }
 
@@ -201,7 +270,17 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
     dragThresholdMet.current = false;
     setDraggingAcId(null);
     setDragPos(null);
+    pendingDragDroneId.current = null;
+    dragDroneStartClient.current = null;
+    dragDroneThresholdMet.current = false;
+    setDraggingDroneId(null);
+    setDragDronePos(null);
     setDropZoneHover(null);
+  }
+
+  function handleSVGPointerLeave() {
+    if (pendingDragAcId.current || pendingDragDroneId.current || draggingAcId || draggingDroneId) return;
+    cancelDrag();
   }
 
   // Apron shows only parked planes (MC and NMC). On-mission → runway. Maintenance → hangars.
@@ -222,11 +301,12 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           ref={svgRef}
           viewBox="0 0 900 500"
           className="w-full relative z-0"
-          style={{ minWidth: 600, cursor: draggingAcId ? "grabbing" : "default", touchAction: "none" }}
+          style={{ minWidth: 600, cursor: (draggingAcId || draggingDroneId) ? "grabbing" : "default", touchAction: "none" }}
           onClick={() => { if (!draggingAcId) { setSelected(null); setSelectedAcId(null); } }}
           onPointerMove={handleSVGPointerMove}
           onPointerUp={handleSVGPointerUp}
-          onPointerLeave={cancelDrag}
+          onPointerLeave={handleSVGPointerLeave}
+          onPointerCancel={cancelDrag}
         >
           {/* ── Background */}
           <rect width="900" height="500" fill="transparent" />
@@ -236,7 +316,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#0C234C" strokeWidth="0.3" opacity="0.15" />
             </pattern>
-            {["0C234C","D7AB3A","D9192E","6B7280","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222"].map((hex) => (
+            {["0C234C","D7AB3A","D9192E","6B7280","1a4a8a","5a3a8a","8a6a1a","2a7a5a","1a5a7a","8a5a2a","B06000","CC2222","ffffff","22c55e","d97706"].map((hex) => (
               <filter key={hex} id={`tint-${hex}`}>
                 <feFlood floodColor={`#${hex}`} result="c" />
                 <feComposite in="c" in2="SourceAlpha" operator="in" />
@@ -579,9 +659,9 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                   fill="#1a3a6a" />
                 <text x={boxX + boxW / 2} y={boxY + 11} textAnchor="middle" fontSize="8"
                   fill="#D7AB3A" fontFamily="monospace" fontWeight="bold" letterSpacing="2">
-                  PÅ UPPDRAG ({onMission.length})
+                  PÅ UPPDRAG ({missionCount})
                 </text>
-                {onMission.length === 0 && (
+                {missionCount === 0 && (
                   <text x={boxX + boxW / 2} y={boxY + 90} textAnchor="middle" fontSize="8"
                     fill="#5566aa" fontFamily="monospace">— inga aktiva uppdrag —</text>
                 )}
@@ -615,6 +695,40 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
                           <rect x={cx-20} y={cy-34} width="40" height="13" rx="2" fill="#0C234C" opacity="0.95" />
                           <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
                             {isRet ? "Återvänder" : ac.currentMission ?? "UPP"}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+                {onMissionDrones.slice(0, Math.max(0, 16 - onMission.length)).map((drone, i) => {
+                  const idx = onMission.length + i;
+                  const col = idx % cols;
+                  const row = Math.floor(idx / cols);
+                  const cx = boxX + 32 + col * 60;
+                  const cy = boxY + 42 + row * 50;
+                  const isRet = drone.status === "returning";
+                  const color = isRet ? "d97706" : "ffffff";
+                  return (
+                    <g key={`uppdrag-drone-${drone.id}`}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setHoveredAc(drone.id)}
+                      onMouseLeave={() => setHoveredAc(null)}
+                      onClick={() => navigate(`/drone/${drone.id}`)}
+                    >
+                      <DroneImage cx={cx} cy={cy} color={color} opacity={isRet ? 0.7 : 1} scale={0.8} />
+                      {isRet && (
+                        <text x={cx} y={cy - 18} textAnchor="middle" fontSize="7" fill="#f59e0b" fontFamily="monospace">↩</text>
+                      )}
+                      <rect x={cx-17} y={cy+8} width="34" height="11" rx="2"
+                        fill="#0C234C" fillOpacity="0.9" />
+                      <text x={cx} y={cy+16} textAnchor="middle" fontSize="6"
+                        fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">{drone.name}</text>
+                      {hoveredAc === drone.id && (
+                        <g>
+                          <rect x={cx-24} y={cy-34} width="48" height="13" rx="2" fill="#0C234C" opacity="0.95" />
+                          <text x={cx} y={cy-24} textAnchor="middle" fontSize="7" fill="#D7AB3A" fontFamily="monospace">
+                            {isRet ? "Återvänder" : (drone.currentMission ?? "ISR")}
                           </text>
                         </g>
                       )}
@@ -678,6 +792,71 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
 
           {/* NO ROADS — only taxiway strip drawn above */}
 
+          {/* ── Drone Panel (left of legend) ── */}
+          {(() => {
+            const panelX = 430, panelY = 38, panelW = 210, panelH = 105;
+            const cols = 5, colW = 36, rowH = 30;
+            const droneColor = (status: string) =>
+              status === "ready" ? "ffffff"
+              : status === "under_maintenance" ? "d97706"
+              : status === "unavailable" ? "6B7280" : "ffffff";
+            return (
+              <g>
+                <rect x={panelX} y={panelY} width={panelW} height={panelH} rx="4"
+                  fill="#0C234C" opacity="0.92" />
+                <rect x={panelX} y={panelY} width={panelW} height={5} rx="2"
+                  fill="#D7AB3A" />
+                <text x={panelX + panelW / 2} y={panelY + 16} textAnchor="middle" fontSize="8" fill="#D7AB3A"
+                  fontFamily="monospace" fontWeight="bold" letterSpacing="2">
+                  DRÖNARE — {readyDrones.length} KLARA / {baseDrones.length}
+                </text>
+                {baseDrones.length === 0 && (
+                  <text x={panelX + panelW / 2} y={panelY + 65} textAnchor="middle" fontSize="7.5"
+                    fill="#5566aa" fontFamily="monospace">— inga drönare —</text>
+                )}
+                {baseDrones.slice(0, 10).map((d, i) => {
+                  const col = i % cols;
+                  const row = Math.floor(i / cols);
+                  const cx = panelX + 22 + col * colW;
+                  const cy = panelY + 38 + row * rowH;
+                  const col_hex = droneColor(d.status);
+                  const isDragging = draggingDroneId === d.id;
+                  return (
+                    <g key={d.id}
+                      style={{ cursor: isDragging ? "grabbing" : d.status === "ready" ? "grab" : "not-allowed", opacity: isDragging ? 0.3 : 1 }}
+                      onPointerDown={(e) => {
+                        if (d.status !== "ready") return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        pendingDragDroneId.current = d.id;
+                        dragDroneStartClient.current = { x: e.clientX, y: e.clientY };
+                        dragDroneThresholdMet.current = false;
+                        const pos = screenToSVG(e.clientX, e.clientY);
+                        setDragDronePos(pos);
+                        setDropZoneHover(null);
+                      }}
+                    >
+                      <rect
+                        x={cx - 20}
+                        y={cy - 14}
+                        width={40}
+                        height={28}
+                        rx={4}
+                        fill="rgba(0,0,0,0.001)"
+                        pointerEvents="all"
+                      />
+                      <DroneImage cx={cx} cy={cy} color={col_hex} opacity={d.status === "ready" ? 0.9 : 0.45} scale={0.75} />
+                    </g>
+                  );
+                })}
+                {/* instruction hint */}
+                <text x={panelX + panelW / 2} y={panelY + panelH - 5} textAnchor="middle" fontSize="6.5"
+                  fill="#5566aa" fontFamily="monospace">Dra till bana för att deploya</text>
+              </g>
+            );
+          })()}
+
           {/* ── Legend (SAAB styled) ── */}
           <g>
             <rect x="656" y="38" width="184" height="105" rx="4"
@@ -705,7 +884,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           <rect x="20" y="470" width="860" height="20" rx="3" fill="#0C234C" opacity="0.88" />
           <rect x="20" y="470" width="860" height="2" rx="1" fill="#D7AB3A" opacity="0.7" />
           <text x="40" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">MC: {mc.length}</text>
-          <text x="105" y="483" fontSize="8" fill="#7aaef0" fontFamily="monospace">UPP: {onMission.length}</text>
+          <text x="105" y="483" fontSize="8" fill="#7aaef0" fontFamily="monospace">UPP: {missionCount}</text>
           <text x="175" y="483" fontSize="8" fill="#D7AB3A" fontFamily="monospace">UH: {maint.length}</text>
           <text x="235" y="483" fontSize="8" fill="#D9192E" fontFamily="monospace">NMC: {nmc.length}</text>
           <text x="330" y="483" fontSize="8" fill="#D7DEE1" fontFamily="monospace">
@@ -716,7 +895,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
           </text>
 
           {/* ── Drop zone highlights — shown during pointer drag, in SVG space ── */}
-          {draggingAcId && SVG_ZONES.map((zone) => {
+          {(draggingAcId || draggingDroneId) && SVG_ZONES.filter((z) => !draggingDroneId || z.id === "runway").map((zone) => {
             const isHot = dropZoneHover === zone.id;
             return (
               <g key={`dz-${zone.id}`} style={{ pointerEvents: "none" }}>
@@ -745,6 +924,21 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             );
           })}
 
+          {/* ── Ghost drone follows cursor during drag ── */}
+          {draggingDroneId && dragDronePos && (() => {
+            const drone = baseDrones.find((d) => d.id === draggingDroneId);
+            if (!drone) return null;
+            return (
+              <g opacity="0.85" style={{ pointerEvents: "none" }}>
+                <DroneImage cx={dragDronePos.x} cy={dragDronePos.y} color="ffffff" opacity={1} scale={1.1} />
+                <rect x={dragDronePos.x - 18} y={dragDronePos.y - 22} width="36" height="10" rx="2" fill="#0C234C" opacity="0.9" />
+                <text x={dragDronePos.x} y={dragDronePos.y - 15} textAnchor="middle" fontSize="6" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">
+                  {drone.name}
+                </text>
+              </g>
+            );
+          })()}
+
           {/* ── Ghost aircraft follows cursor during drag ── */}
           {draggingAcId && dragPos && (() => {
             const dragAc = aircraft.find((a) => a.id === draggingAcId);
@@ -768,8 +962,8 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             const acIdx = apronAircraft.findIndex((a) => a.id === selectedAcId);
             if (acIdx < 0) return null;
             const ac = apronAircraft[acIdx];
-            const col = acIdx % cols;
-            const cx = 60 + (col + 0.5) * (780 / cols);
+            const col = acIdx % apronCols;
+            const cx = apronX + (col + 0.5) * apronColWidth;
             const cy = 263;
 
             const pw = 195, ph = 225;
@@ -982,7 +1176,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             const cx = apronX + (col + 0.5) * apronColWidth;
             const cy = 270;
             const color = getAircraftColor(ac);
-            const hp = ac.health ?? 100;
+            const hp = Math.round(ac.health ?? 100);
             const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
             const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
             const panelW = 110, panelH = 68;
@@ -1024,7 +1218,7 @@ export function BaseMap({ base, onDropAircraft, onUtfallOutcome, overdueAircraft
             const pW = 138, pH = 110;
             const px = mx + 14 + pW > 870 ? mx - pW - 6 : mx + 14;
             const py = my - pH - 6;
-            const hp = ac.health ?? 0;
+            const hp = Math.round(ac.health ?? 0);
             const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
             const maintLabels: Record<string, string> = {
               quick_lru:         "Snabb LRU-byte",
@@ -1421,4 +1615,3 @@ function RunwayDetail({ base }: { base: Base }) {
     </div>
   );
 }
-

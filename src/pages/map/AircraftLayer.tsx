@@ -3,9 +3,9 @@ import { Marker, useMap } from "react-map-gl/maplibre";
 import { Base, GameAction } from "@/types/game";
 import { BASE_COORDS } from "./constants";
 import { getAircraft } from "@/core/units/helpers";
-import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import type { TacticalZone } from "@/types/overlay";
 import { useIncursionDetection } from "./useIncursionDetection";
+import { AircraftIcon } from "@/components/map/AircraftIcon";
 
 const REBASE_TRANSIT_HOURS = 2;
 const TRAIL_POINTS = 80;
@@ -38,6 +38,8 @@ export function AircraftLayer({
   onPositionUpdate,
   tacticalZones,
   dispatch,
+  paused,
+  focusedBaseId,
 }: {
   bases: Base[];
   currentHour?: number;
@@ -47,12 +49,15 @@ export function AircraftLayer({
   onPositionUpdate?: (lng: number, lat: number) => void;
   tacticalZones?: TacticalZone[];
   dispatch?: (action: GameAction) => void;
+  paused?: boolean;
+  focusedBaseId?: string | null;
 }) {
   const { current: mapRef } = useMap();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [phase, setPhase] = useState(0);
   useEffect(() => {
+    if (paused) return;
     let frame: number;
     const start = performance.now();
     const tick = (now: number) => {
@@ -61,7 +66,7 @@ export function AircraftLayer({
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, []);
+  }, [paused]);
 
   const { aircraftPositions, orbitTrails, rebaseTrails } = useMemo(() => {
     const positions: AircraftPosition[] = [];
@@ -196,9 +201,14 @@ export function AircraftLayer({
     ctx.lineCap = "round";
     ctx.lineWidth = 2.5;
 
-    // Orbit trails — green
-    for (const trail of orbitTrails) {
+    // Orbit trails — green; index-aligned with aircraftPositions
+    for (let ti = 0; ti < orbitTrails.length; ti++) {
+      const trail = orbitTrails[ti];
+      const acBase = aircraftPositions[ti]?.baseId ?? null;
+      const dimmed = focusedBaseId ? acBase !== focusedBaseId : false;
       const projected = trail.map((p) => map.project([p.lng, p.lat]));
+      ctx.save();
+      if (dimmed) ctx.globalAlpha = 0.12;
       for (let i = 0; i < projected.length - 1; i++) {
         const frac = i / (projected.length - 1);
         const opacity = 0.7 * (1 - frac);
@@ -209,11 +219,17 @@ export function AircraftLayer({
         ctx.strokeStyle = `rgba(34, 197, 94, ${opacity})`;
         ctx.stroke();
       }
+      ctx.restore();
     }
 
-    // Rebase trails — cyan, same rendering as orbit trails
-    for (const trail of rebaseTrails) {
+    // Rebase trails — cyan; index-aligned with aircraftPositions (rebase aircraft are appended)
+    for (let ti = 0; ti < rebaseTrails.length; ti++) {
+      const trail = rebaseTrails[ti];
+      const acBase = aircraftPositions[orbitTrails.length + ti]?.baseId ?? null;
+      const dimmed = focusedBaseId ? acBase !== focusedBaseId : false;
       const projected = trail.map((p) => map.project([p.lng, p.lat]));
+      ctx.save();
+      if (dimmed) ctx.globalAlpha = 0.12;
       for (let i = 0; i < projected.length - 1; i++) {
         const frac = i / (projected.length - 1);
         const opacity = 0.7 * (1 - frac);
@@ -224,6 +240,7 @@ export function AircraftLayer({
         ctx.strokeStyle = `rgba(34, 197, 94, ${opacity})`;
         ctx.stroke();
       }
+      ctx.restore();
     }
   }, [orbitTrails, rebaseTrails, mapRef, phase]);
 
@@ -239,26 +256,26 @@ export function AircraftLayer({
           pointerEvents: "none",
         }}
       />
-      {aircraftPositions.map((ac) => (
-        <Marker key={ac.id} longitude={ac.lng} latitude={ac.lat} anchor="center" style={{ zIndex: 1 }}>
-          <img
-            src={gripenSilhouette}
-            alt=""
-            width={20}
-            style={{
-              cursor: onSelectAircraft ? "pointer" : "default",
-              transform: `rotate(${ac.angle}deg)`,
-              filter: ac.isRebase
-                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(160deg) drop-shadow(0 0 5px #22d3ee88)"
-                : "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg) drop-shadow(0 0 4px #22c55e88)",
-            }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectAircraft?.(ac.baseId, ac.id);
-            }}
-          />
-        </Marker>
-      ))}
+      {aircraftPositions.map((ac) => {
+        const acDimmed = focusedBaseId ? ac.baseId !== focusedBaseId : false;
+        return (
+          <Marker key={ac.id} longitude={ac.lng} latitude={ac.lat} anchor="center" style={{ zIndex: 1 }}>
+            <div
+              style={{
+                cursor: onSelectAircraft ? "pointer" : "default",
+                opacity: acDimmed ? 0.15 : 1,
+                transition: "opacity 0.35s ease",
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectAircraft?.(ac.baseId, ac.id);
+              }}
+            >
+              <AircraftIcon size={28} angle={ac.angle} color={ac.isRebase ? "#22d3ee" : "#22c55e"} />
+            </div>
+          </Marker>
+        );
+      })}
     </>
   );
 }

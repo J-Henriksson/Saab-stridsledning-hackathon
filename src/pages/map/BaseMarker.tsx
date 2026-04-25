@@ -22,6 +22,7 @@ export function BaseMarker({
   onClick,
   flygvapnetMode = false,
   showAirbases = true,
+  dimmed = false,
 }: {
   id: string;
   base: Base | undefined;
@@ -29,6 +30,7 @@ export function BaseMarker({
   onClick: () => void;
   flygvapnetMode?: boolean;
   showAirbases?: boolean;
+  dimmed?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const coords = BASE_COORDS[id];
@@ -41,8 +43,9 @@ export function BaseMarker({
   const mc = acList.filter((a) => a.status === "ready").length;
   const onMission = acList.filter((a) => a.status === "on_mission").length;
   const pct = readinessPct(base);
+  const hasAircraft = acList.length > 0;
   const isBottleneck = base && (
-    mc / acList.length < 0.4 ||
+    (hasAircraft && mc / acList.length < 0.4) ||
     base.maintenanceBays.occupied >= base.maintenanceBays.total ||
     base.fuel < 20
   );
@@ -58,7 +61,7 @@ export function BaseMarker({
     <Marker longitude={coords.lng} latitude={coords.lat} anchor="center">
       <div
         className="relative flex flex-col items-center"
-        style={{ cursor: base ? "pointer" : "default" }}
+        style={{ cursor: base ? "pointer" : "default", opacity: dimmed ? 0.15 : 1, transition: "opacity 0.35s ease" }}
         onClick={(e) => { e.stopPropagation(); if (base) onClick(); }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}

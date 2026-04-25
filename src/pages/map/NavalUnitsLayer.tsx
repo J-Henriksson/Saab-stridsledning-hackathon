@@ -1,24 +1,39 @@
 import { useMemo } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
 import type { NavalUnit } from "@/types/game";
-import { Ship, Anchor, Waves } from "lucide-react";
+import { UnitSymbol } from "@/components/map/UnitSymbol";
+import {
+  WarshipIcon,
+  FrigateIcon,
+  SubmarineIcon,
+  PatrolBoatIcon,
+  AmphIbShipIcon,
+  LogisticsShipIcon,
+} from "@/components/symbols/UnitIcons";
+
+// NATO SIDC for naval units — affiliation digit at index 3 (3=friend, 6=hostile)
+function navalSidc(kind: NavalUnit["kind"], affiliation: NavalUnit["affiliation"]): string {
+  const a = affiliation === "friend" ? "3" : "6";
+  if (kind === "submarine") return `100${a}1000004520000000`; // subsurface
+  return `100${a}1000004501000000`; // surface warship
+}
 
 interface NavalUnitsLayerProps {
   visible: NavalUnit[];
   lastKnown: NavalUnit[];
   onSelect?: (id: string) => void;
   selectedId?: string | null;
+  iconStyle?: "custom" | "nato";
 }
 
-function iconFor(kind: NavalUnit["kind"]) {
+function IconForKind({ kind, color, size }: { kind: NavalUnit["kind"]; color: string; size: number }) {
   switch (kind) {
-    case "submarine":
-      return Anchor;
-    case "amphib":
-    case "logistics_ship":
-      return Waves;
-    default:
-      return Ship;
+    case "submarine":     return <SubmarineIcon     size={size} color={color} />;
+    case "frigate":       return <FrigateIcon        size={size} color={color} />;
+    case "amphib":        return <AmphIbShipIcon     size={size} color={color} />;
+    case "logistics_ship":return <LogisticsShipIcon  size={size} color={color} />;
+    case "patrol_boat":   return <PatrolBoatIcon     size={size} color={color} />;
+    default:              return <WarshipIcon         size={size} color={color} />;
   }
 }
 
@@ -30,7 +45,7 @@ function colorFor(affiliation: NavalUnit["affiliation"]): string {
  * Renders naval markers (friendly + currently-detected hostile) and fog-of-war
  * "last known" ghosts for hostiles that have slipped out of sensor coverage.
  */
-export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId }: NavalUnitsLayerProps) {
+export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId, iconStyle = "custom" }: NavalUnitsLayerProps) {
   // Selected ship's historic trail — FlightRadar-style bright gradient.
   const selectedNaval = useMemo(
     () => (selectedId ? visible.find((n) => n.id === selectedId) : undefined),
@@ -81,7 +96,6 @@ export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId }: Na
       )}
 
       {visible.map((n) => {
-        const Icon = iconFor(n.kind);
         const color = colorFor(n.affiliation);
         const isSelected = selectedId === n.id;
         return (
@@ -102,61 +116,46 @@ export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId }: Na
               }}
               title={`${n.name} — ${n.kind} (${n.affiliation})`}
               style={{
-                width: 28,
-                height: 28,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 14,
-                background: `${color}22`,
-                border: `1.5px solid ${color}`,
                 cursor: "pointer",
                 filter: isSelected ? `drop-shadow(0 0 6px ${color})` : undefined,
                 transform: isSelected ? "scale(1.15)" : undefined,
                 transition: "transform 120ms ease",
               }}
             >
-              <Icon size={16} color={color} strokeWidth={2.2} />
+              {iconStyle === "nato"
+                ? <UnitSymbol sidc={navalSidc(n.kind, n.affiliation)} size={28} title={n.name} />
+                : <IconForKind kind={n.kind} color={color} size={28} />
+              }
             </div>
           </Marker>
         );
       })}
 
-      {/* Last-known fog-of-war ghosts: rendered faded + dashed ring. */}
+      {/* Last-known fog-of-war ghosts: rendered faded. */}
       {lastKnown.map((n) => {
         const pos = n.lastKnownPosition ?? n.position;
-        const Icon = iconFor(n.kind);
         const color = colorFor(n.affiliation);
         return (
           <Marker key={`lk-${n.id}`} longitude={pos.lng} latitude={pos.lat} anchor="center">
             <div
               title={`${n.name} — LAST KNOWN`}
-              style={{
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 16,
-                background: "transparent",
-                border: `1.5px dashed ${color}`,
-                opacity: 0.55,
-                cursor: "default",
-                position: "relative",
-              }}
+              style={{ opacity: 0.45, cursor: "default", position: "relative" }}
             >
-              <Icon size={14} color={color} strokeWidth={1.8} style={{ opacity: 0.7 }} />
+              {iconStyle === "nato"
+                ? <UnitSymbol sidc={navalSidc(n.kind, n.affiliation)} size={24} title={n.name} />
+                : <IconForKind kind={n.kind} color={color} size={24} />
+              }
               <div
                 style={{
                   position: "absolute",
-                  top: -14,
+                  top: -13,
                   left: "50%",
                   transform: "translateX(-50%)",
                   fontSize: 8,
                   fontFamily: "monospace",
                   color,
                   whiteSpace: "nowrap",
-                  opacity: 0.75,
+                  opacity: 0.8,
                 }}
               >
                 LAST KNOWN

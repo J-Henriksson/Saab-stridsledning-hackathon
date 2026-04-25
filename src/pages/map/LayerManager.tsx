@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin, Mountain, Radio } from "lucide-react";
+import { Layers, X, Plane, Shield, Building2, ShieldAlert, MapPin, Mountain, Radio, TrainFront } from "lucide-react";
 import type { DrawingMode, OverlayLayerVisibility } from "@/types/overlay";
 
 const MILITARY_GREEN = "#2D5A27";
@@ -25,6 +25,7 @@ const LAYER_ITEMS: {
   { key: "skyddsobjekt",  label: "Skyddsobjekt",            Icon: ShieldAlert, color: "#D97706" },
   { key: "radarUnits",    label: "Radarstationer",          Icon: Radio,       color: RADAR_TEAL },
   { key: "activeZones",   label: "Aktiva zoner",            Icon: MapPin,      color: "#2563eb" },
+  { key: "railroad",      label: "Järnväg",                 Icon: TrainFront,  color: "#78350f" },
 ];
 
 interface LayerManagerProps {

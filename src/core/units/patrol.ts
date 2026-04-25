@@ -1,4 +1,5 @@
 import type { GeoPosition, PatrolConfig, Unit } from "@/types/units";
+import { isPositionInSea } from "./geoUtils";
 
 // 111 km per degree of latitude (and per degree of longitude at the equator).
 const KM_PER_DEG = 111;
@@ -80,10 +81,8 @@ function movementStateForUnit(u: Unit): "airborne" | "moving" {
 export function tickPatrol(unit: Unit): Unit {
   if (!unit.patrol) return unit;
   if (unit.pendingArrivalBase) return unit;
-  // ATO-managed / rebasing flights override patrol control.
-  if (unit.category === "aircraft") {
-    if (unit.missionEndHour !== undefined || unit.rebaseTarget !== undefined) return unit;
-  }
+  // Rebasing flights override patrol control — they fly direct to target.
+  if (unit.category === "aircraft" && unit.rebaseTarget !== undefined) return unit;
   // Dedicated waypoint-driven drones (e.g. SKYM-11 with explicit waypoints).
   if (unit.category === "drone" && unit.waypoints.length > 0) return unit;
 
@@ -96,7 +95,17 @@ export function tickPatrol(unit: Unit): Unit {
   if (hasConcreteDest) return unit;
 
   const currentIdx = unit.patrolLegIdx ?? nearestTrackIdx(track, unit.position);
-  const nextIdx = (currentIdx + 1) % track.length;
+  let nextIdx = (currentIdx + 1) % track.length;
+
+  // For naval units, skip waypoints on land
+  if (unit.category === "naval") {
+    let attempts = 0;
+    while (!isPositionInSea(track[nextIdx]) && attempts < track.length) {
+      nextIdx = (nextIdx + 1) % track.length;
+      attempts++;
+    }
+  }
+
   return {
     ...unit,
     patrolLegIdx: nextIdx,
@@ -120,6 +129,7 @@ export interface PatrollableShape {
 export function tickPlainPatrol<T extends PatrollableShape>(
   item: T,
   movementVerb: "moving" | "airborne",
+  seaOnly: boolean = false,
 ): T {
   const track = generatePatrolTrack(item.patrol);
   const hasConcreteDest =
@@ -130,7 +140,17 @@ export function tickPlainPatrol<T extends PatrollableShape>(
   if (hasConcreteDest) return item;
 
   const currentIdx = item.patrolLegIdx ?? nearestTrackIdx(track, item.position);
-  const nextIdx = (currentIdx + 1) % track.length;
+  let nextIdx = (currentIdx + 1) % track.length;
+
+  // Skip points on land if seaOnly is true
+  if (seaOnly) {
+    let attempts = 0;
+    while (!isPositionInSea(track[nextIdx]) && attempts < track.length) {
+      nextIdx = (nextIdx + 1) % track.length;
+      attempts++;
+    }
+  }
+
   return {
     ...item,
     patrolLegIdx: nextIdx,

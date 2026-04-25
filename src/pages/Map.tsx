@@ -1,17 +1,18 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useReducer } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import MapGL, { Marker, NavigationControl, MapRef, Source, Layer } from "react-map-gl/maplibre";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useGame } from "@/context/GameContext";
+import { useBaseFilter } from "@/context/BaseFilterContext";
 import { TopBar } from "@/components/game/TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, LayoutDashboard } from "lucide-react";
+import { X, MapPin, Satellite, Wind, Cloud, TriangleAlert, ChevronRight, Layers3, PenLine, Crosshair, Swords, Mountain, Plane, Shield, Building2, ShieldAlert, Radio, Send, Target, LayoutDashboard, Zap, PlayCircle, TrainFront } from "lucide-react";
 
 import {
   BASE_COORDS, BASE_RINGS, STOCKHOLM_CENTER, TACTICAL_ZOOM,
   MAP_STYLE, DARK_STYLE, TOPO_STYLE, SATELLITE_STYLE, MINIMAL_STYLE,
-  TERRARIUM_TILES, OCEAN_TILES,
+  TERRARIUM_TILES, OCEAN_TILES, RAILROAD_TILES,
 } from "./map/constants";
 import { MarkerRingsLayer } from "./map/MarkerRingsLayer";
 import { RoadBaseDetailPanel } from "./map/RoadBaseDetailPanel";
@@ -21,7 +22,7 @@ import { MapFilterPanel } from "@/components/map/MapFilterPanel";
 import { RadarShadowOverlay } from "@/components/map/RadarShadowOverlay";
 import { BaseMarker } from "./map/BaseMarker";
 import { SupplyLinesLayer } from "./map/SupplyLinesLayer";
-import { AircraftLayer } from "./map/AircraftLayer";
+import { AircraftIncursionWatcher } from "./map/AircraftIncursionWatcher";
 import { CloudLayer, CloudSummary } from "./map/CloudLayer";
 import { ACTIVE_SATELLITE_DEFS, SatelliteLayer, SatelliteLiveState } from "./map/SatelliteLayer";
 import { SatelliteDetailPanel } from "./map/SatelliteDetailPanel";
@@ -29,6 +30,8 @@ import { BaseDetailPanel } from "./map/BaseDetailPanel";
 import { AircraftDetailPanel } from "./map/AircraftDetailPanel";
 import { WindLayer } from "./map/WindLayer";
 import { PlanModeSidebar, PlacingPayload, PlacingKind } from "./map/PlanModeSidebar";
+import { DeployModeSidebar } from "./map/DeployModeSidebar";
+import { PlanReviewModal } from "@/components/game/PlanReviewModal";
 import { EnemyMarker } from "./map/EnemyMarker";
 import { EnemyEntityMarker } from "./map/EnemyEntityMarker";
 import { FriendlyMarkerPin, FriendlyEntityPin } from "./map/FriendlyPlanMarker";
@@ -44,25 +47,42 @@ import { RadarLayer, RadarControlPanel } from "@/components/radar";
 import type { ExtendedRadarUnit } from "@/components/radar";
 import { useRadarDetection } from "@/hooks/useRadarDetection";
 import { useRadarEngine } from "@/hooks/useRadarEngine";
+import { DroneLayer } from "./map/drones/DroneLayer";
 import { DroneRangeOverlay } from "./map/drones/DroneRangeOverlay";
 import { DroneConnectionLine } from "./map/drones/DroneConnectionLine";
 import { DroneDetailPanel } from "./map/drones/DroneDetailPanel";
 import { AirDefenseRingsLayer } from "./map/AirDefenseRingsLayer";
+import { ThreatRingsLayer } from "./map/ThreatRingsLayer";
 import { WTALayer } from "./map/WTALayer";
 import { useTacticalMap } from "@/hooks/useTacticalMap";
 import { TacticalZonesLayer } from "./map/TacticalZonesLayer";
 import { FixedAssetMarkers } from "./map/FixedAssetMarkers";
 import { RegionBordersLayer } from "./map/RegionBordersLayer";
+import { GeoBoundariesLayer, type BoundaryVisibility } from "./map/GeoBoundariesLayer";
+import { useBoundaryCrossing } from "./map/useBoundaryCrossing";
+import { RadarPulseLayer } from "./map/RadarPulseLayer";
 import { ZoneDetailPanel } from "./map/ZoneDetailPanel";
+import { EventsSidebar } from "./map/EventsSidebar";
 import { DrawingPreviewOverlay } from "./map/DrawingPreviewOverlay";
 import { CoordinateHUD } from "./map/CoordinateHUD";
 import { useZoneDrawing } from "./map/ZoneDrawingTool";
-import { Base, AircraftStatus } from "@/types/game";
+import { Base, AircraftStatus, GameState } from "@/types/game";
 import type { DrawingMode, TacticalZone, FixedMilitaryAsset, OverlayLayerVisibility } from "@/types/overlay";
-import { isDrone, type UnitCategory } from "@/types/units";
+import { isDrone, isAircraft, type UnitCategory } from "@/types/units";
+import { TravelRangeOverlay } from "./map/TravelRangeOverlay";
+import { BattleIntelOverlay, type TargetIntel } from "./map/BattleIntelOverlay";
+import { BattleIntelTooltip } from "./map/BattleIntelTooltip";
+import type { TravelRangeMode, BattleIntelSummary } from "./map/TravelRangeSection";
+import { DEFAULT_TRAVEL_OPTS, computeTravelRange, etaHoursTo, isTravelRangeUnit } from "@/utils/travelRange";
+import { collectThreatRings, classifyTarget, findBestReturnBase, pathCrossesThreatRings, type Reachability, type BestReturnBase } from "@/utils/battleIntel";
 import { FIXED_MILITARY_ASSETS, AMMO_DEPOTS } from "@/data/fixedAssets";
+import { DUMMY_EVENTS } from "@/data/dummyEvents";
 import { getAircraft } from "@/core/units/helpers";
 import { createAircraftUnit, createAirDefenseUnit, createDeployedDroneUnit, createGroundVehicleUnit, createRadarUnit } from "@/core/units/factory";
+import { gameReducer } from "@/core/engine";
+import { initialGameState } from "@/data/initialGameState";
+import { usePlanTabs, executePlan } from "@/hooks/usePlanTabs";
+import type { RadarUnit } from "@/types/units";
 
 type SelectedEntity =
   | { kind: "base"; baseId: string }
@@ -92,6 +112,7 @@ interface DraggingUnitState {
 
 const PLACING_LABEL: Record<PlacingKind, string> = {
   friendly_base:   "vänlig bas",
+  friendly_entity: "vänlig enhet",
   friendly_unit:   "vänlig enhet",
   enemy_base:      "fiendens bas",
   enemy_entity:    "fiendens enhet",
@@ -134,6 +155,7 @@ const LAYER_ITEMS: {
   { key: "radarUnits", label: "Radarstationer", Icon: Radio as any, color: RADAR_TEAL },
   { key: "activeZones", label: "Aktiva zoner", Icon: MapPin as any, color: "#2563eb" },
   { key: "drones", label: "Drönare (UAV)", Icon: Send, color: "#a855f7" },
+  { key: "railroad", label: "Järnväg", Icon: TrainFront, color: "#78350f" },
 ];
 
 
@@ -222,7 +244,13 @@ export default function MapPage() {
       swedishInterestCoverage: "Täcker",
     })),
   );
-  const [isPlanMode, setIsPlanMode] = useState(false);
+  const [planState, planDispatch] = useReducer(gameReducer, initialGameState);
+  const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab, setDelay } = usePlanTabs(state);
+  const [dragOverExecute, setDragOverExecute] = useState(false);
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
+  const isPlanMode = activeTabId !== null;
+  const [showPlanReview, setShowPlanReview] = useState(false);
+  const [isDeployMode, setIsDeployMode] = useState(false);
   const [placingMode, setPlacingMode] = useState<PlacingMode | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("none");
   const [terrainFilterOpen, setTerrainFilterOpen] = useState(false);
@@ -232,9 +260,38 @@ export default function MapPage() {
   const [hudCursor, setHudCursor] = useState<{ lat: number; lng: number } | null>(null);
   const { mapLayerState, setBaseMap, toggleOverlay, setOverlayOpacity, toggleDampColors } = useMapLayers();
   const [aorOverrides, setAorOverrides] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapRef>(null);
   const [zoom, setZoom] = useState(TACTICAL_ZOOM);
   const { updateRadarStatus, updateRadarPosition } = useRadarEngine();
+  const { focusedBaseId, filterLevel, setFocusedBase, setFilterLevel, clearFilter, filterEvents } = useBaseFilter();
+  const [showAllBaseRings, setShowAllBaseRings] = useState(false);
+  const [boundaryVis, setBoundaryVis] = useState<BoundaryVisibility>({ eez: true, fir: true, land: true });
+  const [iconStyle, setIconStyle] = useState<"custom" | "nato">("custom");
+
+  // Compute which airbase IDs should show rings:
+  //   - "show all" toggle on → null (MarkerRingsLayer draws all)
+  //   - focused base set     → only that base
+  //   - a base detail panel open → only that base
+  //   - otherwise            → empty set (no rings)
+  const ringBaseIds = useMemo<Set<string> | null>(() => {
+    if (showAllBaseRings) return null;
+    const ids = new Set<string>();
+    if (focusedBaseId) ids.add(focusedBaseId);
+    if (selected?.kind === "base" || selected?.kind === "aircraft") ids.add((selected as any).baseId);
+    return ids;
+  }, [showAllBaseRings, focusedBaseId, selected]);
+
+  // Merge live game events with static dummy events (dummy comes first so it's always present)
+  const allEvents = useMemo(
+    () => [...DUMMY_EVENTS, ...state.events],
+    [state.events]
+  );
+
+  // Events filtered by active base/unit filter — ready for sidebar consumption
+  const filteredEvents = useMemo(() => filterEvents(allEvents), [allEvents, filterEvents]);
 
   const allUnits = useMemo(
     () => {
@@ -244,9 +301,45 @@ export default function MapPage() {
     [state]
   );
 
+  type SearchResult = { label: string; sublabel: string; lat: number; lng: number };
+
+  const searchResults = useMemo((): SearchResult[] => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q || !state) return [];
+    const results: SearchResult[] = [];
+    const match = (name: string) => name.toLowerCase().includes(q);
+
+    state.bases.forEach((b) => {
+      const c = BASE_COORDS[b.id];
+      if (c && match(b.name)) results.push({ label: b.name, sublabel: "Bas", lat: c.lat, lng: c.lng });
+    });
+    state.enemyBases.forEach((eb) => {
+      if (match(eb.name)) results.push({ label: eb.name, sublabel: "Fiendebase", lat: eb.coords.lat, lng: eb.coords.lng });
+    });
+    state.enemyEntities.forEach((ee) => {
+      if (match(ee.name)) results.push({ label: ee.name, sublabel: "Fiendeenhet", lat: ee.coords.lat, lng: ee.coords.lng });
+    });
+    state.friendlyMarkers.forEach((fm) => {
+      if (match(fm.name)) results.push({ label: fm.name, sublabel: "Vänlig markör", lat: fm.coords.lat, lng: fm.coords.lng });
+    });
+    state.friendlyEntities.forEach((fe) => {
+      if (match(fe.name)) results.push({ label: fe.name, sublabel: "Vänlig enhet", lat: fe.coords.lat, lng: fe.coords.lng });
+    });
+    state.roadBases.forEach((rb) => {
+      if (match(rb.name)) results.push({ label: rb.name, sublabel: "Vägbas", lat: rb.coords.lat, lng: rb.coords.lng });
+    });
+    state.navalUnits.forEach((nu) => {
+      if (match(nu.name)) results.push({ label: nu.name, sublabel: "Marinstyrkа", lat: nu.position.lat, lng: nu.position.lng });
+    });
+    allUnits.forEach((u) => {
+      if (match(u.name)) results.push({ label: u.name, sublabel: u.category, lat: u.position.lat, lng: u.position.lng });
+    });
+    return results.slice(0, 10);
+  }, [searchQuery, state, allUnits]);
+
   // Filter for radar units
   const radarUnits = useMemo(
-    () => allUnits.filter((u) => u.category === "radar") as ExtendedRadarUnit[],
+    () => allUnits.filter((u): u is RadarUnit => u.category === "radar"),
     [allUnits]
   );
 
@@ -257,13 +350,27 @@ export default function MapPage() {
     setRadarContacts(prev => ({ ...prev, [radarId]: contactIds }));
   }, []);
 
+  const mapRadarStatus = useCallback((unit: RadarUnit): ExtendedRadarUnit["status"] => {
+    if (unit.deployedState === "stowed") return "maintenance";
+    return unit.emitting ? "operational" : "standby";
+  }, []);
+
   // Enriched units with detected contact info
   const enrichedRadarUnits = useMemo(() => 
     radarUnits.map(u => ({
       ...u,
+      status: mapRadarStatus(u),
+      rangeRadius: 450000,
+      sweepSpeed: 6,
+      faction: "friendly" as const,
+      basePosition:
+        (u.currentBase && BASE_COORDS[u.currentBase]) ||
+        (u.lastBase && BASE_COORDS[u.lastBase]) ||
+        (u.parentBaseId && BASE_COORDS[u.parentBaseId]) ||
+        u.position,
       detectedContactIds: radarContacts[u.id] ?? []
     })),
-    [radarUnits, radarContacts]
+    [radarUnits, radarContacts, mapRadarStatus]
   );
 
   useRadarDetection(enrichedRadarUnits, handleUpdateRadarContacts);
@@ -303,13 +410,33 @@ export default function MapPage() {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [isDropdownOpen]);
 
-  const [planningMode, setPlanningMode] = useState(false);
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    if (searchOpen) document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [searchOpen]);
 
   const allDrones = useMemo(() => allUnits.filter(isDrone), [allUnits]);
+  useBoundaryCrossing(allUnits);
   const visibleUnits = useMemo(() => {
+    if (isPlanMode) {
+      // Include airborne aircraft that still live in planState.bases.units —
+      // they were previously rendered by AircraftLayer; now harmonized via UnitsLayer.
+      const baseAirborne = planState.bases
+        .flatMap((b) => b.units)
+        .filter((u) => u.affiliation === "friend");
+      return [
+        ...baseAirborne,
+        ...planState.deployedUnits.filter((u) => u.affiliation === "friend"),
+      ];
+    }
     const nonRadar = allUnits.filter((u) => u.category !== "radar");
     return state?.overlayVisibility?.drones ? nonRadar : nonRadar.filter((unit) => !isDrone(unit));
-  }, [allUnits, state?.overlayVisibility?.drones]);
+  }, [allUnits, state?.overlayVisibility?.drones, isPlanMode, planState.bases, planState.deployedUnits]);
 
   // ── Fog-of-war: compute friendly sensor discs, then classify hostile ships
   // and enemy bases/entities as visible / last-known / hidden. Friendlies in
@@ -319,10 +446,10 @@ export default function MapPage() {
   const enemyBaseVisibility = useMemo(() => detectEnemyBases(state, sensorDiscs), [state, sensorDiscs]);
   const enemyEntityVisibility = useMemo(() => detectEnemyEntities(state, sensorDiscs), [state, sensorDiscs]);
 
-  // Units whose path-history trail should render (airborne/moving friendlies).
+  // Units whose path-history trail should render (airborne/moving friendlies). Hidden in plan mode.
   const trailUnits = useMemo(
-    () => state.deployedUnits.filter((u) => u.pathHistory && u.pathHistory.length > 1),
-    [state.deployedUnits],
+    () => isPlanMode ? [] : state.deployedUnits.filter((u) => u.pathHistory && u.pathHistory.length > 1),
+    [state.deployedUnits, isPlanMode],
   );
 
   useEffect(() => {
@@ -415,6 +542,246 @@ export default function MapPage() {
       ? enrichedRadarUnits.find((r) => r.id === selected.radarId)
       : undefined;
 
+  // ── Travel range + battle intel ──────────────────────────────────────────
+  const [travelRange, setTravelRange] = useState<TravelRangeMode>({
+    enabled: false,
+    returnBaseId: null,
+    options: DEFAULT_TRAVEL_OPTS,
+    autoPickBase: false,
+    pinnedTargetId: null,
+  });
+  const [intelHover, setIntelHover] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Resolve which unit drives the travel-range overlay (mid-air unit OR aircraft at base).
+  const travelRangeUnit = useMemo(() => {
+    if (selectedUnit && isTravelRangeUnit(selectedUnit)) return selectedUnit;
+    if (selectedAircraft) return selectedAircraft;
+    return null;
+  }, [selectedUnit, selectedAircraft]);
+
+  // Reset travel-range mode when switching to a different selectable.
+  const travelKey = travelRangeUnit?.id ?? "";
+  useEffect(() => {
+    setTravelRange((prev) => ({
+      ...prev,
+      pinnedTargetId: null,
+      // Keep enabled state and options across the same unit; reset on unit change.
+    }));
+  }, [travelKey]);
+
+  // Friendly bases (id + coords) for return-base picking.
+  const friendlyBaseList = useMemo(
+    () =>
+      state.bases
+        .map((b) => {
+          const c = BASE_COORDS[b.id];
+          return c ? { id: b.id, name: b.name, coords: c } : null;
+        })
+        .filter((x): x is { id: typeof state.bases[number]["id"]; name: string; coords: { lat: number; lng: number } } => x !== null),
+    [state.bases]
+  );
+
+  // Effective max range + cruise speed for the active unit.
+  const travelRangeStats = useMemo(() => {
+    if (!travelRangeUnit) return null;
+    return computeTravelRange(travelRangeUnit, travelRange.options);
+  }, [travelRangeUnit, travelRange.options]);
+
+  // Threat rings (SAM + radar) — used for path-threat warnings.
+  const threatRings = useMemo(
+    () => collectThreatRings(state.enemyBases, state.enemyEntities),
+    [state.enemyBases, state.enemyEntities]
+  );
+
+  // Per-target intel (reachability + path threats).
+  const intelByTarget = useMemo<TargetIntel[]>(() => {
+    if (!travelRange.enabled || !travelRangeUnit || !travelRangeStats) return [];
+    const maxRangeKm = travelRangeStats.maxRangeKm;
+    const returnBase = travelRange.returnBaseId
+      ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+      : null;
+
+    type Target = { id: string; name: string; category: string; position: { lat: number; lng: number } };
+    const targets: Target[] = [
+      ...state.enemyBases
+        .filter((b) => b.operationalStatus !== "destroyed")
+        .map((b) => ({ id: `eb_${b.id}`, name: b.name, category: b.category, position: b.coords })),
+      ...state.enemyEntities
+        .filter((e) => e.operationalStatus !== "destroyed")
+        .map((e) => ({ id: `ee_${e.id}`, name: e.name, category: e.category, position: e.coords })),
+    ];
+
+    return targets.map((t) => {
+      const cls = classifyTarget(travelRangeUnit.position, t.position, maxRangeKm, returnBase?.coords ?? null);
+
+      // Only compute path threats for reachable targets to keep cost down.
+      let pathThreatened = false;
+      if (cls.reachability !== "out_of_reach") {
+        const segment = returnBase
+          ? [travelRangeUnit.position, t.position, returnBase.coords]
+          : [travelRangeUnit.position, t.position];
+        pathThreatened = pathCrossesThreatRings(segment, threatRings).engagementCrossings.length > 0;
+      }
+
+      return {
+        id: t.id,
+        name: t.name,
+        position: t.position,
+        reachability: cls.reachability,
+        pathThreatened,
+      };
+    });
+  }, [
+    travelRange.enabled,
+    travelRange.returnBaseId,
+    travelRangeUnit,
+    travelRangeStats,
+    state.enemyBases,
+    state.enemyEntities,
+    threatRings,
+    friendlyBaseList,
+  ]);
+
+  // Battle-intel summary for the panel.
+  const intelSummary = useMemo<BattleIntelSummary | undefined>(() => {
+    if (!travelRange.enabled || intelByTarget.length === 0) return undefined;
+    const reachable = intelByTarget.filter((i) => i.reachability !== "out_of_reach");
+    return {
+      reachableCount: reachable.length,
+      strikeReturnCount: intelByTarget.filter((i) => i.reachability === "strike_return").length,
+      strikeOnlyCount: intelByTarget.filter((i) => i.reachability === "strike_only").length,
+      threatenedCount: reachable.filter((i) => i.pathThreatened).length,
+    };
+  }, [travelRange.enabled, intelByTarget]);
+
+  // Auto-pick best return base for the pinned target (or the highest-priority reachable target).
+  useEffect(() => {
+    if (!travelRange.enabled || !travelRange.autoPickBase || !travelRangeUnit || !travelRangeStats) return;
+    const targetIntel = travelRange.pinnedTargetId
+      ? intelByTarget.find((t) => t.id === travelRange.pinnedTargetId)
+      : intelByTarget.find((t) => t.reachability !== "out_of_reach");
+    if (!targetIntel) return;
+    const best = findBestReturnBase(
+      travelRangeUnit.position,
+      targetIntel.position,
+      friendlyBaseList,
+      travelRangeStats.maxRangeKm,
+      travelRangeUnit.currentBase ?? null
+    );
+    if (best && best.baseId !== travelRange.returnBaseId) {
+      setTravelRange((prev) => ({ ...prev, returnBaseId: best.baseId }));
+    }
+  }, [
+    travelRange.enabled,
+    travelRange.autoPickBase,
+    travelRange.pinnedTargetId,
+    travelRange.returnBaseId,
+    travelRangeUnit,
+    travelRangeStats,
+    intelByTarget,
+    friendlyBaseList,
+  ]);
+
+  // Auto-unpin if the pinned target is no longer reachable.
+  useEffect(() => {
+    if (!travelRange.pinnedTargetId) return;
+    const t = intelByTarget.find((x) => x.id === travelRange.pinnedTargetId);
+    if (t && t.reachability === "out_of_reach") {
+      setTravelRange((prev) => ({ ...prev, pinnedTargetId: null }));
+    }
+  }, [travelRange.pinnedTargetId, intelByTarget]);
+
+  // Esc to unpin.
+  useEffect(() => {
+    if (!travelRange.pinnedTargetId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTravelRange((prev) => ({ ...prev, pinnedTargetId: null }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [travelRange.pinnedTargetId]);
+
+  // Coords + best-return for the currently-hovered enemy target (drives tooltip).
+  const hoverTooltipData = useMemo(() => {
+    if (!travelRange.enabled || !intelHover || !travelRangeUnit || !travelRangeStats) return null;
+    const t = intelByTarget.find((x) => x.id === intelHover.id);
+    if (!t) return null;
+    const targetMeta = (() => {
+      if (t.id.startsWith("eb_")) {
+        const eb = state.enemyBases.find((b) => `eb_${b.id}` === t.id);
+        return eb ? { name: eb.name, category: eb.category } : null;
+      }
+      const ee = state.enemyEntities.find((e) => `ee_${e.id}` === t.id);
+      return ee ? { name: ee.name, category: ee.category } : null;
+    })();
+    if (!targetMeta) return null;
+
+    const returnBase = travelRange.returnBaseId
+      ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+      : null;
+    const cls = classifyTarget(
+      travelRangeUnit.position,
+      t.position,
+      travelRangeStats.maxRangeKm,
+      returnBase?.coords ?? null
+    );
+    const segment = returnBase
+      ? [travelRangeUnit.position, t.position, returnBase.coords]
+      : [travelRangeUnit.position, t.position];
+    const pathReport = pathCrossesThreatRings(segment, threatRings);
+
+    const etaToTargetHours = etaHoursTo(travelRangeUnit.position, t.position, travelRangeStats.cruiseSpeedKts);
+    const etaTargetToBaseHours = returnBase
+      ? etaHoursTo(t.position, returnBase.coords, travelRangeStats.cruiseSpeedKts)
+      : undefined;
+
+    let bestReturn: BestReturnBase | null = null;
+    if (cls.withinOneWay) {
+      bestReturn = findBestReturnBase(
+        travelRangeUnit.position,
+        t.position,
+        friendlyBaseList,
+        travelRangeStats.maxRangeKm,
+        travelRangeUnit.currentBase ?? null
+      );
+    }
+
+    return {
+      x: intelHover.x,
+      y: intelHover.y,
+      targetName: targetMeta.name,
+      targetCategory: targetMeta.category,
+      reachability: cls.reachability as Reachability,
+      oneWayKm: cls.oneWayKm,
+      roundTripKm: cls.roundTripKm,
+      cruiseSpeedKts: travelRangeStats.cruiseSpeedKts,
+      etaToTargetHours,
+      etaTargetToBaseHours,
+      maxRangeKm: travelRangeStats.maxRangeKm,
+      pathThreats: pathReport.crossings,
+      bestReturn,
+      currentReturnBaseId: travelRange.returnBaseId,
+    };
+  }, [
+    travelRange.enabled,
+    travelRange.returnBaseId,
+    intelHover,
+    travelRangeUnit,
+    travelRangeStats,
+    intelByTarget,
+    state.enemyBases,
+    state.enemyEntities,
+    friendlyBaseList,
+    threatRings,
+  ]);
+
+  // Click an enemy intel halo → pin (or unpin if same).
+  const togglePinTarget = useCallback((id: string) => {
+    setTravelRange((prev) => ({
+      ...prev,
+      pinnedTargetId: prev.pinnedTargetId === id ? null : id,
+    }));
+  }, []);
 
   useEffect(() => {
     isFollowing.current = false;
@@ -470,20 +837,56 @@ export default function MapPage() {
     setSelected(null);
   }, []);
 
+  // When the active tab changes, load its snapshot into the plan reducer.
+  useEffect(() => {
+    if (activeTab) {
+      planDispatch({ type: "LOAD_STATE", payload: activeTab.snapshot });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTabId]);
+
+  // Auto-save planState to the active tab on every change.
+  useEffect(() => {
+    if (activeTabId) {
+      updateActiveSnapshot(planState);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planState]);
+
+  const handleCreateTab = useCallback(() => {
+    createTab();
+    setPlacingMode(null);
+    setIsDeployMode(false);
+    setPlanMenuOpen(true);
+  }, [createTab]);
+
+  const handleSwitchTab = useCallback((id: string | null) => {
+    switchTab(id);
+    setPlacingMode(null);
+    setIsDeployMode(false);
+    if (id !== null) setPlanMenuOpen(true);
+  }, [switchTab]);
+
+  const handleFlyTo = useCallback((lat: number, lng: number) => {
+    mapRef.current?.flyTo({ center: [lng, lat], zoom: 12, duration: 900 });
+  }, []);
+
   const handleMapClick = useCallback((e: MapLayerMouseEvent) => {
     if (drawingMode !== "none") return;
     if (placingMode && e.lngLat) {
       const coords = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       const d = placingMode.data;
+      // Plan-mode placements go to the isolated plan reducer; live dispatch otherwise.
+      const activeDispatch = isPlanMode ? planDispatch : dispatch;
       switch (placingMode.kind) {
         case "enemy_base":
-          dispatch({ type: "PLAN_ADD_ENEMY_BASE", base: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_ENEMY_BASE", base: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", threatRangeKm: d.threatRangeKm ? Number(d.threatRangeKm) : undefined, coords } });
           break;
         case "enemy_entity":
-          dispatch({ type: "PLAN_ADD_ENEMY_ENTITY", entity: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_ENEMY_ENTITY", entity: { name: d.name, category: d.category as any, threatLevel: d.threatLevel as any, operationalStatus: d.operationalStatus as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
           break;
         case "friendly_base":
-          dispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker: { name: d.name, category: d.category as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
+          activeDispatch({ type: "PLAN_ADD_FRIENDLY_MARKER", marker: { name: d.name, category: d.category as any, estimates: d.estimates ?? "", notes: d.notes ?? "", coords } });
           break;
         case "friendly_unit": {
           const baseId = d.baseId as import("@/types/game").BaseType;
@@ -512,18 +915,18 @@ export default function MapPage() {
                   : category === "air_defense"
                     ? createAirDefenseUnit({ ...common, type: subtype as "SAM_SHORT" | "SAM_MEDIUM" | "SAM_LONG" })
                     : createGroundVehicleUnit({ ...common, type: subtype as "LOGISTICS_TRUCK" | "ARMORED_TRANSPORT" | "FUEL_BOWSER" });
-          dispatch({ type: "PLAN_ADD_FRIENDLY_UNIT", unit });
+          activeDispatch({ type: "PLAN_ADD_FRIENDLY_UNIT", unit });
           break;
         }
         case "road_base":
-          dispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
+          activeDispatch({ type: "PLAN_ADD_ROAD_BASE", roadBase: { name: d.name, status: d.status as any, echelon: d.echelon as any, parentBaseId: d.parentBaseId, isDraggable: true, rangeRadius: Number(d.rangeRadius), coords } });
           break;
       }
       setPlacingMode(null);
       return;
     }
     setSelected(null);
-  }, [placingMode, drawingMode, dispatch]);
+  }, [placingMode, drawingMode, dispatch, isPlanMode]);
 
   const handleSatelliteUpdate = useCallback((satellites: SatelliteLiveState[]) => {
     setLiveSatellites(satellites);
@@ -606,41 +1009,231 @@ export default function MapPage() {
       <TopBar state={state} onTogglePause={togglePause} onSetSpeed={setGameSpeed} onReset={resetGame} />
 
       {/* Sub-header */}
-      <div className="border-b border-border bg-card px-6 py-2.5 flex items-center gap-3">
-        <MapPin className="h-4 w-4 text-primary" />
-        <h2 className="font-sans font-bold text-sm text-foreground tracking-wider">
-          TAKTISK KARTA — FLYGBASGRUPP
+      {/* Map header */}
+      <div className="border-b border-border bg-card px-4 py-2 flex items-center gap-3">
+        <MapPin className="h-4 w-4 text-primary shrink-0" />
+        <h2 className="font-sans font-bold text-sm text-foreground tracking-wider shrink-0">
+          TAKTISK KARTA
         </h2>
-        <span className="text-[10px] font-mono text-muted-foreground ml-2">
-          Dag {state.day} · Fas: {state.phase}
+        <span className="text-[10px] font-mono text-muted-foreground">
+          Dag {state.day} · {state.phase}
         </span>
         <div className="ml-auto flex items-center gap-4 text-[10px] font-mono text-muted-foreground">
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-green inline-block" /> Hög beredskap</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-yellow inline-block" /> Medel beredskap</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-status-red inline-block" /> Låg beredskap</span>
           <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-muted-foreground/40 inline-block" /> Inaktiv bas</span>
+          {/* Base filter badge */}
+          <AnimatePresence>
+            {focusedBaseId && (
+              <motion.div
+                key="base-filter-badge"
+                initial={{ opacity: 0, x: 12 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 12 }}
+                className="flex items-center gap-1 border border-blue-500/50 bg-blue-500/10 rounded px-2 py-1"
+              >
+                <Target className="h-3 w-3 text-blue-400 flex-shrink-0" />
+                <span className="text-[10px] font-mono font-bold text-blue-300">
+                  {state.bases.find((b) => b.id === focusedBaseId)?.name ?? focusedBaseId}
+                </span>
+                <div className="flex gap-0.5 ml-1.5 border-l border-blue-500/30 pl-1.5">
+                  {(["global", "base", "unit"] as const).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setFilterLevel(level)}
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
+                        filterLevel === level
+                          ? "bg-blue-500/35 text-blue-200"
+                          : "text-blue-500/50 hover:text-blue-300"
+                      }`}
+                    >
+                      {level === "global" ? "GLOBAL" : level === "base" ? "BAS" : "ENHET"}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={clearFilter}
+                  className="ml-1 text-blue-400/60 hover:text-blue-200 transition-colors"
+                  title="Rensa filter"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <button
-            onClick={() => { setIsPlanMode((v) => !v); setPlacingMode(null); }}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all ${
-              isPlanMode
-                ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
+            onClick={() => setShowAllBaseRings((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+              showAllBaseRings
+                ? "border-green-600/60 bg-green-600/15 text-green-400"
                 : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
             }`}
+            title="Visa AOR-ringar för alla baser"
           >
-            <PenLine className="h-3.5 w-3.5" />
-            PLANLÄGE {isPlanMode ? "PÅ" : "AV"}
+            <Layers3 className="h-3 w-3" />
+            ALLA RINGAR
           </button>
+
+          {/* Icon style toggle */}
           <button
-            onClick={() => setPlanningMode((v) => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
-              planningMode
-                ? "border-amber-500/60 bg-amber-500/15 text-amber-400"
-                : "border-green-600/40 bg-green-600/10 text-green-400"
+            onClick={() => setIconStyle((s) => s === "custom" ? "nato" : "custom")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+              iconStyle === "nato"
+                ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-400"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            }`}
+            title="Växla mellan egna ikoner och NATO-symboler"
+          >
+            {iconStyle === "nato" ? "NATO" : "IKON"}
+          </button>
+
+          {/* Boundary layer toggles */}
+          {(["eez","fir","land"] as const).map((key) => {
+            const labels: Record<string, string> = { eez: "EEZ", fir: "FIR", land: "LANDGRÄNS" };
+            const colors: Record<string, string> = {
+              eez:  "border-[#7B9CB0]/60 bg-[#7B9CB0]/10 text-[#7B9CB0]",
+              fir:  "border-[#93C5FD]/60 bg-[#93C5FD]/10 text-[#93C5FD]",
+              land: "border-gray-400/60 bg-gray-400/10 text-gray-400",
+            };
+            const on = boundaryVis[key];
+            return (
+              <button
+                key={key}
+                onClick={() => setBoundaryVis((v) => ({ ...v, [key]: !v[key] }))}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+                  on ? colors[key] : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                }`}
+                title={`Visa/dölj ${labels[key]}-gräns`}
+              >
+                {labels[key]}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Plan tabs */}
+        <div className="flex items-center gap-1 ml-4 flex-1 overflow-x-auto">
+          {/* LIVE tab */}
+          <button
+            onClick={() => { handleSwitchTab(null); setIsDeployMode(false); setPlacingMode(null); }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              !isPlanMode && !isDeployMode
+                ? "bg-green-600/15 border-green-600/50 text-green-400"
+                : "border-border text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Radio className="h-3 w-3" />
-            {planningMode ? "PLANERING" : "SKARPT LÄGE"}
+            LIVE
           </button>
+
+          {/* Deploy button */}
+          <button
+            onClick={() => {
+              if (isPlanMode) handleSwitchTab(null);
+              setIsDeployMode((v) => !v);
+              setPlacingMode(null);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              isDeployMode
+                ? "bg-orange-600/15 border-orange-600/50 text-orange-400"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Zap className="h-2.5 w-2.5" />
+            DEPLOY
+          </button>
+
+          {/* Plan toggle button */}
+          <button
+            onClick={() => setPlanMenuOpen((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              planMenuOpen || isPlanMode
+                ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <PenLine className="h-2.5 w-2.5" />
+            Plan
+          </button>
+
+          {/* Expanded plan tabs + new plan button */}
+          {planMenuOpen && (
+            <>
+              {tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className="flex items-center shrink-0"
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("plan-tab-id", tab.id); e.dataTransfer.effectAllowed = "move"; }}
+                >
+                  <button
+                    onClick={() => handleSwitchTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-l text-[10px] font-mono font-bold border border-r-0 transition-all ${
+                      activeTabId === tab.id
+                        ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <PenLine className="h-2.5 w-2.5" />
+                    {tab.name}
+                  </button>
+                  <button
+                    onClick={() => deleteTab(tab.id)}
+                    className={`flex items-center px-1.5 py-1 rounded-r text-[10px] border transition-all ${
+                      activeTabId === tab.id
+                        ? "bg-amber-500/15 border-amber-500/50 text-amber-400 hover:text-red-400"
+                        : "border-border text-muted-foreground hover:text-red-400"
+                    }`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+
+              {tabs.length < 8 && (
+                <button
+                  onClick={handleCreateTab}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-dashed border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-400 transition-all shrink-0"
+                >
+                  + Ny plan
+                </button>
+              )}
+            </>
+          )}
+
+          {/* Execution slot — drag a plan tab here to execute it */}
+          {tabs.length > 0 && (
+            <div
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("plan-tab-id")) { e.preventDefault(); setDragOverExecute(true); } }}
+              onDragLeave={() => setDragOverExecute(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverExecute(false);
+                const tabId = e.dataTransfer.getData("plan-tab-id");
+                const tabToExecute = tabs.find((t) => t.id === tabId);
+                if (!tabToExecute) return;
+                executePlan(tabToExecute, dispatch);
+                deleteTab(tabId);
+                handleSwitchTab(null);
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono border border-dashed transition-all shrink-0 ml-2 ${
+                dragOverExecute
+                  ? "bg-green-600/20 border-green-500/70 text-green-400"
+                  : "border-green-700/40 text-green-700/60 hover:border-green-600/50 hover:text-green-600/80"
+              }`}
+              title="Dra en plan hit för att exekvera den"
+            >
+              <PlayCircle className="h-2.5 w-2.5" />
+              {dragOverExecute ? "Släpp för att exekvera" : "Exekvera plan"}
+            </div>
+          )}
+        </div>
+
+        {/* Legend */}
+        <div className="ml-auto flex items-center gap-3 text-[10px] font-mono text-muted-foreground shrink-0">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-green inline-block" /> Hög</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-yellow inline-block" /> Medel</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-status-red inline-block" /> Låg</span>
         </div>
       </div>
 
@@ -649,20 +1242,244 @@ export default function MapPage() {
 
         {/* Plan mode sidebar */}
         <AnimatePresence>
-          {isPlanMode && (
+          {isPlanMode && activeTab && (
             <motion.div
               key="plan-sidebar"
               initial={{ x: -320, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -320, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col"
+              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-hidden flex flex-col"
             >
               <PlanModeSidebar
+                tab={activeTab}
+                state={planState}
+                dispatch={planDispatch}
+                onStartPlacement={handleStartPlacement}
+                onFinalizePlan={() => setShowPlanReview(true)}
+                onRename={(name) => renameTab(activeTab.id, name)}
+                onFlyTo={handleFlyTo}
+                delays={activeTab.delays}
+                onSetDelay={setDelay}
+              />
+            </motion.div>
+          )}
+          {isDeployMode && (
+            <motion.div
+              key="deploy-sidebar"
+              initial={{ x: -320, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -320, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-[300px] flex-shrink-0 border-r border-border bg-card overflow-hidden flex flex-col"
+            >
+              <DeployModeSidebar
                 state={state}
                 dispatch={dispatch}
                 onStartPlacement={handleStartPlacement}
+                onClose={() => { setIsDeployMode(false); setPlacingMode(null); }}
+                onFlyTo={handleFlyTo}
               />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Detail panel — friendly base/aircraft or enemy */}
+        <AnimatePresence>
+          {selected && panelTitle && (
+            <motion.div
+              key="detail"
+              initial={{ x: -340, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -340, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="w-[340px] flex-shrink-0 border-r border-border bg-card overflow-y-auto flex flex-col"
+            >
+              {/* Panel header */}
+              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+                <div>
+                  {selectedSatellite ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedSatellite.name}</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        {selectedSatellite.role} · {selectedSatellite.orbitClass}
+                      </div>
+                    </>
+                  ) : selectedUnit ? (
+                    <>
+                      <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
+                    </>
+                  ) : panelTitle ? (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
+                          selected.kind === "enemy_base"
+                            ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
+                            : <Swords className="h-3.5 w-3.5 text-red-300" />
+                        )}
+                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
+                      {selected?.kind === "base" && selectedBase && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/dashboard/${selectedBase.id}`)}
+                          className="mt-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-wider transition-all hover:brightness-105"
+                          style={{
+                            color: "#0C234C",
+                            background: "rgba(215,171,58,0.14)",
+                            borderColor: "rgba(215,171,58,0.42)",
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <LayoutDashboard className="h-3.5 w-3.5" />
+                            Visa i dashboarden
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-xs font-bold text-foreground font-mono">
+                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {selected?.kind === "base" && selectedBase && (
+                    <button
+                      onClick={() =>
+                        focusedBaseId === selectedBase.id
+                          ? clearFilter()
+                          : setFocusedBase(selectedBase.id as import("@/types/game").BaseType)
+                      }
+                      className={`p-1 rounded transition-colors ${
+                        focusedBaseId === selectedBase.id
+                          ? "text-blue-400 bg-blue-500/15"
+                          : "text-muted-foreground hover:text-blue-400"
+                      }`}
+                      title={focusedBaseId === selectedBase.id ? "Rensa filter" : "Fokusera på denna bas"}
+                    >
+                      <Target className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelected(null)}
+                    className="p-1 text-muted-foreground hover:text-foreground rounded"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {selectedUnit && isDrone(selectedUnit) ? (
+                <DroneDetailPanel
+                  drone={selectedUnit}
+                  onBack={() => setSelected(null)}
+                  onRecall={recallDrone}
+                  onUpdateWaypoints={updateDroneWaypoints}
+                  onSetOverlay={setDroneOverlay}
+                  onDeploy={() => {}}
+                  planningMode={isPlanMode}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
+                />
+              ) : selectedUnit && isAircraft(selectedUnit) ? (
+                <AircraftDetailPanel
+                  aircraft={selectedUnit}
+                  onBack={() => setSelected(null)}
+                  onRecall={() => {
+                    // Map "Återkalla" to a unit recall (works for airborne aircraft).
+                    dispatch({ type: "RECALL_UNIT", unitId: selectedUnit.id });
+                  }}
+                  currentHour={state.hour}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
+                />
+              ) : selectedUnit ? (
+                <UnitDetailPanel
+                  unit={selectedUnit}
+                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
+                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+                  travelRange={travelRange}
+                  onTravelRangeChange={setTravelRange}
+                  travelRangeBases={friendlyBaseList}
+                  battleIntelSummary={intelSummary}
+                />
+              ) : selectedSatellite ? (
+                <SatelliteDetailPanel satellite={selectedSatellite} />
+              ) : selectedAircraft && selected.kind === "aircraft" ? (
+                 <AircraftDetailPanel
+                   aircraft={selectedAircraft}
+                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
+                   onRecall={handleRecall}
+                   currentHour={state.hour}
+                   travelRange={travelRange}
+                   onTravelRangeChange={setTravelRange}
+                   travelRangeBases={friendlyBaseList}
+                   battleIntelSummary={intelSummary}
+                 />
+               ) : selectedRadar ? (
+                 <RadarControlPanel
+                   unit={selectedRadar}
+                   onClose={() => setSelected(null)}
+                   onUpdate={(updates) => handleUpdateRadar(selectedRadar.id, updates)}
+                 />
+               ) : selectedZone ? (
+
+                <ZoneDetailPanel
+                  zone={selectedZone}
+                  onDelete={() => {
+                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
+                    setSelected(null);
+                  }}
+                  currentHour={state.hour}
+                  currentDay={state.day}
+                />
+              ) : selectedAsset ? (
+                <AssetInfoPanel
+                  asset={selectedAsset}
+                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
+                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
+                />
+              ) : selected?.kind === "base" && selectedBase ? (
+                <BaseDetailPanel
+                  base={selectedBase}
+                  deployedUnits={state.deployedUnits}
+                  onSelectAircraft={(id) =>
+                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
+                  }
+                  onSelectUnit={(id) => setSelected({ kind: "unit", unitId: id })}
+                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
+                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
+                />
+              ) : selected?.kind === "base" ? (
+                <div className="p-4 text-xs text-muted-foreground">
+                  Bas ej aktiv i detta scenario.
+                </div>
+              ) : selected?.kind === "road_base" && selectedRoadBase ? (
+                <RoadBaseDetailPanel
+                  roadBase={selectedRoadBase}
+                  isPlanMode={isPlanMode}
+                  dispatch={dispatch}
+                  onSetRange={(km) => handleSetAor(selectedRoadBase.id, km)}
+                  rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
+                />
+              ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
+                <EnemyBaseDetailPanel
+                  base={selectedEnemyBase}
+                  report={state.intelReports?.[selectedEnemyBase.id]}
+                />
+              ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
+                <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
+              ) : selected?.kind === "naval" && selectedNaval ? (
+                <NavalDetailPanel unit={selectedNaval} />
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>
@@ -758,6 +1575,23 @@ export default function MapPage() {
               </Source>
             )}
 
+            {/* Railroad overlay — Esri World Transportation */}
+            {state?.overlayVisibility?.railroad && (
+              <Source
+                id="railroad"
+                type="raster"
+                tiles={RAILROAD_TILES}
+                tileSize={256}
+                attribution="Tiles © Esri"
+              >
+                <Layer
+                  id="railroad-layer"
+                  type="raster"
+                  paint={{ "raster-opacity": 0.8 }}
+                />
+              </Source>
+            )}
+
             {/* Hillshade — uses MapLibre's native hillshade layer type, rendered inside GL
                 so it sits below zones/rings/markers automatically. Disabled on satellite
                 because the imagery already contains its own terrain shadows. */}
@@ -790,9 +1624,12 @@ export default function MapPage() {
             {/* County/region borders — base geographic reference layer */}
             <RegionBordersLayer />
 
-            {/* Tactical zone fills */}
+            {/* EEZ + FIR boundary lines */}
+            <GeoBoundariesLayer vis={boundaryVis} />
+
+            {/* Tactical zone fills — exclude auto-generated fixed-asset protection zones */}
             <TacticalZonesLayer
-              zones={state?.tacticalZones ?? []}
+              zones={(state?.tacticalZones ?? []).filter((z) => z.category !== "fixed")}
               visible={state?.overlayVisibility?.activeZones ?? false}
             />
 
@@ -801,11 +1638,13 @@ export default function MapPage() {
               aorOverrides={aorOverrides}
               visibleLayers={state?.overlayVisibility ?? ({} as any)}
               roadBases={state?.roadBases ?? []}
+              visibleBaseIds={ringBaseIds}
             />
 
             <SupplyLinesLayer bases={state?.bases ?? []} />
 
             {visibleViews.moln && <CloudLayer onUpdate={setCloudSummary} />}
+            {visibleViews.vind && <WindLayer />}
             {visibleViews.satelliter && (
               <SatelliteLayer
                 onUpdate={handleSatelliteUpdate}
@@ -814,15 +1653,9 @@ export default function MapPage() {
                 onPositionUpdate={selectedSatelliteId ? handleSatellitePositionUpdate : undefined}
               />
             )}
-            <AircraftLayer
+            <AircraftIncursionWatcher
               bases={state?.bases ?? []}
               currentHour={state?.hour ?? 0}
-              currentDay={state?.day ?? 1}
-              onSelectAircraft={(baseId, aircraftId) =>
-                setSelected({ kind: "aircraft", baseId, aircraftId })
-              }
-              selectedAircraftId={selectedAircraftId}
-              onPositionUpdate={selectedAircraftId ? handlePositionUpdate : undefined}
               tacticalZones={state.tacticalZones}
               dispatch={dispatch}
             />
@@ -852,6 +1685,8 @@ export default function MapPage() {
               units={visibleUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
+              focusedBaseId={focusedBaseId}
+              iconStyle={iconStyle}
             />
 
             {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}
@@ -860,8 +1695,15 @@ export default function MapPage() {
               lastKnown={navalVisibility.lastKnown}
               onSelect={(id) => setSelected({ kind: "naval", id })}
               selectedId={selected?.kind === "naval" ? selected.id : null}
+              iconStyle={iconStyle}
             />
 
+            <DroneLayer
+              drones={allDrones}
+              selectedDroneId={selected?.kind === "unit" && allDrones.some(d => d.id === (selected as any).unitId) ? (selected as any).unitId : null}
+              onSelectDrone={(droneId) => setSelected({ kind: "unit", unitId: droneId })}
+              iconStyle={iconStyle}
+            />
             {state.overlayVisibility.drones && (
               <>
                 <DroneRangeOverlay drones={allDrones} />
@@ -873,6 +1715,38 @@ export default function MapPage() {
               units={deployedAdUnits}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
             />
+
+            <ThreatRingsLayer
+              enemyBases={isPlanMode ? planState.enemyBases : state.enemyBases}
+            />
+
+            {/* Travel-range geometric overlay */}
+            {travelRange.enabled && travelRangeUnit && travelRangeStats && travelRangeStats.maxRangeKm > 0 && (
+              <TravelRangeOverlay
+                unitPosition={travelRangeUnit.position}
+                maxRangeKm={travelRangeStats.maxRangeKm}
+                returnBase={
+                  travelRange.returnBaseId
+                    ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId) ?? null
+                    : null
+                }
+              />
+            )}
+
+            {/* Battle-intel overlay (halos + strike route) */}
+            {travelRange.enabled && travelRangeUnit && travelRangeStats && intelByTarget.length > 0 && (
+              <BattleIntelOverlay
+                intelByTarget={intelByTarget}
+                unitPosition={travelRangeUnit.position}
+                pinnedTargetId={travelRange.pinnedTargetId}
+                returnBaseCoords={
+                  travelRange.returnBaseId
+                    ? friendlyBaseList.find((b) => b.id === travelRange.returnBaseId)?.coords ?? null
+                    : null
+                }
+                threatRings={threatRings}
+              />
+            )}
 
             {draggingUnit && dropCandidate && (
               <Marker longitude={dropCandidate.lng} latitude={dropCandidate.lat} anchor="center">
@@ -922,6 +1796,7 @@ export default function MapPage() {
                 onClick={() => setSelected({ kind: "base", baseId: base.id })}
                 flygvapnetMode={state.overlayVisibility.flygvapnet}
                 showAirbases={true}
+                dimmed={focusedBaseId !== null && base.id !== focusedBaseId}
               />
             ))}
 
@@ -942,37 +1817,84 @@ export default function MapPage() {
                 </div>
               </Marker>
             ))}
-            {/* Enemy bases — only shown when inside a friendly sensor disc */}
-            {enemyBaseVisibility.visible.map((eb) => (
-              <EnemyMarker
-                key={eb.id}
-                base={eb}
-                isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
-                onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
-              />
+            {/* Enemy bases — fog-of-war in live mode; all plan entities shown as placeholders in plan mode */}
+            {isPlanMode
+              ? planState.enemyBases.map((eb) => (
+                  <EnemyMarker
+                    key={eb.id}
+                    base={eb}
+                    isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
+                    onClick={() => setSelected({ kind: "enemy_base", id: eb.id })}
+                    isPlaceholder
+                  />
+                ))
+              : enemyBaseVisibility.visible.map((eb) => {
+                  const intelId = `eb_${eb.id}`;
+                  const intel = travelRange.enabled ? intelByTarget.find((i) => i.id === intelId) : undefined;
+                  const dimmed = intel?.reachability === "out_of_reach";
+                  const intelClick = travelRange.enabled && intel
+                    ? () => togglePinTarget(intelId)
+                    : () => setSelected({ kind: "enemy_base", id: eb.id });
+                  return (
+                    <EnemyMarker
+                      key={eb.id}
+                      base={eb}
+                      isSelected={selected?.kind === "enemy_base" && selected.id === eb.id}
+                      onClick={intelClick}
+                      dimmed={dimmed}
+                      onHoverEnter={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverMove={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverLeave={travelRange.enabled ? () => setIntelHover(null) : undefined}
+                    />
+                  );
+                })
+            }
+            {isPlanMode
+              ? planState.enemyEntities.map((ee) => (
+                  <EnemyEntityMarker
+                    key={ee.id}
+                    entity={ee}
+                    isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
+                    onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
+                    isPlaceholder
+                  />
+                ))
+              : enemyEntityVisibility.visible.map((ee) => {
+                  const intelId = `ee_${ee.id}`;
+                  const intel = travelRange.enabled ? intelByTarget.find((i) => i.id === intelId) : undefined;
+                  const dimmed = intel?.reachability === "out_of_reach";
+                  const intelClick = travelRange.enabled && intel
+                    ? () => togglePinTarget(intelId)
+                    : () => setSelected({ kind: "enemy_entity", id: ee.id });
+                  return (
+                    <EnemyEntityMarker
+                      key={ee.id}
+                      entity={ee}
+                      isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
+                      onClick={intelClick}
+                      dimmed={dimmed}
+                      onHoverEnter={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverMove={travelRange.enabled ? (x, y) => setIntelHover({ id: intelId, x, y }) : undefined}
+                      onHoverLeave={travelRange.enabled ? () => setIntelHover(null) : undefined}
+                    />
+                  );
+                })
+            }
+            {(isPlanMode ? planState.friendlyMarkers : state.friendlyMarkers).map((fm) => (
+              <FriendlyMarkerPin key={fm.id} marker={fm} isPlaceholder={isPlanMode} />
             ))}
-            {enemyEntityVisibility.visible.map((ee) => (
-              <EnemyEntityMarker
-                key={ee.id}
-                entity={ee}
-                isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
-                onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
-              />
+            {(isPlanMode ? planState.friendlyEntities : state.friendlyEntities).map((fe) => (
+              <FriendlyEntityPin key={fe.id} entity={fe} isPlaceholder={isPlanMode} />
             ))}
-            {state.friendlyMarkers.map((fm) => (
-              <FriendlyMarkerPin key={fm.id} marker={fm} />
-            ))}
-            {state.friendlyEntities.map((fe) => (
-              <FriendlyEntityPin key={fe.id} entity={fe} />
-            ))}
-            {state.roadBases.map((rb) => (
+            {(isPlanMode ? planState.roadBases : state.roadBases).map((rb) => (
               <RoadBaseMarker
                 key={rb.id}
                 roadBase={rb}
                 isPlanMode={isPlanMode}
                 isSelected={selected?.kind === "road_base" && selected.id === rb.id}
                 onSelect={() => setSelected({ kind: "road_base", id: rb.id })}
-                dispatch={dispatch}
+                dispatch={isPlanMode ? planDispatch : dispatch}
+                dimmed={focusedBaseId !== null && rb.parentBaseId !== focusedBaseId}
               />
             ))}
 
@@ -989,7 +1911,17 @@ export default function MapPage() {
                 onSelect={(id) => setSelected(id ? { kind: "radar", radarId: id } : null)}
               />
             )}
+
+            {/* Canvas radar pulse — rendered inside MapGL container so it overlays the tiles */}
+            {state?.overlayVisibility?.radarUnits && (
+              <RadarPulseLayer units={enrichedRadarUnits} />
+            )}
           </MapGL>
+
+          {/* Battle-intel hover tooltip (positioned above the map in screen space) */}
+          {hoverTooltipData && (
+            <BattleIntelTooltip {...hoverTooltipData} />
+          )}
 
           {/* Placement mode banner */}
           {placingMode && (
@@ -1026,26 +1958,56 @@ export default function MapPage() {
             </div>
           )}
 
-          {/* Wind particle flow field — shown when vind tab is active */}
-          {visibleViews.vind && <WindLayer active={true} />}
-
           {/* Search bar + combined layer dropdown — top left */}
           <div
             ref={dropdownRef}
             className="absolute top-3 left-14 z-20 flex items-center gap-2"
             style={{ pointerEvents: "auto" }}
           >
-            <input
-              type="text"
-              placeholder="Sök position eller enhet..."
-              className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
-              style={{
-                background: "rgba(255,255,255,0.90)",
-                border: "1px solid rgba(45,90,39,0.28)",
-                backdropFilter: "blur(10px)",
-                boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
-              }}
-            />
+            <div ref={searchRef} className="relative">
+              <input
+                type="text"
+                placeholder="Sök position eller enhet..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setSearchOpen(true); }}
+                onFocus={() => { if (searchQuery) setSearchOpen(true); }}
+                className="h-9 w-60 rounded-full px-4 text-sm font-mono text-gray-700 outline-none"
+                style={{
+                  background: "rgba(255,255,255,0.90)",
+                  border: "1px solid rgba(45,90,39,0.28)",
+                  backdropFilter: "blur(10px)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,0.10)",
+                }}
+              />
+              {searchOpen && searchResults.length > 0 && (
+                <div
+                  className="absolute top-full left-0 mt-1 rounded-xl overflow-hidden"
+                  style={{
+                    width: 280,
+                    background: "rgba(8,17,32,0.97)",
+                    border: "1px solid rgba(103,232,249,0.18)",
+                    boxShadow: "0 8px 32px rgba(2,6,23,0.55)",
+                    backdropFilter: "blur(18px)",
+                    zIndex: 50,
+                  }}
+                >
+                  {searchResults.map((r, i) => (
+                    <button
+                      key={i}
+                      className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-2 transition-colors hover:bg-white/5"
+                      onClick={() => {
+                        mapRef.current?.flyTo({ center: [r.lng, r.lat], zoom: 11, duration: 900 });
+                        setSearchQuery("");
+                        setSearchOpen(false);
+                      }}
+                    >
+                      <span className="text-sm font-mono truncate" style={{ color: "#e2e8f0" }}>{r.label}</span>
+                      <span className="text-[10px] tracking-wider flex-shrink-0" style={{ color: "#67e8f9" }}>{r.sublabel}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Combined dropdown trigger */}
             <button
@@ -1297,161 +2259,23 @@ export default function MapPage() {
           />
         </div>
 
-        {/* Detail panel — friendly base/aircraft or enemy */}
-        <AnimatePresence>
-          {selected && panelTitle && (
-            <motion.div
-              key="detail"
-              initial={{ x: 340, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 340, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="w-[340px] flex-shrink-0 border-l border-border bg-card overflow-y-auto flex flex-col"
-            >
-              {/* Panel header */}
-              <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-                <div>
-                  {selectedSatellite ? (
-                    <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedSatellite.name}</div>
-                      <div className="text-[10px] text-muted-foreground">
-                        {selectedSatellite.role} · {selectedSatellite.orbitClass}
-                      </div>
-                    </>
-                  ) : selectedUnit ? (
-                    <>
-                      <div className="text-xs font-bold text-foreground font-mono">{selectedUnit.name}</div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{selectedUnit.category} · {selectedUnit.affiliation}</div>
-                    </>
-                  ) : panelTitle ? (
-                    <>
-                      <div className="flex items-center gap-1.5">
-                        {(selected?.kind === "enemy_base" || selected?.kind === "enemy_entity") && (
-                          selected.kind === "enemy_base"
-                            ? <Crosshair className="h-3.5 w-3.5 text-red-400" />
-                            : <Swords className="h-3.5 w-3.5 text-red-300" />
-                        )}
-                        <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
-                      </div>
-                      <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
-                      {selected?.kind === "base" && selectedBase && (
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/dashboard/${selectedBase.id}`)}
-                          className="mt-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-wider transition-all hover:brightness-105"
-                          style={{
-                            color: "#0C234C",
-                            background: "rgba(215,171,58,0.14)",
-                            borderColor: "rgba(215,171,58,0.42)",
-                          }}
-                        >
-                          <span className="inline-flex items-center gap-1.5">
-                            <LayoutDashboard className="h-3.5 w-3.5" />
-                            Visa i dashboarden
-                          </span>
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <div className="text-xs font-bold text-foreground font-mono">
-                      {(selected as any).baseId ?? (selected as any).zoneId ?? (selected as any).assetId}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => setSelected(null)}
-                  className="p-1 text-muted-foreground hover:text-foreground rounded"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+        {/* Events & reports sidebar — right edge */}
+        <EventsSidebar
+          events={filteredEvents}
+          allEvents={allEvents}
+          bases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
+        />
 
-              {selectedUnit && isDrone(selectedUnit) ? (
-                <DroneDetailPanel
-                  drone={selectedUnit}
-                  onBack={() => setSelected(null)}
-                  onRecall={recallDrone}
-                  onUpdateWaypoints={updateDroneWaypoints}
-                  onSetOverlay={setDroneOverlay}
-                  onDeploy={() => {}}
-                  planningMode={planningMode}
-                />
-              ) : selectedUnit ? (
-                <UnitDetailPanel
-                  unit={selectedUnit}
-                  isAtBase={state.bases.some((b) => b.units.some((u) => u.id === selectedUnit.id))}
-                  allBases={state.bases.map((b) => ({ id: b.id, name: b.name }))}
-                />
-              ) : selectedSatellite ? (
-                <SatelliteDetailPanel satellite={selectedSatellite} />
-              ) : selectedAircraft && selected.kind === "aircraft" ? (
-                 <AircraftDetailPanel
-                   aircraft={selectedAircraft}
-                   onBack={() => setSelected({ kind: "base", baseId: (selected as any).baseId })}
-                   onRecall={handleRecall}
-                   currentHour={state.hour}
-                 />
-               ) : selectedRadar ? (
-                 <RadarControlPanel
-                   unit={selectedRadar}
-                   onClose={() => setSelected(null)}
-                   onUpdate={(updates) => handleUpdateRadar(selectedRadar.id, updates)}
-                 />
-               ) : selectedZone ? (
-
-                <ZoneDetailPanel
-                  zone={selectedZone}
-                  onDelete={() => {
-                    dispatch({ type: "REMOVE_TACTICAL_ZONE", zoneId: selectedZone.id });
-                    setSelected(null);
-                  }}
-                  currentHour={state.hour}
-                  currentDay={state.day}
-                />
-              ) : selectedAsset ? (
-                <AssetInfoPanel
-                  asset={selectedAsset}
-                  aorRadiusKm={aorOverrides[selectedAsset.id] ?? selectedAsset.defaultAorRadiusKm}
-                  onSetAor={(km) => handleSetAor(selectedAsset.id, km)}
-                />
-              ) : selected?.kind === "base" && selectedBase ? (
-                <BaseDetailPanel
-                  base={selectedBase}
-                  deployedUnits={state.deployedUnits}
-                  onSelectAircraft={(id) =>
-                    setSelected({ kind: "aircraft", baseId: selectedBase.id, aircraftId: id })
-                  }
-                  onSelectUnit={(id) => setSelected({ kind: "unit", unitId: id })}
-                  aorRadiusKm={aorOverrides[selectedBase.id] ?? BASE_RINGS[selectedBase.id]?.defaultAorRadiusKm ?? 50}
-                  onSetAor={(km) => handleSetAor(selectedBase.id, km)}
-                />
-              ) : selected?.kind === "base" ? (
-                <div className="p-4 text-xs text-muted-foreground">
-                  Bas ej aktiv i detta scenario.
-                </div>
-              ) : selected?.kind === "road_base" && selectedRoadBase ? (
-                <RoadBaseDetailPanel
-                  roadBase={selectedRoadBase}
-                  isPlanMode={isPlanMode}
-                  dispatch={dispatch}
-                  onSetRange={(km) => handleSetAor(selectedRoadBase.id, km)}
-                  rangeRadiusKm={aorOverrides[selectedRoadBase.id] ?? selectedRoadBase.rangeRadius}
-                />
-              ) : selected?.kind === "enemy_base" && selectedEnemyBase ? (
-                <EnemyBaseDetailPanel
-                  base={selectedEnemyBase}
-                  report={state.intelReports?.[selectedEnemyBase.id]}
-                />
-              ) : selected?.kind === "enemy_entity" && selectedEnemyEntity ? (
-                <EnemyEntityDetailPanel entity={selectedEnemyEntity} />
-              ) : selected?.kind === "naval" && selectedNaval ? (
-                <NavalDetailPanel unit={selectedNaval} />
-              ) : null}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
+
+      {/* AI Plan Review Modal */}
+      {showPlanReview && (
+        <PlanReviewModal
+          state={state}
+          onConfirm={() => { setShowPlanReview(false); if (activeTabId) deleteTab(activeTabId); }}
+          onBack={() => setShowPlanReview(false)}
+        />
+      )}
     </div>
   );
 }

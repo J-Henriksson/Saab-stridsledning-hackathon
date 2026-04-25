@@ -82,6 +82,11 @@ export const HILLSHADE_TILES = [
   "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
 ];
 
+// Esri World Transportation — roads, railways and transport infrastructure overlay
+export const RAILROAD_TILES = [
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}",
+];
+
 // ── GIS color palette (light-map redesign) ───────────────────────────────────
 export const GIS_COLORS = {
   militaryBase:  "#2D5A27",  // Forest Green — airbases + army/marine/naval

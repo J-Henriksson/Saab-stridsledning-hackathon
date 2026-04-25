@@ -7,8 +7,9 @@ import { generateATOOrders } from "@/data/initialGameState";
 import { generateRecommendations } from "./recommendations";
 import { validateAction } from "./validators";
 import { uuid } from "./uuid";
-import type { Unit, AircraftUnit } from "@/types/units";
+import type { Unit, AircraftUnit, GeoPosition, PatrolConfig } from "@/types/units";
 import { isDrone } from "@/types/units";
+import { AIRCRAFT_SPECS } from "@/data/config/unitSpecs";
 import { canStoreUnit, recomputeZoneOccupancy } from "@/core/units/capacity";
 import { setAffiliationOnSidc } from "@/core/units/sidc";
 import { enforceAirborneInvariant, advanceMovement, perMinuteFuelDrain } from "@/core/units/movement";
@@ -30,6 +31,90 @@ import type { FriendlyEntity } from "@/types/game";
  */
 function mapAircraftInUnits(units: Unit[], fn: (ac: AircraftUnit) => AircraftUnit): Unit[] {
   return units.map((u) => (u.category === "aircraft" ? fn(u as AircraftUnit) : u));
+}
+
+/**
+ * Promote a freshly-launched aircraft into proper airborne state so that
+ * UnitsLayer (lerp + AircraftSymbol) can render it like any other deployed
+ * unit, and the simulation's movement / patrol ticks animate it for real.
+ *
+ *   • REBASE flights get `movement.destination` set to the target base.
+ *   • Other ATO missions get a CAP-style racetrack patrol centered on the
+ *     launch base (mission-specific targeting can refine this later).
+ */
+function applyAirborneLaunch(
+  ac: AircraftUnit,
+  launchBaseId: BaseType,
+  isRebase: boolean,
+  rebaseTargetId?: BaseType,
+): AircraftUnit {
+  const launchCoords: GeoPosition | undefined = BASE_COORDS[launchBaseId];
+  const startPos: GeoPosition = launchCoords ?? ac.position ?? { lat: 60, lng: 17 };
+  const spec = AIRCRAFT_SPECS[ac.type];
+  const cruiseKts = spec?.cruiseSpeedKts ?? 480;
+
+  if (isRebase && rebaseTargetId) {
+    const dst = BASE_COORDS[rebaseTargetId] ?? startPos;
+    const dLat = dst.lat - startPos.lat;
+    const dLng = dst.lng - startPos.lng;
+    // Heading: compass bearing (0 = north, clockwise).
+    const headingDeg =
+      (Math.atan2(dLng, dLat) * 180) / Math.PI;
+    return {
+      ...ac,
+      position: startPos,
+      patrol: undefined,
+      patrolLegIdx: undefined,
+      movement: {
+        state: "airborne",
+        speed: cruiseKts,
+        heading: (headingDeg + 360) % 360,
+        destination: dst,
+      },
+    };
+  }
+
+  // CAP-style racetrack patrol centered on launch base.
+  const patrol: PatrolConfig = {
+    center: { lat: startPos.lat + 0.5, lng: startPos.lng },
+    radiusKm: 60,
+    speedKts: cruiseKts,
+    axisDeg: 0,
+    clockwise: true,
+    aspect: 0.45,
+  };
+  return {
+    ...ac,
+    position: startPos,
+    patrol,
+    patrolLegIdx: undefined,
+    movement: {
+      state: "airborne",
+      speed: cruiseKts,
+      heading: 0,
+      destination: undefined,
+    },
+  };
+}
+
+/**
+ * Reverse of `applyAirborneLaunch` — when an aircraft lands or is recovered,
+ * snap it back to base, clear patrol state, and stop motion.
+ */
+function applyAircraftLanded(ac: AircraftUnit, baseId: BaseType): AircraftUnit {
+  const coords = BASE_COORDS[baseId] ?? ac.position;
+  return {
+    ...ac,
+    position: coords,
+    patrol: undefined,
+    patrolLegIdx: undefined,
+    movement: {
+      state: "stationary",
+      speed: 0,
+      heading: undefined,
+      destination: undefined,
+    },
+  };
 }
 
 function assessRisk(health: number): RiskLevel {
@@ -108,7 +193,7 @@ function migrateFriendlyEntityToUnit(entity: FriendlyEntity): Unit {
     id: entity.id,
     name: entity.name,
     position: entity.coords,
-    currentBase: null,
+    currentBase: null as null,
     affiliation: "friend" as const,
   };
 
@@ -487,6 +572,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       });
     }
 
+    case "PLAN_REASSIGN_UNIT_TO_BASE": {
+      const unit = state.bases.flatMap((b) => b.units).find((u) => u.id === action.unitId);
+      if (!unit) return state;
+      return {
+        ...state,
+        bases: state.bases.map((b) => {
+          if (b.id === action.fromBaseId) {
+            return { ...b, units: b.units.filter((u) => u.id !== action.unitId) };
+          }
+          if (b.id === action.toBaseId) {
+            return { ...b, units: [...b.units, { ...unit, currentBase: action.toBaseId }] };
+          }
+          return b;
+        }),
+      };
+    }
+
     case "DEPLOY_UNIT": {
       const loc = findUnit(state, action.unitId);
       if (!loc) return state;
@@ -498,6 +600,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...unit,
           currentBase: null,
           lastBase: unit.currentBase,
+          parentBaseId: unit.parentBaseId ?? baseId,
           position: placeImmediately ? action.destination : unit.position,
           movement: {
             state: placeImmediately ? "stationary" : unit.category === "aircraft" ? "airborne" : "moving",
@@ -849,16 +952,22 @@ function handleAdvanceMinute(state: GameState): GameState {
   const tickUnit = (u: Unit, isAtBase: boolean): Unit => {
     let updated = enforceAirborneInvariant(u, isAtBase);
     updated = advanceMovement(updated, HOURS_ELAPSED);
-    // Breadcrumb trail: track only airborne/moving units (no trail while parked).
-    if (!isAtBase && (updated.movement.state === "airborne" || updated.movement.state === "moving")) {
+    // Autonomous patrol: re-route when we've arrived at the previous waypoint.
+    // Run BEFORE the in-flight check below so just-arrived patrol units pick
+    // up their next leg in the same tick (otherwise they'd be filtered out by
+    // the "stationary" gate before ever moving again).
+    if (updated.patrol) {
+      updated = tickPatrol(updated);
+    }
+    const inFlight =
+      updated.movement.state === "airborne" || updated.movement.state === "moving";
+    // Breadcrumb trail: track airborne/moving units (works for at-base aircraft
+    // mid-mission, since modernized airborne aircraft remain in base.units).
+    if (inFlight) {
       const nextHistory = appendToPathHistory(updated.pathHistory, updated.position);
       if (nextHistory !== updated.pathHistory) {
         updated = { ...updated, pathHistory: nextHistory } as Unit;
       }
-    }
-    // Autonomous patrol: re-route when we've arrived at the previous waypoint.
-    if (!isAtBase && updated.patrol) {
-      updated = tickPatrol(updated);
     }
     const drain = perMinuteFuelDrain(updated, phase);
     if (drain > 0 && "fuel" in updated && typeof updated.fuel === "number") {
@@ -984,7 +1093,7 @@ function tickNavalUnits(state: GameState, hoursElapsed: number): GameState {
       moved = { ...moved, pathHistory: nextHistory };
     }
     // Patrol re-routing.
-    moved = tickPlainPatrol(moved, "moving");
+    moved = tickPlainPatrol(moved, "moving", true);
     // Fog-of-war memory (hostile only): if inside any friendly disc, record
     // last-known position + timestamp. Friendly navals skip this.
     if (moved.affiliation === "hostile") {
@@ -1062,6 +1171,15 @@ function handleAdvanceHour(state: GameState): GameState {
   // Mark completed ATO orders and collect returning aircraft.
   const returningAircraft: { aircraftId: string; baseId: string }[] = [];
   const updatedATOOrders = newATOOrders.map((o) => {
+    // Auto-activate placeholder orders when their scheduled time arrives.
+    if (
+      o.isPlaceholder &&
+      o.activationDay !== undefined &&
+      o.activationHour !== undefined &&
+      (nextDay > o.activationDay || (nextDay === o.activationDay && nextHour >= o.activationHour))
+    ) {
+      return { ...o, isPlaceholder: false };
+    }
     if (o.status === "dispatched" && nextHour >= o.endHour) {
       if (o.missionType !== "REBASE") {
         o.assignedAircraft.forEach((acId) =>
@@ -1096,14 +1214,17 @@ function handleAdvanceHour(state: GameState): GameState {
       ? getAircraft(srcBase).find((a) => a.id === transfer.aircraftId)
       : undefined;
     if (!srcAircraft) continue;
-    const arrivedAircraft: AircraftUnit = {
-      ...srcAircraft,
-      currentBase: transfer.toBaseId as BaseType,
-      status: "ready" as AircraftStatus,
-      currentMission: undefined,
-      missionEndHour: undefined,
-      rebaseTarget: undefined,
-    };
+    const arrivedAircraft: AircraftUnit = applyAircraftLanded(
+      {
+        ...srcAircraft,
+        currentBase: transfer.toBaseId as BaseType,
+        status: "ready" as AircraftStatus,
+        currentMission: undefined,
+        missionEndHour: undefined,
+        rebaseTarget: undefined,
+      },
+      transfer.toBaseId as BaseType,
+    );
     basesAfterRebases = basesAfterRebases.map((base) => {
       if (base.id === transfer.fromBaseId) {
         return { ...base, units: base.units.filter((u) => u.id !== transfer.aircraftId) };
@@ -1115,7 +1236,8 @@ function handleAdvanceHour(state: GameState): GameState {
     });
   }
 
-  // Flip finished on_mission aircraft to returning.
+  // Flip finished on_mission aircraft to returning. Drop the patrol orbit and
+  // point them at home base so they visibly fly back.
   const basesAfterReturn = basesAfterRebases.map((base) => ({
     ...base,
     units: mapAircraftInUnits(base.units, (ac) => {
@@ -1126,7 +1248,24 @@ function handleAdvanceHour(state: GameState): GameState {
           if (fromDrop && !fromATO) {
             returningAircraft.push({ aircraftId: ac.id, baseId: base.id });
           }
-          return { ...ac, status: "returning" as AircraftStatus, missionEndHour: undefined };
+          const homeCoords = BASE_COORDS[base.id] ?? ac.position;
+          const dLat = homeCoords.lat - ac.position.lat;
+          const dLng = homeCoords.lng - ac.position.lng;
+          const headingDeg = (Math.atan2(dLng, dLat) * 180) / Math.PI;
+          const cruiseKts = AIRCRAFT_SPECS[ac.type]?.cruiseSpeedKts ?? 480;
+          return {
+            ...ac,
+            status: "returning" as AircraftStatus,
+            missionEndHour: undefined,
+            patrol: undefined,
+            patrolLegIdx: undefined,
+            movement: {
+              state: "airborne",
+              speed: cruiseKts,
+              heading: (headingDeg + 360) % 360,
+              destination: homeCoords,
+            },
+          };
         }
       }
       return ac;
@@ -1238,17 +1377,17 @@ function handleRebaseAircraft(
     base.id === fromBaseId
       ? {
           ...base,
-          units: mapAircraftInUnits(base.units, (ac) =>
-            ac.id === aircraftId
-              ? {
-                  ...ac,
-                  status: "on_mission" as AircraftStatus,
-                  currentMission: "REBASE" as MissionType,
-                  missionEndHour,
-                  rebaseTarget: toBaseId as BaseType,
-                }
-              : ac
-          ),
+          units: mapAircraftInUnits(base.units, (ac) => {
+            if (ac.id !== aircraftId) return ac;
+            const launched: AircraftUnit = {
+              ...ac,
+              status: "on_mission" as AircraftStatus,
+              currentMission: "REBASE" as MissionType,
+              missionEndHour,
+              rebaseTarget: toBaseId as BaseType,
+            };
+            return applyAirborneLaunch(launched, fromBaseId as BaseType, true, toBaseId as BaseType);
+          }),
         }
       : base
   );
@@ -1304,10 +1443,17 @@ function handleDispatchOrder(state: GameState, orderId: string): GameState {
       ...base,
       units: mapAircraftInUnits(base.units, (ac) => {
         if (!order.assignedAircraft.includes(ac.id) || !isMissionCapable(ac.status)) return ac;
-        const extra = order.missionType === "REBASE" && order.targetBase
-          ? { missionEndHour: order.endHour, rebaseTarget: order.targetBase }
+        const isRebase = order.missionType === "REBASE" && !!order.targetBase;
+        const extra = isRebase
+          ? { missionEndHour: order.endHour, rebaseTarget: order.targetBase as BaseType }
           : {};
-        return { ...ac, status: "on_mission" as AircraftStatus, currentMission: order.missionType, ...extra };
+        const launched: AircraftUnit = {
+          ...ac,
+          status: "on_mission" as AircraftStatus,
+          currentMission: order.missionType,
+          ...extra,
+        };
+        return applyAirborneLaunch(launched, order.launchBase, isRebase, order.targetBase as BaseType | undefined);
       }),
     };
   });
@@ -1372,7 +1518,13 @@ function handleSendMissionDrop(state: GameState, baseId: string, aircraftId: str
       ...base,
       units: mapAircraftInUnits(base.units, (ac) => {
         if (ac.id !== aircraftId || !isMissionCapable(ac.status)) return ac;
-        return { ...ac, status: "on_mission" as AircraftStatus, currentMission: missionType, missionEndHour: endHour };
+        const launched: AircraftUnit = {
+          ...ac,
+          status: "on_mission" as AircraftStatus,
+          currentMission: missionType,
+          missionEndHour: endHour,
+        };
+        return applyAirborneLaunch(launched, baseId as BaseType, false);
       }),
     };
   });
@@ -1409,14 +1561,17 @@ function handleCompleteLandingCheck(
     return { ...afterMaint, pendingLandingChecks: updatedLandingChecks };
   }
 
-  // Clear returning status → ready, remove currentMission
+  // Clear returning status → ready, remove currentMission, snap to base.
   const updatedBases = state.bases.map((base) => {
     if (base.id !== baseId) return base;
     return {
       ...base,
       units: mapAircraftInUnits(base.units, (ac) =>
         ac.id === aircraftId
-          ? { ...ac, status: "ready" as AircraftStatus, currentMission: undefined }
+          ? applyAircraftLanded(
+              { ...ac, status: "ready" as AircraftStatus, currentMission: undefined },
+              baseId as BaseType,
+            )
           : ac
       ),
     };
@@ -1452,15 +1607,21 @@ function handleApplyUtfall(
       if (ac.id !== aircraftId) return ac;
       if (repairTime === 0) {
         // NMC — park the aircraft and remember which part will be needed when it enters the bay
-        return { ...ac, status: "unavailable" as AircraftStatus, requiredSparePart };
+        return applyAircraftLanded(
+          { ...ac, status: "unavailable" as AircraftStatus, requiredSparePart },
+          baseId as BaseType,
+        );
       }
-      return {
-        ...ac,
-        status: "under_maintenance" as AircraftStatus,
-        maintenanceType: maintenanceTypeKey as any,
-        maintenanceTimeRemaining: repairTime,
-        requiredSparePart: undefined, // consumed below
-      };
+      return applyAircraftLanded(
+        {
+          ...ac,
+          status: "under_maintenance" as AircraftStatus,
+          maintenanceType: maintenanceTypeKey as any,
+          maintenanceTimeRemaining: repairTime,
+          requiredSparePart: undefined, // consumed below
+        },
+        baseId as BaseType,
+      );
     });
     const maintCount = newUnits.filter(
       (u) => u.category === "aircraft" && (u as AircraftUnit).status === "under_maintenance"
