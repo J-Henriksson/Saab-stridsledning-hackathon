@@ -748,9 +748,7 @@ export const initialGameState: GameState = {
   atoOrders: initialATOOrders,
   isRunning: true,
   gameSpeed: 1,
-  events: [
-    { id: "init", timestamp: "Dag 1 06:00", type: "info", message: "Systemet initierat. ATO mottagen. Fredstillstånd." },
-  ] as GameEvent[],
+  events: [] as GameEvent[],
   recommendations: [],
   maintenanceTasks: [],
   pendingLandingChecks: [],
