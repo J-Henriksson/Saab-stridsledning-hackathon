@@ -40,6 +40,7 @@ interface UnitsLayerProps {
   selectedUnitId?: string | null;
   focusedBaseId?: string | null;
   iconStyle?: "custom" | "nato";
+  isPlanMode?: boolean;
 }
 
 function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnitId?: string | null }) {
@@ -86,14 +87,16 @@ function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnit
   );
 }
 
-export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId, iconStyle = "custom" }: UnitsLayerProps) {
+export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId, iconStyle = "custom", isPlanMode = false }: UnitsLayerProps) {
   const { state, dispatch } = useGame();
   const tickMs = expectedTickMs(state.gameSpeed);
   // All non-aircraft units render through this layer; airborne aircraft also
   // route through here (modernized — replaces the legacy AircraftLayer).
   // Stationary units sitting at a base are not rendered here (base panel shows them).
+  // In plan mode all units are always shown regardless of base/radar status.
   const renderable = useMemo(
     () => units.filter((u) => {
+      if (isPlanMode) return true;
       if (isRadar(u)) return false;
       // Static pre-placed AD batteries are shown via MarkerRingsLayer, not here
       if (isAirDefense(u) && (u as any).isStatic) return false;
@@ -101,7 +104,7 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
       if (u.movement.state === "stationary" && u.currentBase !== null) return false;
       return true;
     }),
-    [units]
+    [units, isPlanMode]
   );
 
   // Snapshot history keyed by unit id

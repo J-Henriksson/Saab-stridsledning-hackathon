@@ -216,7 +216,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, onSelectUnit, del
       {description && (
         <div className="flex gap-2 p-2 rounded border border-blue-500/25 bg-blue-500/5 mb-2">
           <Info className="h-3 w-3 text-blue-400/70 shrink-0 mt-0.5" />
-          <p className="text-[9px] font-mono text-blue-300/90 leading-relaxed">{description}</p>
+          <p className="text-[9px] font-mono text-foreground leading-relaxed">{description}</p>
         </div>
       )}
 

@@ -1720,6 +1720,7 @@ export default function MapPage() {
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
               focusedBaseId={effectiveDimBase}
               iconStyle={iconStyle}
+              isPlanMode={isPlanMode}
             />
 
             {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}

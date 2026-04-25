@@ -488,13 +488,13 @@ export function usePlanTabs(liveState: GameState) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [seeded, setSeeded] = useState(false);
 
-  // Always ensure the "protect ammo" plan exists as the first tab.
+  // Always rebuild the ammo plan from source (discards any stale localStorage copy).
   useEffect(() => {
     if (seeded) return;
     setSeeded(true);
     setTabs((prev) => {
-      if (prev.some((t) => t.id === "plan-protect-ammo")) return prev;
-      return [buildProtectAmmoTab(liveState), ...prev];
+      const withoutAmmo = prev.filter((t) => t.id !== "plan-protect-ammo");
+      return [buildProtectAmmoTab(liveState), ...withoutAmmo];
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
