@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import type { ExtendedRadarUnit } from "@/types/radarUnit";
 
-const PULSE_COUNT = 4;
-const PULSE_MS    = 3000;
+const PULSE_COUNT = 3;
+const PULSE_MS    = 7000;
 const GREEN       = "34,197,94";
 
 export function RadarPulseLayer({ units }: { units: ExtendedRadarUnit[] }) {

@@ -45,6 +45,7 @@ import { RadarLayer, RadarControlPanel } from "@/components/radar";
 import type { ExtendedRadarUnit } from "@/components/radar";
 import { useRadarDetection } from "@/hooks/useRadarDetection";
 import { useRadarEngine } from "@/hooks/useRadarEngine";
+import { DroneLayer } from "./map/drones/DroneLayer";
 import { DroneRangeOverlay } from "./map/drones/DroneRangeOverlay";
 import { DroneConnectionLine } from "./map/drones/DroneConnectionLine";
 import { DroneDetailPanel } from "./map/drones/DroneDetailPanel";
@@ -243,6 +244,7 @@ export default function MapPage() {
   const { focusedBaseId, filterLevel, setFocusedBase, setFilterLevel, clearFilter, filterEvents } = useBaseFilter();
   const [showAllBaseRings, setShowAllBaseRings] = useState(false);
   const [boundaryVis, setBoundaryVis] = useState<BoundaryVisibility>({ eez: true, fir: true, land: true });
+  const [iconStyle, setIconStyle] = useState<"custom" | "nato">("custom");
 
   // Compute which airbase IDs should show rings:
   //   - "show all" toggle on → null (MarkerRingsLayer draws all)
@@ -702,6 +704,19 @@ export default function MapPage() {
             ALLA RINGAR
           </button>
 
+          {/* Icon style toggle */}
+          <button
+            onClick={() => setIconStyle((s) => s === "custom" ? "nato" : "custom")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border font-bold transition-all text-[10px] font-mono ${
+              iconStyle === "nato"
+                ? "border-cyan-400/60 bg-cyan-400/10 text-cyan-400"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+            }`}
+            title="Växla mellan egna ikoner och NATO-symboler"
+          >
+            {iconStyle === "nato" ? "NATO" : "IKON"}
+          </button>
+
           {/* Boundary layer toggles */}
           {(["eez","fir","land"] as const).map((key) => {
             const labels: Record<string, string> = { eez: "EEZ", fir: "FIR", land: "LANDGRÄNS" };
@@ -1119,6 +1134,7 @@ export default function MapPage() {
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
               focusedBaseId={focusedBaseId}
+              iconStyle={iconStyle}
             />
 
             {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}
@@ -1127,8 +1143,15 @@ export default function MapPage() {
               lastKnown={navalVisibility.lastKnown}
               onSelect={(id) => setSelected({ kind: "naval", id })}
               selectedId={selected?.kind === "naval" ? selected.id : null}
+              iconStyle={iconStyle}
             />
 
+            <DroneLayer
+              drones={allDrones}
+              selectedDroneId={selected?.kind === "unit" && allDrones.some(d => d.id === (selected as any).unitId) ? (selected as any).unitId : null}
+              onSelectDrone={(droneId) => setSelected({ kind: "unit", unitId: droneId })}
+              iconStyle={iconStyle}
+            />
             {state.overlayVisibility.drones && (
               <>
                 <DroneRangeOverlay drones={allDrones} />
@@ -1225,6 +1248,7 @@ export default function MapPage() {
                 entity={ee}
                 isSelected={selected?.kind === "enemy_entity" && selected.id === ee.id}
                 onClick={() => setSelected({ kind: "enemy_entity", id: ee.id })}
+                iconStyle={iconStyle}
               />
             ))}
             {state.friendlyMarkers.map((fm) => (

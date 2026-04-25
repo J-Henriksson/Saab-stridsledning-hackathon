@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Marker, Source, Layer } from "react-map-gl/maplibre";
-import type { Unit, GeoPosition } from "@/types/units";
+import type { Unit, GeoPosition, GroundVehicleUnit, AirDefenseUnit } from "@/types/units";
 import { isAircraft, isAirDefense, isRadar, isGroundVehicle } from "@/types/units";
-import { UnitSymbol } from "@/components/map/UnitSymbol";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
+import { TankIcon, TruckIcon, SAMLauncherIcon } from "@/components/symbols/UnitIcons";
+import { UnitSymbol } from "@/components/map/UnitSymbol";
 
 // Matches useGameClock: tickMs = max(1000 / gameSpeed, FRAME_MS).
 // The lerp window tracks the actual wall-time between ticks so the marker
@@ -38,6 +39,7 @@ interface UnitsLayerProps {
   onSelectUnit?: (unitId: string) => void;
   selectedUnitId?: string | null;
   focusedBaseId?: string | null;
+  iconStyle?: "custom" | "nato";
 }
 
 function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnitId?: string | null }) {
@@ -84,7 +86,7 @@ function MovementTrails({ units, selectedUnitId }: { units: Unit[]; selectedUnit
   );
 }
 
-export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId }: UnitsLayerProps) {
+export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId, iconStyle = "custom" }: UnitsLayerProps) {
   const { state, dispatch } = useGame();
   const tickMs = expectedTickMs(state.gameSpeed);
   // Keep base-owned flight animation in AircraftLayer, but allow deployed/airborne aircraft
@@ -92,9 +94,10 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId 
   const renderable = useMemo(
     () => units.filter((u) => {
       if (isRadar(u)) return false;
-      if (isGroundVehicle(u)) return false;
+      // Static pre-placed AD batteries are shown via MarkerRingsLayer, not here
       if (isAirDefense(u) && (u as any).isStatic) return false;
-      if (isAircraft(u) && u.movement.state === "stationary") return false;
+      // Hide anything sitting idle inside a base — base panel shows them
+      if (u.movement.state === "stationary" && u.currentBase !== null) return false;
       return true;
     }),
     [units]
@@ -228,7 +231,9 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId 
               }}
               title={`${unit.name} — ${unit.category} (${unit.affiliation})`}
             >
-              {isAircraft(unit) ? (
+              {iconStyle === "nato" ? (
+                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
+              ) : isAircraft(unit) ? (
                 <img
                   src={gripenSilhouette}
                   alt={unit.name}
@@ -244,9 +249,22 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId 
                       : "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(50deg)",
                   }}
                 />
-              ) : (
-                <UnitSymbol sidc={unit.sidc} size={28} title={unit.name} />
-              )}
+              ) : isGroundVehicle(unit) ? (
+                (() => {
+                  const gv = unit as GroundVehicleUnit;
+                  const col = unit.affiliation === "hostile" ? "#ef4444"
+                    : unit.affiliation === "friend" ? "#22c55e" : "#a3a3a3";
+                  if (gv.type === "ARMORED_TRANSPORT") return <TankIcon  size={26} color={col} />;
+                  return <TruckIcon size={26} color={col} />;
+                })()
+              ) : isAirDefense(unit) ? (
+                <SAMLauncherIcon
+                  size={26}
+                  color={(unit as AirDefenseUnit).operationalStatus === "ready" ? "#22c55e"
+                    : (unit as AirDefenseUnit).operationalStatus === "firing" ? "#ef4444"
+                    : "#D7AB3A"}
+                />
+              ) : null}
               {isMoving && destIsGeo && (
                 <div
                   aria-hidden
