@@ -247,6 +247,7 @@ export default function MapPage() {
   const [planState, planDispatch] = useReducer(gameReducer, initialGameState);
   const { tabs, activeTabId, activeTab, createTab, updateActiveSnapshot, renameTab, deleteTab, switchTab, setDelay } = usePlanTabs(state);
   const [dragOverExecute, setDragOverExecute] = useState(false);
+  const [planMenuOpen, setPlanMenuOpen] = useState(false);
   const isPlanMode = activeTabId !== null;
   const [showPlanReview, setShowPlanReview] = useState(false);
   const [isDeployMode, setIsDeployMode] = useState(false);
@@ -856,12 +857,14 @@ export default function MapPage() {
     createTab();
     setPlacingMode(null);
     setIsDeployMode(false);
+    setPlanMenuOpen(true);
   }, [createTab]);
 
   const handleSwitchTab = useCallback((id: string | null) => {
     switchTab(id);
     setPlacingMode(null);
     setIsDeployMode(false);
+    if (id !== null) setPlanMenuOpen(true);
   }, [switchTab]);
 
   const handleFlyTo = useCallback((lat: number, lng: number) => {
@@ -1140,45 +1143,62 @@ export default function MapPage() {
             DEPLOY
           </button>
 
-          {tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className="flex items-center shrink-0"
-              draggable
-              onDragStart={(e) => { e.dataTransfer.setData("plan-tab-id", tab.id); e.dataTransfer.effectAllowed = "move"; }}
-            >
-              <button
-                onClick={() => handleSwitchTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-l text-[10px] font-mono font-bold border border-r-0 transition-all ${
-                  activeTabId === tab.id
-                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
-                    : "border-border text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <PenLine className="h-2.5 w-2.5" />
-                {tab.name}
-              </button>
-              <button
-                onClick={() => deleteTab(tab.id)}
-                className={`flex items-center px-1.5 py-1 rounded-r text-[10px] border transition-all ${
-                  activeTabId === tab.id
-                    ? "bg-amber-500/15 border-amber-500/50 text-amber-400 hover:text-red-400"
-                    : "border-border text-muted-foreground hover:text-red-400"
-                }`}
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </div>
-          ))}
+          {/* Plan toggle button */}
+          <button
+            onClick={() => setPlanMenuOpen((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-[10px] font-mono font-bold border transition-all shrink-0 ${
+              planMenuOpen || isPlanMode
+                ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                : "border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <PenLine className="h-2.5 w-2.5" />
+            Plan
+          </button>
 
-          {/* New plan button */}
-          {tabs.length < 8 && (
-            <button
-              onClick={handleCreateTab}
-              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-dashed border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-400 transition-all shrink-0"
-            >
-              + Ny plan
-            </button>
+          {/* Expanded plan tabs + new plan button */}
+          {planMenuOpen && (
+            <>
+              {tabs.map((tab) => (
+                <div
+                  key={tab.id}
+                  className="flex items-center shrink-0"
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("plan-tab-id", tab.id); e.dataTransfer.effectAllowed = "move"; }}
+                >
+                  <button
+                    onClick={() => handleSwitchTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-l text-[10px] font-mono font-bold border border-r-0 transition-all ${
+                      activeTabId === tab.id
+                        ? "bg-amber-500/15 border-amber-500/50 text-amber-400"
+                        : "border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <PenLine className="h-2.5 w-2.5" />
+                    {tab.name}
+                  </button>
+                  <button
+                    onClick={() => deleteTab(tab.id)}
+                    className={`flex items-center px-1.5 py-1 rounded-r text-[10px] border transition-all ${
+                      activeTabId === tab.id
+                        ? "bg-amber-500/15 border-amber-500/50 text-amber-400 hover:text-red-400"
+                        : "border-border text-muted-foreground hover:text-red-400"
+                    }`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))}
+
+              {tabs.length < 8 && (
+                <button
+                  onClick={handleCreateTab}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border border-dashed border-border text-muted-foreground hover:border-amber-500/40 hover:text-amber-400 transition-all shrink-0"
+                >
+                  + Ny plan
+                </button>
+              )}
+            </>
           )}
 
           {/* Execution slot — drag a plan tab here to execute it */}

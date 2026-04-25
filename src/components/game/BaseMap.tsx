@@ -1176,7 +1176,7 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = []
             const cx = apronX + (col + 0.5) * apronColWidth;
             const cy = 270;
             const color = getAircraftColor(ac);
-            const hp = ac.health ?? 100;
+            const hp = Math.round(ac.health ?? 100);
             const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
             const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
             const panelW = 110, panelH = 68;
@@ -1218,7 +1218,7 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = []
             const pW = 138, pH = 110;
             const px = mx + 14 + pW > 870 ? mx - pW - 6 : mx + 14;
             const py = my - pH - 6;
-            const hp = ac.health ?? 0;
+            const hp = Math.round(ac.health ?? 0);
             const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
             const maintLabels: Record<string, string> = {
               quick_lru:         "Snabb LRU-byte",

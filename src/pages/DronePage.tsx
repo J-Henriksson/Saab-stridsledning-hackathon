@@ -206,7 +206,7 @@ export default function DronePage() {
                           <div className="flex justify-center">
                             <Icon className="h-4 w-4" style={{ color: col }} />
                           </div>
-                          <div className="text-base font-black font-mono leading-none" style={{ color: col }}>{c.health}%</div>
+                          <div className="text-base font-black font-mono leading-none" style={{ color: col }}>{Math.round(c.health ?? 100)}%</div>
                           <div className="text-[8px] font-mono uppercase tracking-wide leading-tight" style={{ color: "rgba(215,222,225,0.4)" }}>{c.label}</div>
                           <div className="h-1 rounded-full bg-white/10 overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${c.health}%`, background: col }} />
@@ -389,7 +389,7 @@ export default function DronePage() {
                             <Icon className="h-4 w-4" style={{ color: col }} />
                             <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: "rgba(215,222,225,0.4)" }}>{c.label}</span>
                           </div>
-                          <div className="text-3xl font-black font-mono" style={{ color: col }}>{c.health}%</div>
+                          <div className="text-3xl font-black font-mono" style={{ color: col }}>{Math.round(c.health ?? 100)}%</div>
                           <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${c.health}%`, background: col }} />
                           </div>

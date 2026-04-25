@@ -30,7 +30,7 @@ export function UnitDetailPanel({
 }) {
   const { dispatch } = useGame();
 
-  const health = unit.health ?? 100;
+  const health = Math.round(unit.health ?? 100);
   const healthColor = health < 30 ? "#ef4444" : health < 60 ? "#eab308" : "#22c55e";
   const fuel = "fuel" in unit ? unit.fuel : null;
 
@@ -158,10 +158,10 @@ export function UnitDetailPanel({
             <div>
               <div className="flex justify-between text-[10px] font-mono mb-1">
                 <span className="text-slate-500">Systemhälsa</span>
-                <span style={{ color: healthColor }}>{unit.health}%</span>
+                <span style={{ color: healthColor }}>{Math.round(unit.health ?? 100)}%</span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                <div className="h-full rounded-full" style={{ width: `${unit.health}%`, background: healthColor }} />
+                <div className="h-full rounded-full" style={{ width: `${unit.health ?? 100}%`, background: healthColor }} />
               </div>
             </div>
 

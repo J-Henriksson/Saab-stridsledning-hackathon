@@ -45,7 +45,7 @@ export default function UnitDashboard() {
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{unit.name}</h1>
           <div className="text-xs text-muted-foreground uppercase tracking-widest">
-            {unit.category} · {unit.affiliation} · hälsa {unit.health}%
+            {unit.category} · {unit.affiliation} · hälsa {Math.round(unit.health ?? 100)}%
           </div>
         </div>
         <Link to="/map" className="text-xs text-primary hover:underline">← Karta</Link>

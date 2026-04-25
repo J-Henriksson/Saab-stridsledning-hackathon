@@ -3,7 +3,7 @@ import { Marker, Source, Layer } from "react-map-gl/maplibre";
 import type { Unit, GeoPosition, AircraftUnit, GroundVehicleUnit, AirDefenseUnit } from "@/types/units";
 import { isAircraft, isAirDefense, isRadar, isGroundVehicle } from "@/types/units";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
-import { AircraftSymbol } from "@/components/map/AircraftSymbol";
+import { AircraftIcon } from "@/components/map/AircraftIcon";
 import { TankIcon, TruckIcon, SAMLauncherIcon } from "@/components/symbols/UnitIcons";
 import { useGame } from "@/context/GameContext";
 
@@ -242,14 +242,14 @@ export function UnitsLayer({ units, onSelectUnit, selectedUnitId, focusedBaseId,
                 iconStyle === "nato" ? (
                   <UnitSymbol sidc={aircraft.sidc} size={28} title={aircraft.name} />
                 ) : (
-                  <AircraftSymbol
-                    aircraft={{
-                      ...aircraft,
-                      movement: { ...aircraft.movement, heading: aircraftHeading },
-                    }}
-                    size={36}
-                    selected={isSelected}
-                    showMissionBadge={isSelected}
+                  <AircraftIcon
+                    size={44}
+                    angle={aircraftHeading}
+                    color={
+                      aircraft.affiliation === "hostile" ? "#ef4444" :
+                      aircraft.affiliation === "neutral" ? "#38bdf8" :
+                      "#22c55e"
+                    }
                   />
                 )
               ) : iconStyle === "nato" ? (

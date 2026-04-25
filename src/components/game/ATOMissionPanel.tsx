@@ -591,7 +591,7 @@ export function ATOMissionPanel({
                             </div>
                             <div className="text-right shrink-0 space-y-1">
                               <div className="text-[9px] font-mono font-bold" style={{ color: ac.health < 30 ? "hsl(0 72% 51%)" : ac.health < 60 ? "hsl(38 92% 50%)" : "hsl(152 60% 45%)" }}>
-                                {ac.health}%
+                                {Math.round(ac.health ?? 100)}%
                               </div>
                               <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div className="h-full rounded-full" style={{ width: `${ac.health}%`, background: ac.health < 30 ? "hsl(0 72% 51%)" : ac.health < 60 ? "hsl(38 92% 50%)" : "hsl(152 60% 45%)" }} />

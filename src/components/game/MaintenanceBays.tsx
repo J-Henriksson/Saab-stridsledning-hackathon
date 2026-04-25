@@ -424,7 +424,7 @@ function DetailPanel({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-[9px] font-mono" style={{ color: "rgba(215,222,225,0.45)" }}>Hälsa</span>
-                <span className="text-[10px] font-mono font-bold" style={{ color: healthColor }}>{ac.health ?? "—"}%</span>
+                <span className="text-[10px] font-mono font-bold" style={{ color: healthColor }}>{ac.health != null ? Math.round(ac.health) : "—"}%</span>
               </div>
               <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
                 <div className="h-full rounded-full transition-all" style={{ width: `${ac.health ?? 0}%`, background: healthColor }} />

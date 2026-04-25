@@ -438,7 +438,7 @@ export function RemainingLifeGraf({ bases, phase, hideBars }: RemainingLifeGrafP
           </div>
 
           {sorted.map((ac, i) => {
-            const health     = ac.health ?? 100;
+            const health     = Math.round(ac.health ?? 100);
             const isCritical = health < 30;
             const isLow      = health < 60;
             const barColor   = isCritical ? RED : isLow ? AMBER : "#22c55e";

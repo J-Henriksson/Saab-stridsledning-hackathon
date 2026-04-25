@@ -35,7 +35,7 @@ function animatedRoll(
 }
 
 function getMissionRec(aircraft: Aircraft): { text: string; type: "positive" | "warning" | "neutral" } {
-  const health = aircraft.health ?? 100;
+  const health = Math.round(aircraft.health ?? 100);
   const h2s = aircraft.hoursToService;
   if (h2s < 10)
     return { text: `Bara ${h2s}h kvar till 100h-service — planera underhåll snart istället för uppdrag.`, type: "warning" };

@@ -37,7 +37,7 @@ export function AircraftDetailPanel({
   };
   const s = statusMap[aircraft.status] ?? statusMap.unavailable;
 
-  const health = aircraft.health ?? 100;
+  const health = Math.round(aircraft.health ?? 100);
   const healthColor = health < 30 ? "#ef4444" : health < 60 ? "#eab308" : "#22c55e";
   const canRecall = aircraft.status === "on_mission";
   const pilot = PILOT_ROSTER[aircraft.tailNumber];
