@@ -1002,7 +1002,7 @@ function tickNavalUnits(state: GameState, hoursElapsed: number): GameState {
       moved = { ...moved, pathHistory: nextHistory };
     }
     // Patrol re-routing.
-    moved = tickPlainPatrol(moved, "moving");
+    moved = tickPlainPatrol(moved, "moving", true);
     // Fog-of-war memory (hostile only): if inside any friendly disc, record
     // last-known position + timestamp. Friendly navals skip this.
     if (moved.affiliation === "hostile") {

@@ -672,7 +672,7 @@ const INITIAL_NAVAL_UNITS: NavalUnit[] = [
     name: "HMS Visby",
     kind: "patrol_boat",
     affiliation: "friend",
-    position: { lat: 57.6, lng: 18.1 },
+    position: { lat: 57.6, lng: 18.0 },
     patrol: { center: { lat: 57.5, lng: 17.8 }, radiusKm: 85, speedKts: 25, axisDeg: 15, clockwise: true, aspect: 0.5 },
     movement: { state: "moving", speed: 25 },
     pathHistory: [],
