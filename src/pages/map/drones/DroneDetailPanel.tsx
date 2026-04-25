@@ -45,7 +45,8 @@ export function DroneDetailPanel({
   travelRangeBases,
   battleIntelSummary,
 }: DroneDetailPanelProps) {
-  const [localWaypoints, setLocalWaypoints] = useState<DroneWaypoint[]>(drone.waypoints ?? []);
+  const waypoints = drone.waypoints ?? [];
+  const [localWaypoints, setLocalWaypoints] = useState<DroneWaypoint[]>(waypoints);
 
   const analysis = drone.affiliation === "hostile" ? analyzeEnemyDrone(drone) : null;
 
@@ -53,8 +54,8 @@ export function DroneDetailPanel({
   const canRecall = drone.status === "on_mission" || drone.status === "returning";
   const fuelColor = drone.fuel < 25 ? "#ef4444" : drone.fuel < 50 ? "#eab308" : "#22c55e";
   const homeBase = drone.currentBase ?? drone.lastBase ?? "–";
-  const activeWaypoint = drone.waypoints[drone.currentWaypointIdx];
-  const remainingWaypoints = Math.max(drone.waypoints.length - drone.currentWaypointIdx, 0);
+  const activeWaypoint = waypoints[drone.currentWaypointIdx];
+  const remainingWaypoints = Math.max(waypoints.length - drone.currentWaypointIdx, 0);
 
   function addWaypoint() {
     setLocalWaypoints((prev) => [
@@ -106,12 +107,12 @@ export function DroneDetailPanel({
         <Row
           label="Waypoint"
           value={
-            drone.waypoints.length > 0
-              ? `${Math.min(drone.currentWaypointIdx + 1, drone.waypoints.length)} / ${drone.waypoints.length}`
+            waypoints.length > 0
+              ? `${Math.min(drone.currentWaypointIdx + 1, waypoints.length)} / ${waypoints.length}`
               : "Inga waypoints"
           }
         />
-        <Row label="Återstående ben" value={drone.waypoints.length > 0 ? `${remainingWaypoints}` : "0"} />
+        <Row label="Återstående ben" value={waypoints.length > 0 ? `${remainingWaypoints}` : "0"} />
       </div>
 
       {/* Fuel bar */}
@@ -242,16 +243,16 @@ export function DroneDetailPanel({
       )}
 
       {/* Current waypoint info (realtime mode) */}
-      {!planningMode && drone.waypoints && drone.waypoints.length > 0 && (
+      {!planningMode && waypoints.length > 0 && (
         <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
           <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">Waypoint</div>
           <div className="text-xs font-mono">
-            {drone.currentWaypointIdx + 1} / {drone.waypoints.length}
+            {drone.currentWaypointIdx + 1} / {waypoints.length}
           </div>
-          {drone.waypoints[drone.currentWaypointIdx] && (
+          {waypoints[drone.currentWaypointIdx] && (
             <div className="text-[10px] font-mono text-muted-foreground">
-              {drone.waypoints[drone.currentWaypointIdx].lat.toFixed(4)}°N{" "}
-              {drone.waypoints[drone.currentWaypointIdx].lng.toFixed(4)}°E
+              {waypoints[drone.currentWaypointIdx].lat.toFixed(4)}°N{" "}
+              {waypoints[drone.currentWaypointIdx].lng.toFixed(4)}°E
             </div>
           )}
         </div>

@@ -39,7 +39,7 @@ const ENTITY_SIDC: Record<EnemyEntity["category"], string> = {
   apc:          "10061000001211000000", // hostile ground armored
   artillery:    "10061000001215000000", // hostile ground artillery
   sam_launcher: "10061000001330010000", // hostile air defense
-  ship:         "10061000004501000000", // hostile surface warship
+  ship:         "10063000001202000000", // hostile surface combatant (Sea Surface 30, entity 120200)
 };
 
 interface Props {
