@@ -790,9 +790,6 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, onUtfallOutcome, 
                       }}
                     >
                       <DroneImage cx={cx} cy={cy} color={col_hex} opacity={d.status === "ready" ? 0.9 : 0.45} scale={0.75} />
-                      {/* tiny status dot */}
-                      <circle cx={cx + 12} cy={cy - 8} r="3"
-                        fill={d.status === "ready" ? "#22c55e" : d.status === "under_maintenance" ? "#d97706" : "#6B7280"} />
                     </g>
                   );
                 })}
