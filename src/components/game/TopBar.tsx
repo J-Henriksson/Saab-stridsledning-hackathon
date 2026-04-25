@@ -63,7 +63,7 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
             </span>
             <span className="text-[8px] font-mono tracking-widest"
               style={{ color: "hsl(200 12% 72%)" }}>
-              SAAB SMART AIRBASE SIM
+              SAAB SMART STRIDSLEDNING
             </span>
           </div>
         </NavLink>

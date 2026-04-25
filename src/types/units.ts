@@ -67,8 +67,8 @@ export interface UnitBase {
   deployedAt?: { day: number; hour: number };
   /** Set during TRANSFER_UNIT; the engine STOREs the unit here on arrival. */
   pendingArrivalBase?: BaseType;
-  /** Logistics link: which base provisioned / owns this unit. */
-  parentBaseId?: BaseType;
+  /** Logistics link: which base provisioned / owns this unit. Null for hostile units. */
+  parentBaseId: BaseType | null;
   /** Recent breadcrumb trail (capped); used by the map to draw path history. */
   pathHistory?: GeoPosition[];
   /** When set, the engine steers the unit around a deterministic racetrack

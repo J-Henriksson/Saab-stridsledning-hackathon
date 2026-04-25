@@ -102,6 +102,7 @@ export function launchDrone(state: GameState, droneId: string, waypoints: DroneW
     },
     currentBase: baseId,
     lastBase: baseId,
+    parentBaseId: drone.parentBaseId ?? baseId,
     position: startPos,
   };
 

@@ -121,8 +121,7 @@ function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircr
   });
   units.push({ ...rad, parentBaseId: baseId });
 
-  // Stamp parentBaseId on the drones (and any other units) added above.
-  return units.map((u) => (u.parentBaseId ? u : ({ ...u, parentBaseId: baseId } as Unit)));
+  return units;
 }
 
 const createZones = (baseType: "huvudbas" | "sidobas" | "reservbas", baseId: string): BaseZone[] => {

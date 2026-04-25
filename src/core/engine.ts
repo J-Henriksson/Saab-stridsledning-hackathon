@@ -108,7 +108,7 @@ function migrateFriendlyEntityToUnit(entity: FriendlyEntity): Unit {
     id: entity.id,
     name: entity.name,
     position: entity.coords,
-    currentBase: null,
+    currentBase: null as null,
     affiliation: "friend" as const,
   };
 
@@ -515,6 +515,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           ...unit,
           currentBase: null,
           lastBase: unit.currentBase,
+          parentBaseId: unit.parentBaseId ?? baseId,
           position: placeImmediately ? action.destination : unit.position,
           movement: {
             state: placeImmediately ? "stationary" : unit.category === "aircraft" ? "airborne" : "moving",
