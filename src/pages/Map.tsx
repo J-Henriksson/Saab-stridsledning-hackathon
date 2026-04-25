@@ -1032,6 +1032,24 @@ export default function MapPage() {
                         <div className="text-xs font-bold text-foreground font-mono">{panelTitle.main}</div>
                       </div>
                       <div className="text-[10px] text-muted-foreground capitalize">{panelTitle.sub}</div>
+                      {selected?.kind === "base" && selectedBase && (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/dashboard/${selectedBase.id}`)}
+                          className="mt-2 flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] font-mono font-bold uppercase tracking-wider transition-all hover:brightness-105"
+                          style={{
+                            color: "#0C234C",
+                            background: "rgba(215,171,58,0.14)",
+                            borderColor: "rgba(215,171,58,0.42)",
+                          }}
+                        >
+                          <span className="inline-flex items-center gap-1.5">
+                            <LayoutDashboard className="h-3.5 w-3.5" />
+                            Visa i dashboarden
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </>
                   ) : (
                     <div className="text-xs font-bold text-foreground font-mono">
