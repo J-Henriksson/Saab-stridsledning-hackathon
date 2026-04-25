@@ -24,6 +24,7 @@ export function useBoundaryCrossing(units: Unit[]) {
 
   useEffect(() => {
     for (const unit of units) {
+      if (!unit.position || typeof unit.position.lng !== "number" || typeof unit.position.lat !== "number") continue;
       const pt = turf.point([unit.position.lng, unit.position.lat]);
 
       // EEZ check

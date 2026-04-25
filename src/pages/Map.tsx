@@ -1461,7 +1461,7 @@ export default function MapPage() {
                 onClick={() => setSelected({ kind: "base", baseId: base.id })}
                 flygvapnetMode={state.overlayVisibility.flygvapnet}
                 showAirbases={true}
-                dimmed={focusedBaseId !== null && id !== focusedBaseId}
+                dimmed={focusedBaseId !== null && base.id !== focusedBaseId}
               />
             ))}
 
