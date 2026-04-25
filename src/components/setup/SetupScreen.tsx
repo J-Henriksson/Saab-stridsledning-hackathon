@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
+import {
+  Crown, Building2, Radio, Shield, Crosshair, Eye,
+} from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { initialGameState } from "@/data/initialGameState";
@@ -118,6 +121,31 @@ const S = {
   },
 };
 
+// ── Role definitions ──────────────────────────────────────────────────────
+
+export type PlayerRole =
+  | "wing_commander"
+  | "base_commander"
+  | "fob_manager"
+  | "ad_controller"
+  | "fighter_controller"
+  | "intel_officer";
+
+const ROLES: {
+  id: PlayerRole;
+  title: string;
+  sub: string;
+  icon: React.ElementType;
+  color: string;
+}[] = [
+  { id: "wing_commander",     title: "Vingchef",              sub: "Wing Commander",          icon: Crown,     color: "#D7AB3A" },
+  { id: "base_commander",     title: "Flygbaskommendant",     sub: "Air Base Commander",       icon: Building2, color: "#60a5fa" },
+  { id: "fob_manager",        title: "FOB-Chef",              sub: "Fwd. Operating Base Mgr", icon: Radio,     color: "#4ade80" },
+  { id: "ad_controller",      title: "Luftvärnscontroller",   sub: "Air Defence Controller",  icon: Shield,    color: "#f87171" },
+  { id: "fighter_controller", title: "Stridsledare",          sub: "Fighter Controller",      icon: Crosshair, color: "#c084fc" },
+  { id: "intel_officer",      title: "Underrättelseofficer",  sub: "Intel & Recon Officer",   icon: Eye,       color: "#22d3ee" },
+];
+
 // ── Hover-aware button ────────────────────────────────────────────────────
 
 function HoverButton({
@@ -153,10 +181,20 @@ function ChoiceView({
   onDefault: () => void;
   onCustomize: () => void;
 }) {
+  const [role, setRole] = useState<PlayerRole | null>(
+    () => (localStorage.getItem("playerRole") as PlayerRole | null)
+  );
+
+  function handleStart(fn: () => void) {
+    if (!role) return;
+    localStorage.setItem("playerRole", role);
+    fn();
+  }
+
   return (
     <div style={S.root}>
-      <div style={S.card}>
-        {/* Logo — matches TopBar brand icon */}
+      <div style={{ ...S.card, maxWidth: 620 }}>
+        {/* Logo */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
           <div style={{
             width: 72, height: 72, borderRadius: 16, overflow: "hidden",
@@ -178,33 +216,98 @@ function ChoiceView({
         <div style={S.label}>SMART STRIDSLEDNING — ROAD2AIR</div>
         <div style={S.title}>SIMULERINGSKONFIGURATION</div>
         <div style={S.subtitle}>
-          Välj om du vill starta med standardresurser eller konfigurera startresurserna manuellt innan simuleringen börjar.
+          Välj din roll och hur du vill starta simuleringen.
         </div>
 
+        {/* Role selection */}
+        <div style={{
+          fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase",
+          color: "rgba(215,222,225,0.45)", marginBottom: 10, fontWeight: "bold",
+        }}>
+          Välj roll
+        </div>
+        <div style={{
+          display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 8, marginBottom: 28, textAlign: "left",
+        }}>
+          {ROLES.map((r) => {
+            const Icon = r.icon;
+            const selected = role === r.id;
+            return (
+              <button
+                key={r.id}
+                onClick={() => setRole(r.id)}
+                style={{
+                  background: selected ? `${r.color}18` : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${selected ? r.color : "rgba(215,222,225,0.12)"}`,
+                  borderRadius: 6,
+                  padding: "10px 10px 8px",
+                  cursor: "pointer",
+                  fontFamily: "monospace",
+                  textAlign: "left",
+                  transition: "all 0.15s ease",
+                  outline: "none",
+                }}
+                onMouseEnter={(e) => {
+                  if (!selected) (e.currentTarget as HTMLButtonElement).style.borderColor = `${r.color}88`;
+                }}
+                onMouseLeave={(e) => {
+                  if (!selected) (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(215,222,225,0.12)";
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                  <Icon size={13} color={r.color} />
+                  <span style={{ fontSize: 10, fontWeight: "bold", color: selected ? r.color : "#D7DEE1", letterSpacing: "0.04em" }}>
+                    {r.title}
+                  </span>
+                </div>
+                <div style={{ fontSize: 9, color: "rgba(215,222,225,0.4)", letterSpacing: "0.05em" }}>
+                  {r.sub}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Start buttons — disabled until role is chosen */}
         <HoverButton
-          base={S.btnPrimary}
-          hovered={{
+          base={{
+            ...S.btnPrimary,
+            opacity: role ? 1 : 0.4,
+            cursor: role ? "pointer" : "not-allowed",
+          }}
+          hovered={role ? {
             background: "linear-gradient(90deg,#D7AB3A,#f0c84a,#D7AB3A)",
             boxShadow: "0 0 16px rgba(215,171,58,0.45)",
             transform: "translateY(-1px)",
-          }}
-          onClick={onDefault}
+          } : {}}
+          onClick={() => handleStart(onDefault)}
         >
           STARTA MED STANDARDINSTÄLLNINGAR
         </HoverButton>
 
         <HoverButton
-          base={S.btnSecondary}
-          hovered={{
+          base={{
+            ...S.btnSecondary,
+            opacity: role ? 1 : 0.4,
+            cursor: role ? "pointer" : "not-allowed",
+          }}
+          hovered={role ? {
             background: "rgba(215,222,225,0.08)",
             border: "1px solid rgba(215,222,225,0.55)",
             color: "#D7DEE1",
             transform: "translateY(-1px)",
-          }}
-          onClick={onCustomize}
+          } : {}}
+          onClick={() => handleStart(onCustomize)}
         >
           ANPASSA RESURSER
         </HoverButton>
+
+        {!role && (
+          <div style={{ fontSize: 10, color: "rgba(215,222,225,0.35)", marginTop: 10, letterSpacing: "0.05em" }}>
+            Välj en roll ovan för att fortsätta
+          </div>
+        )}
       </div>
     </div>
   );
