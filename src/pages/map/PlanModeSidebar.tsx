@@ -63,19 +63,30 @@ function DelaySelect({ id, delays, onSetDelay }: { id: string; delays: Record<st
 
 // ── Shared item row ────────────────────────────────────────────────────────
 
-function PlanItemRow({ label, sub, color = "#93c5fd", id, coords, delays, onSetDelay, onFlyTo, onDelete }: {
+function PlanItemRow({ label, sub, color = "#93c5fd", id, coords, delays, onSetDelay, onFlyTo, onDelete, isNew }: {
   label: string; sub?: string; color?: string;
   id: string; coords?: { lat: number; lng: number } | null;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, d: DelaySpec | null) => void;
   onFlyTo: (lat: number, lng: number) => void;
   onDelete: () => void;
+  isNew?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 border border-border rounded bg-muted/5">
-      <div className="flex-1 min-w-0">
-        <span className="text-[11px] font-mono font-bold truncate" style={{ color }}>{label}</span>
-        {sub && <span className="text-[10px] text-muted-foreground ml-1.5">{sub}</span>}
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 border rounded ${
+      isNew ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/5"
+    }`}>
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-mono font-bold truncate" style={{ color }}>{label}</span>
+          {isNew && (
+            <span className="text-[8px] font-mono font-bold px-1 py-0.5 rounded"
+              style={{ background: "rgba(215,171,58,0.18)", border: "1px solid rgba(215,171,58,0.4)", color: "#D7AB3A" }}>
+              +NY
+            </span>
+          )}
+        </div>
+        {sub && <span className="text-[10px] text-muted-foreground">{sub}</span>}
       </div>
       <DelaySelect id={id} delays={delays} onSetDelay={onSetDelay} />
       {coords && (
@@ -179,6 +190,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               coords={m.coords}
               delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
               onDelete={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_MARKER", id: m.id })}
+              isNew
             />
           ))}
         </>
@@ -194,6 +206,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               coords={u.position}
               delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
               onDelete={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: u.id })}
+              isNew
             />
           ))}
         </>
@@ -209,6 +222,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               coords={rb.coords}
               delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
               onDelete={() => dispatch({ type: "PLAN_DELETE_ROAD_BASE", id: rb.id })}
+              isNew
             />
           ))}
         </>
@@ -224,6 +238,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               coords={b.coords}
               delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
               onDelete={() => dispatch({ type: "PLAN_DELETE_ENEMY_BASE", id: b.id })}
+              isNew
             />
           ))}
         </>
@@ -239,6 +254,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               coords={(e as any).coords ?? null}
               delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
               onDelete={() => dispatch({ type: "PLAN_DELETE_ENEMY_ENTITY", id: e.id })}
+              isNew
             />
           ))}
         </>

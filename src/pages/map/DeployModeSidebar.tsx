@@ -13,9 +13,11 @@ interface Props {
   onStartPlacement: (payload: PlacingPayload) => void;
   onClose: () => void;
   onFlyTo: (lat: number, lng: number) => void;
+  onFollow?: (unitId: string) => void;
+  followingUnitId?: string | null;
 }
 
-export function DeployModeSidebar({ state, dispatch, onStartPlacement, onClose, onFlyTo }: Props) {
+export function DeployModeSidebar({ state, dispatch, onStartPlacement, onClose, onFlyTo, onFollow, followingUnitId }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("friendly");
 
   return (
@@ -84,6 +86,8 @@ export function DeployModeSidebar({ state, dispatch, onStartPlacement, onClose, 
             dispatch={dispatch}
             onStartPlacement={onStartPlacement}
             onFlyTo={onFlyTo}
+            onFollow={onFollow}
+            followingUnitId={followingUnitId}
           />
         ) : (
           <EnemySection

@@ -44,6 +44,8 @@ interface Props {
   onFlyTo?: (lat: number, lng: number) => void;
   delays?: Record<string, DelaySpec | null>;
   onSetDelay?: (id: string, delay: DelaySpec | null) => void;
+  onFollow?: (unitId: string) => void;
+  followingUnitId?: string | null;
 }
 
 const DELAY_OPTIONS: { label: string; value: string }[] = [
@@ -263,7 +265,7 @@ function AddForm({ title, onPlace, onCancel, fields }: { title: string; onPlace:
   );
 }
 
-export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay }: Props) {
+export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, roadBases, placedUnits, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay, onFollow, followingUnitId }: Props) {
   const [addingBase, setAddingBase] = useState(false);
   const [addingUnit, setAddingUnit] = useState(false);
 
@@ -406,31 +408,50 @@ export function FriendlySection({ bases, friendlyMarkers, friendlyEntities, road
           <div className="text-[9px] font-mono text-muted-foreground uppercase tracking-widest mt-3 mb-1">
             Placerade enheter
           </div>
-          {placedFriendlyUnits.map((unit) => (
-            <div key={unit.id} className="flex items-center gap-1.5 p-2 border border-border rounded bg-muted/10">
-              <div className="flex-1 min-w-0">
-                <span className="text-xs font-mono font-bold text-blue-300">{unit.name}</span>
-                <span className="text-[10px] text-muted-foreground ml-2">{UNIT_CATEGORIES.find((c) => c.value === unit.category)?.label}</span>
-                <div className="text-[10px] text-muted-foreground/70">
-                  {unit.type} · Hemabas {unit.currentBase ?? unit.lastBase ?? "—"}
-                </div>
-                {unit.category === "drone" && unit.payload && (
-                  <div className="text-[10px] text-muted-foreground/70">
-                    Last: {unit.payload}
+          {placedFriendlyUnits.map((unit) => {
+            const isTracked = followingUnitId === unit.id;
+            return (
+              <div
+                key={unit.id}
+                onClick={() => onFollow?.(unit.id)}
+                className={`flex items-center gap-1.5 p-2 border rounded transition-colors cursor-pointer ${
+                  isTracked
+                    ? "border-blue-500/50 bg-blue-500/10"
+                    : "border-border bg-muted/10 hover:bg-muted/20"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono font-bold text-blue-300">{unit.name}</span>
+                    {isTracked && (
+                      <span className="text-[8px] font-mono font-bold px-1 py-0.5 rounded"
+                        style={{ background: "rgba(59,130,246,0.18)", border: "1px solid rgba(59,130,246,0.4)", color: "#93c5fd" }}>
+                        Följer
+                      </span>
+                    )}
                   </div>
+                  <span className="text-[10px] text-muted-foreground">{UNIT_CATEGORIES.find((c) => c.value === unit.category)?.label}</span>
+                  <div className="text-[10px] text-muted-foreground/70">
+                    {unit.type} · Hemabas {unit.currentBase ?? unit.lastBase ?? "—"}
+                  </div>
+                  {unit.category === "drone" && unit.payload && (
+                    <div className="text-[10px] text-muted-foreground/70">
+                      Last: {unit.payload}
+                    </div>
+                  )}
+                </div>
+                <DelaySelect entityId={unit.id} delays={delays} onSetDelay={onSetDelay} />
+                {onFlyTo && (
+                  <button onClick={(e) => { e.stopPropagation(); onFlyTo(unit.position.lat, unit.position.lng); }} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
+                    <MapPin className="h-3.5 w-3.5" />
+                  </button>
                 )}
-              </div>
-              <DelaySelect entityId={unit.id} delays={delays} onSetDelay={onSetDelay} />
-              {onFlyTo && (
-                <button onClick={() => onFlyTo(unit.position.lat, unit.position.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0" title="Visa på kartan">
-                  <MapPin className="h-3.5 w-3.5" />
+                <button onClick={(e) => { e.stopPropagation(); dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: unit.id }); }} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
+                  <Trash2 className="h-3.5 w-3.5" />
                 </button>
-              )}
-              <button onClick={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: unit.id })} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </>
       )}
 

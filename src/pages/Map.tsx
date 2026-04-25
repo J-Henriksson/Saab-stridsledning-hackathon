@@ -385,6 +385,7 @@ export default function MapPage() {
   }, [updateRadarStatus, updateRadarPosition]);
   const isFollowing = useRef(false);
   const followStartTime = useRef<number | null>(null);
+  const [followingUnitId, setFollowingUnitId] = useState<string | null>(null);
 
   // Pre-select aircraft when navigated here from basöversikt
   useEffect(() => {
@@ -821,6 +822,23 @@ export default function MapPage() {
     if (now - followStartTime.current < 1100) return;
     map.easeTo({ center: [lng, lat], duration: 180 });
   }, []);
+
+  const handleFollow = useCallback((unitId: string) => {
+    setFollowingUnitId((prev) => {
+      if (prev === unitId) return null;
+      const unit = allUnits.find((u) => u.id === unitId);
+      if (unit) mapRef.current?.flyTo({ center: [unit.position.lng, unit.position.lat], zoom: 12, duration: 900 });
+      return unitId;
+    });
+  }, [allUnits]);
+
+  useEffect(() => {
+    if (!followingUnitId) return;
+    const unit = allUnits.find((u) => u.id === followingUnitId);
+    if (!unit) { setFollowingUnitId(null); return; }
+    mapRef.current?.easeTo({ center: [unit.position.lng, unit.position.lat], duration: 600 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allUnits]);
 
   const handleRecall = useCallback(() => {
     if (selected?.kind !== "aircraft") return;
@@ -1279,6 +1297,8 @@ export default function MapPage() {
                 onStartPlacement={handleStartPlacement}
                 onClose={() => { setIsDeployMode(false); setPlacingMode(null); }}
                 onFlyTo={handleFlyTo}
+                onFollow={handleFollow}
+                followingUnitId={followingUnitId}
               />
             </motion.div>
           )}
@@ -1542,7 +1562,7 @@ export default function MapPage() {
             onClick={handleMapClick}
             onLoad={handleMapLoad}
             onZoom={(e) => setZoom(e.viewState.zoom)}
-            onDragStart={() => { isFollowing.current = false; followStartTime.current = null; }}
+            onDragStart={() => { isFollowing.current = false; followStartTime.current = null; setFollowingUnitId(null); }}
             onMouseMove={(e: MapLayerMouseEvent) =>
               setHudCursor({ lat: e.lngLat.lat, lng: e.lngLat.lng })
             }

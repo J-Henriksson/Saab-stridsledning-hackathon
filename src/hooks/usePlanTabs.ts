@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { GameState, GameAction } from "@/types/game";
+import { createAirDefenseUnit, createRadarUnit, createDeployedDroneUnit } from "@/core/units/factory";
+import { uuid } from "@/core/uuid";
 
 // ── Delay types ───────────────────────────────────────────────────────────────
 
@@ -79,6 +81,70 @@ function createEmptyPlanState(liveState: GameState): GameState {
     events: [],
     isRunning: false,
     gameSpeed: 0,
+  };
+}
+
+// ── Pre-built "protect ammo" plan ────────────────────────────────────────────
+//
+// Ammo depot coords (from fixedAssets):
+//   AMMO_ENKOPING  59.635, 17.077
+//   AMMO_EKSJO     57.664, 14.974
+//
+// The plan intentionally has NO vägbas so the AI review flags it.
+
+function buildProtectAmmoTab(liveState: GameState): PlanTab {
+  const base = createEmptyPlanState(liveState);
+
+  // Friendly air-defense units
+  const lv1 = createAirDefenseUnit({
+    name: "LV-REDK-1", position: { lat: 59.565, lng: 16.950 }, currentBase: "MOB",
+    type: "SAM_MEDIUM", id: uuid(),
+  });
+  const lv2 = createAirDefenseUnit({
+    name: "LV-EKS-2", position: { lat: 57.730, lng: 14.870 }, currentBase: "FOB_S",
+    type: "SAM_SHORT", id: uuid(),
+  });
+
+  // Radar covering Enköping depot
+  const radar = createRadarUnit({
+    name: "PS-890-ENK", position: { lat: 59.700, lng: 17.150 }, currentBase: "MOB",
+    type: "SEARCH_RADAR", id: uuid(),
+  });
+
+  // ISR drone patrolling the corridor between the two depots
+  const drone = createDeployedDroneUnit({
+    name: "SKYM-15", position: { lat: 58.650, lng: 16.000 }, currentBase: "MOB",
+    type: "ISR_DRONE", id: uuid(),
+  });
+
+  // Known enemy threats
+  const enemyAirfield = {
+    id: uuid(), name: "RU-AFB-ÖLAND", category: "airfield" as const,
+    threatLevel: "high" as const, operationalStatus: "active" as const,
+    estimates: "~12 Su-35", notes: "Aktiv verksamhet observerad",
+    threatRangeKm: 300, coords: { lat: 57.200, lng: 17.800 },
+  };
+  const enemyFighter = {
+    id: uuid(), name: "RU-SU-35-FLT", category: "fighter" as const,
+    threatLevel: "high" as const, operationalStatus: "active" as const,
+    estimates: "4-6 enheter", notes: "Observerad rörelse mot väst",
+    coords: { lat: 58.500, lng: 20.500 },
+  };
+
+  const snapshot: GameState = {
+    ...base,
+    deployedUnits: [lv1, lv2, radar, drone],
+    enemyBases: [enemyAirfield],
+    enemyEntities: [enemyFighter],
+  };
+
+  return {
+    id: "plan-protect-ammo",
+    name: "Skydda ammodepo",
+    snapshot,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    delays: {},
   };
 }
 
@@ -253,6 +319,18 @@ export function generatePlanSummary(tab: PlanTab): string {
 export function usePlanTabs(liveState: GameState) {
   const [tabs, setTabs] = useState<PlanTab[]>(() => loadFromStorage());
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [seeded, setSeeded] = useState(false);
+
+  // Always ensure the "protect ammo" plan exists as the first tab.
+  useEffect(() => {
+    if (seeded) return;
+    setSeeded(true);
+    setTabs((prev) => {
+      if (prev.some((t) => t.id === "plan-protect-ammo")) return prev;
+      return [buildProtectAmmoTab(liveState), ...prev];
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     saveToStorage(tabs);
