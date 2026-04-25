@@ -186,8 +186,8 @@ function ChoiceView({
   );
 
   function handleStart(fn: () => void) {
-    if (!role) return;
-    localStorage.setItem("playerRole", role);
+    if (role) localStorage.setItem("playerRole", role);
+    else localStorage.removeItem("playerRole");
     fn();
   }
 
@@ -216,7 +216,7 @@ function ChoiceView({
         <div style={S.label}>SMART STRIDSLEDNING — ROAD2AIR</div>
         <div style={S.title}>SIMULERINGSKONFIGURATION</div>
         <div style={S.subtitle}>
-          Välj din roll och hur du vill starta simuleringen.
+          Välj valfritt en roll och hur du vill starta simuleringen.
         </div>
 
         {/* Role selection */}
@@ -224,7 +224,7 @@ function ChoiceView({
           fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase",
           color: "rgba(215,222,225,0.45)", marginBottom: 10, fontWeight: "bold",
         }}>
-          Välj roll
+          Välj roll <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: "normal", opacity: 0.6 }}>(valfritt)</span>
         </div>
         <div style={{
           display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
@@ -269,43 +269,35 @@ function ChoiceView({
           })}
         </div>
 
-        {/* Start buttons — disabled until role is chosen */}
+        {/* Start buttons */}
         <HoverButton
-          base={{
-            ...S.btnPrimary,
-            opacity: role ? 1 : 0.4,
-            cursor: role ? "pointer" : "not-allowed",
-          }}
-          hovered={role ? {
+          base={S.btnPrimary}
+          hovered={{
             background: "linear-gradient(90deg,#D7AB3A,#f0c84a,#D7AB3A)",
             boxShadow: "0 0 16px rgba(215,171,58,0.45)",
             transform: "translateY(-1px)",
-          } : {}}
+          }}
           onClick={() => handleStart(onDefault)}
         >
           STARTA MED STANDARDINSTÄLLNINGAR
         </HoverButton>
 
         <HoverButton
-          base={{
-            ...S.btnSecondary,
-            opacity: role ? 1 : 0.4,
-            cursor: role ? "pointer" : "not-allowed",
-          }}
-          hovered={role ? {
+          base={S.btnSecondary}
+          hovered={{
             background: "rgba(215,222,225,0.08)",
             border: "1px solid rgba(215,222,225,0.55)",
             color: "#D7DEE1",
             transform: "translateY(-1px)",
-          } : {}}
+          }}
           onClick={() => handleStart(onCustomize)}
         >
           ANPASSA RESURSER
         </HoverButton>
 
         {!role && (
-          <div style={{ fontSize: 10, color: "rgba(215,222,225,0.35)", marginTop: 10, letterSpacing: "0.05em" }}>
-            Välj en roll ovan för att fortsätta
+          <div style={{ fontSize: 10, color: "rgba(215,222,225,0.25)", marginTop: 10, letterSpacing: "0.05em" }}>
+            Du kan starta utan att välja roll
           </div>
         )}
       </div>
