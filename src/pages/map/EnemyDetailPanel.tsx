@@ -1,5 +1,8 @@
 import { Crosshair, Swords, MapPin, AlertTriangle, FileText, Target, Package, Brain, Activity } from "lucide-react";
 import type { EnemyBase, EnemyEntity, ThreatLevel, OperationalStatus, EnemyBaseCategory, EnemyEntityCategory, IntelReport } from "@/types/game";
+import { analyzeEnemyBase, analyzeEnemyEntity } from "@/lib/enemyAnalysis";
+import { ContextualRecommendation } from "@/components/game/ContextualRecommendation";
+import { WarningList, BorderAlertPanel } from "@/components/game/EnemyAnalysisPanels";
 
 const THREAT_STYLE: Record<ThreatLevel, { label: string; cls: string }> = {
   high:    { label: "HÖG",    cls: "text-red-400 bg-red-400/10 border-red-400/40" },
@@ -33,6 +36,7 @@ const ENTITY_CATEGORY_LABEL: Record<EnemyEntityCategory, string> = {
   sam_launcher: "Luftvärnsrobot",
   ship:         "Fartyg",
 };
+
 
 function InfoRow({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: React.ReactNode }) {
   return (
@@ -129,6 +133,17 @@ export function EnemyBaseDetailPanel({ base, report }: { base: EnemyBase; report
           </div>
         </>
       )}
+
+      {(() => {
+        const a = analyzeEnemyBase(base);
+        return (
+          <div className="space-y-2">
+            <ContextualRecommendation text={a.recommendation} type={a.type} />
+            {a.warnings.length > 0 && <WarningList warnings={a.warnings} />}
+            {a.borderAlert && <BorderAlertPanel alert={a.borderAlert} />}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -163,6 +178,17 @@ export function EnemyEntityDetailPanel({ entity }: { entity: EnemyEntity }) {
           <InfoRow icon={FileText} label="Anteckningar" value={entity.notes} />
         )}
       </div>
+
+      {(() => {
+        const a = analyzeEnemyEntity(entity);
+        return (
+          <div className="space-y-2">
+            <ContextualRecommendation text={a.recommendation} type={a.type} />
+            {a.warnings.length > 0 && <WarningList warnings={a.warnings} />}
+            {a.borderAlert && <BorderAlertPanel alert={a.borderAlert} />}
+          </div>
+        );
+      })()}
     </div>
   );
 }

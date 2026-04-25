@@ -2,6 +2,7 @@ import type { Unit, Affiliation, AirDefenseUnit } from "@/types/units";
 import { isAircraft, isDrone, isAirDefense, isGroundVehicle, isRadar } from "@/types/units";
 import type { BaseType } from "@/types/game";
 import { UnitSymbol } from "@/components/map/UnitSymbol";
+import gripenSilhouette from "@/assets/gripen-silhouette.png";
 import { useGame } from "@/context/GameContext";
 import { Link } from "react-router-dom";
 import { getAirDefenseRangeProfile } from "@/core/units/airDefense";
@@ -26,7 +27,24 @@ export function UnitDetailPanel({
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 font-mono text-xs">
       <div className="flex items-center gap-3 border-b border-border pb-3">
-        <UnitSymbol sidc={unit.sidc} size={48} />
+        {isAircraft(unit) ? (
+          <img
+            src={gripenSilhouette}
+            alt={unit.name}
+            width={48}
+            style={{
+              filter: unit.affiliation === "hostile"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(320deg)"
+                : unit.affiliation === "neutral"
+                ? "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(200deg)"
+                : unit.affiliation === "friend"
+                ? "brightness(0) invert(1) sepia(1) saturate(3) hue-rotate(90deg)"
+                : "brightness(0) invert(1) sepia(1) saturate(5) hue-rotate(50deg)",
+            }}
+          />
+        ) : (
+          <UnitSymbol sidc={unit.sidc} size={48} />
+        )}
         <div className="min-w-0">
           <div className="text-sm font-bold text-foreground truncate">{unit.name}</div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-widest">
