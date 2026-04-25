@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import type { GameState, GameAction } from "@/types/game";
-import { createAirDefenseUnit, createRadarUnit, createDeployedDroneUnit } from "@/core/units/factory";
+import { createAirDefenseUnit, createRadarUnit, createDeployedDroneUnit, createGroundVehicleUnit } from "@/core/units/factory";
 import { uuid } from "@/core/uuid";
 
 // ── Delay types ───────────────────────────────────────────────────────────────
@@ -34,6 +34,14 @@ export function delayToMs(d: DelaySpec): number {
 
 // ── Plan tab ──────────────────────────────────────────────────────────────────
 
+export interface AiRecommendation {
+  id: string;
+  title: string;
+  description: string;
+  priority: "high" | "medium" | "low";
+  implemented: boolean;
+}
+
 export interface PlanTab {
   id: string;
   name: string;
@@ -41,6 +49,8 @@ export interface PlanTab {
   createdAt: number;
   updatedAt: number;
   delays: Record<string, DelaySpec | null>;
+  description?: string;
+  aiRecommendations?: AiRecommendation[];
 }
 
 // ── Storage ───────────────────────────────────────────────────────────────────
@@ -95,47 +105,147 @@ function createEmptyPlanState(liveState: GameState): GameState {
 function buildProtectAmmoTab(liveState: GameState): PlanTab {
   const base = createEmptyPlanState(liveState);
 
-  // Friendly air-defense units
-  const lv1 = createAirDefenseUnit({
-    name: "LV-REDK-1", position: { lat: 59.565, lng: 16.950 }, currentBase: "MOB",
+  // ── ENKÖPING DEPOT defense ring ──────────────────────────────────────────
+  const enkLv1 = createAirDefenseUnit({
+    name: "LV-REK-1", position: { lat: 59.720, lng: 16.890 }, currentBase: "MOB",
+    type: "SAM_LONG", id: uuid(),
+  });
+  const enkLv2 = createAirDefenseUnit({
+    name: "LV-REK-2", position: { lat: 59.710, lng: 17.260 }, currentBase: "MOB",
     type: "SAM_MEDIUM", id: uuid(),
   });
-  const lv2 = createAirDefenseUnit({
-    name: "LV-EKS-2", position: { lat: 57.730, lng: 14.870 }, currentBase: "FOB_S",
+  const enkLv3 = createAirDefenseUnit({
+    name: "LV-REK-3", position: { lat: 59.560, lng: 16.950 }, currentBase: "MOB",
     type: "SAM_SHORT", id: uuid(),
   });
-
-  // Radar covering Enköping depot
-  const radar = createRadarUnit({
-    name: "PS-890-ENK", position: { lat: 59.700, lng: 17.150 }, currentBase: "MOB",
+  const enkLv4 = createAirDefenseUnit({
+    name: "LV-REK-4", position: { lat: 59.590, lng: 17.280 }, currentBase: "MOB",
+    type: "SAM_SHORT", id: uuid(),
+  });
+  const enkRadar1 = createRadarUnit({
+    name: "PS-890-ENK-A", position: { lat: 59.700, lng: 17.150 }, currentBase: "MOB",
     type: "SEARCH_RADAR", id: uuid(),
   });
+  const enkRadar2 = createRadarUnit({
+    name: "PS-701-ENK-B", position: { lat: 59.640, lng: 17.000 }, currentBase: "MOB",
+    type: "TRACKING_RADAR", id: uuid(),
+  });
+  const enkArmor = createGroundVehicleUnit({
+    name: "CV90-ENK-1", position: { lat: 59.627, lng: 17.060 }, currentBase: "MOB",
+    type: "ARMORED_TRANSPORT", id: uuid(),
+  });
+  const enkLogistics = createGroundVehicleUnit({
+    name: "LOG-ENK-1", position: { lat: 59.648, lng: 17.095 }, currentBase: "MOB",
+    type: "LOGISTICS_TRUCK", id: uuid(),
+  });
 
-  // ISR drone patrolling the corridor between the two depots
-  const drone = createDeployedDroneUnit({
-    name: "SKYM-15", position: { lat: 58.650, lng: 16.000 }, currentBase: "MOB",
+  // ── EKSJÖ DEPOT defense ring ─────────────────────────────────────────────
+  const eksLv1 = createAirDefenseUnit({
+    name: "LV-EKS-1", position: { lat: 57.780, lng: 14.800 }, currentBase: "FOB_S",
+    type: "SAM_LONG", id: uuid(),
+  });
+  const eksLv2 = createAirDefenseUnit({
+    name: "LV-EKS-2", position: { lat: 57.730, lng: 14.870 }, currentBase: "FOB_S",
+    type: "SAM_MEDIUM", id: uuid(),
+  });
+  const eksLv3 = createAirDefenseUnit({
+    name: "LV-EKS-3", position: { lat: 57.600, lng: 15.100 }, currentBase: "FOB_S",
+    type: "SAM_SHORT", id: uuid(),
+  });
+  const eksLv4 = createAirDefenseUnit({
+    name: "LV-EKS-4", position: { lat: 57.700, lng: 15.150 }, currentBase: "FOB_S",
+    type: "SAM_SHORT", id: uuid(),
+  });
+  const eksRadar1 = createRadarUnit({
+    name: "PS-890-EKS-A", position: { lat: 57.720, lng: 14.950 }, currentBase: "FOB_S",
+    type: "SEARCH_RADAR", id: uuid(),
+  });
+  const eksRadar2 = createRadarUnit({
+    name: "PS-701-EKS-B", position: { lat: 57.650, lng: 15.050 }, currentBase: "FOB_S",
+    type: "TRACKING_RADAR", id: uuid(),
+  });
+  const eksArmor = createGroundVehicleUnit({
+    name: "CV90-EKS-1", position: { lat: 57.660, lng: 14.965 }, currentBase: "FOB_S",
+    type: "ARMORED_TRANSPORT", id: uuid(),
+  });
+  const eksFuel = createGroundVehicleUnit({
+    name: "FUEL-EKS-1", position: { lat: 57.678, lng: 15.002 }, currentBase: "FOB_S",
+    type: "FUEL_BOWSER", id: uuid(),
+  });
+
+  // ── ISR drones: corridor + both depots ───────────────────────────────────
+  const droneCorr = createDeployedDroneUnit({
+    name: "SKYM-15-KORR", position: { lat: 58.650, lng: 16.000 }, currentBase: "MOB",
+    type: "ISR_DRONE", id: uuid(),
+  });
+  const droneEnk = createDeployedDroneUnit({
+    name: "SKYM-16-ENK", position: { lat: 59.550, lng: 17.200 }, currentBase: "MOB",
+    type: "ISR_DRONE", id: uuid(),
+  });
+  const droneEks = createDeployedDroneUnit({
+    name: "SKYM-17-EKS", position: { lat: 57.500, lng: 15.200 }, currentBase: "FOB_S",
     type: "ISR_DRONE", id: uuid(),
   });
 
-  // Known enemy threats
+  // ── Road bases ────────────────────────────────────────────────────────────
+  const roadBaseEnk: import("@/types/game").RoadBase = {
+    id: uuid(), name: "ROB-ENK-21", status: "Operativ", echelon: "Platoon",
+    parentBaseId: "MOB", isDraggable: true, rangeRadius: 25,
+    coords: { lat: 59.580, lng: 17.030 }, createdAt: Date.now(),
+  };
+  const roadBaseEks: import("@/types/game").RoadBase = {
+    id: uuid(), name: "ROB-EKS-14", status: "Operativ", echelon: "Platoon",
+    parentBaseId: "FOB_S", isDraggable: true, rangeRadius: 20,
+    coords: { lat: 57.740, lng: 15.120 }, createdAt: Date.now(),
+  };
+
+  // ── Enemy threats ─────────────────────────────────────────────────────────
   const enemyAirfield = {
     id: uuid(), name: "RU-AFB-ÖLAND", category: "airfield" as const,
     threatLevel: "high" as const, operationalStatus: "active" as const,
-    estimates: "~12 Su-35", notes: "Aktiv verksamhet observerad",
+    estimates: "~12 Su-35S, stridsberedskap bekräftad",
+    notes: "Aktiv verksamhet observerad, start- och landningsrörelser dagligen",
     threatRangeKm: 300, coords: { lat: 57.200, lng: 17.800 },
   };
-  const enemyFighter = {
-    id: uuid(), name: "RU-SU-35-FLT", category: "fighter" as const,
+  const enemySamSite = {
+    id: uuid(), name: "RU-SAM-GOTLAND", category: "sam_site" as const,
     threatLevel: "high" as const, operationalStatus: "active" as const,
-    estimates: "4-6 enheter", notes: "Observerad rörelse mot väst",
+    estimates: "S-400 batteri, 4 uppskjutningsramper aktiva",
+    notes: "Täcker hela Östersjön. Omöjliggör direkt luftrörelsestöd utan SEAD-eskort.",
+    threatRangeKm: 400, coords: { lat: 57.500, lng: 18.500 },
+  };
+  const enemyCommand = {
+    id: uuid(), name: "RU-LEDNING-KALMAR", category: "command" as const,
+    threatLevel: "medium" as const, operationalStatus: "suspected" as const,
+    estimates: "Regional ledningscentral, förmodad mobilenhet",
+    notes: "ELINT-signatur bekräftad. COMINT indikerar samordning med luftstyrkor.",
+    threatRangeKm: 0, coords: { lat: 56.700, lng: 16.350 },
+  };
+  const enemyFighter = {
+    id: uuid(), name: "RU-SU-35-FLT-ALFA", category: "fighter" as const,
+    threatLevel: "high" as const, operationalStatus: "active" as const,
+    estimates: "4-6 enheter i roterande tjänstgöring",
+    notes: "Observerad rörelse mot väst vid 18 000 m höjd. Trolig underrättelseinsamling.",
     coords: { lat: 58.500, lng: 20.500 },
+  };
+  const enemyMissile = {
+    id: uuid(), name: "RU-KALIBER-FARTYG", category: "ship" as const,
+    threatLevel: "high" as const, operationalStatus: "active" as const,
+    estimates: "1 Kalibr-bestyckad korvett, Gepard-klass",
+    notes: "Rörelsemönster indikerar möjlig uppskjutningsposition om <48 h.",
+    coords: { lat: 56.000, lng: 19.500 },
   };
 
   const snapshot: GameState = {
     ...base,
-    deployedUnits: [lv1, lv2, radar, drone],
-    enemyBases: [enemyAirfield],
-    enemyEntities: [enemyFighter],
+    deployedUnits: [
+      enkLv1, enkLv2, enkLv3, enkLv4, enkRadar1, enkRadar2, enkArmor, enkLogistics,
+      eksLv1, eksLv2, eksLv3, eksLv4, eksRadar1, eksRadar2, eksArmor, eksFuel,
+      droneCorr, droneEnk, droneEks,
+    ],
+    roadBases: [roadBaseEnk, roadBaseEks],
+    enemyBases: [enemyAirfield, enemySamSite, enemyCommand],
+    enemyEntities: [enemyFighter, enemyMissile],
   };
 
   return {
@@ -145,6 +255,63 @@ function buildProtectAmmoTab(liveState: GameState): PlanTab {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     delays: {},
+    description:
+      "Defensivt skyddsuppdrag för kritisk ammunitionsinfrastruktur vid Enköping och Eksjö. " +
+      "Planläget inkluderar tvåskiktat luftvärn (lång- och kortdistans), radartäckning, " +
+      "ISR-bevakning av korridor och depåer, logistikfordon samt vägbastöd. " +
+      "Prioritet: säkerställa att båda depåerna förblir operativa under hela konfliktfasen.",
+    aiRecommendations: [
+      {
+        id: "ai-rec-1",
+        title: "Förstärk SAM-täckning NÖ om Enköping",
+        description:
+          "Hotanalys (konfidens 87%) indikerar sannolik anfallsvektor nordöst om Enköping. " +
+          "Placering av ytterligare SAM_LONG-batteri vid 59.800N/17.200E minskar exploaterbar " +
+          "korridor med 73% och ger överlappande täckning med befintlig LV-REK-1.",
+        priority: "high",
+        implemented: false,
+      },
+      {
+        id: "ai-rec-2",
+        title: "Etablera vägbas längs E4 – sektor OSCAR",
+        description:
+          "Logistikflödessimulering (10 000 iterationer) visar kritisk sårbarhet vid E4/väg 55-korsningen. " +
+          "ROB-placering vid sektor OSCAR möjliggör alternativ förstärkningsväg vid avbrott på primärled " +
+          "och reducerar genomsnittlig responstid med 34 minuter.",
+        priority: "high",
+        implemented: false,
+      },
+      {
+        id: "ai-rec-3",
+        title: "Utöka ISR-täckning mot Gotland",
+        description:
+          "Övervakningsgap identifierat i sektor BRAVO (56–57°N, 17–19°E). " +
+          "Tillägg av ISR-drönare med SIGINT-last vid Gotlandssundet ger 18+ timmar förvarning " +
+          "vid potentiell missilavfyrning eller luftlandsättning.",
+        priority: "medium",
+        implemented: false,
+      },
+      {
+        id: "ai-rec-4",
+        title: "Koordinera ASW-resurser mot RU-KALIBER-FARTYG",
+        description:
+          "Rörelseanalys av RU-KALIBER-FARTYG indikerar möjlig uppskjutningsposition om <48 timmar. " +
+          "Samordning med Marinens ASW-helikoptrar (HKP 14) och ubåtar rekommenderas omedelbart " +
+          "för att reducera hotfönstret.",
+        priority: "medium",
+        implemented: false,
+      },
+      {
+        id: "ai-rec-5",
+        title: "SEAD-planläggning mot RU-SAM-GOTLAND",
+        description:
+          "S-400-batteriet vid Gotland förhindrar fri rörelsefrihet i Östersjöluftrummet. " +
+          "Planlägg SEAD-uppdrag (HARM + elektronisk störning) för att skapa ett temporärt " +
+          "åtkomstfönster vid behov av lufttransport eller förstärkning.",
+        priority: "low",
+        implemented: false,
+      },
+    ],
   };
 }
 

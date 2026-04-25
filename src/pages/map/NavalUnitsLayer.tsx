@@ -11,11 +11,19 @@ import {
   LogisticsShipIcon,
 } from "@/components/symbols/UnitIcons";
 
-// NATO SIDC for naval units — affiliation digit at index 3 (3=friend, 6=hostile)
+// NATO SIDC for naval units — verified entity codes from milsymbol source
+// Symbol set 30 = Sea Surface, 35 = Sea Subsurface
 function navalSidc(kind: NavalUnit["kind"], affiliation: NavalUnit["affiliation"]): string {
   const a = affiliation === "friend" ? "3" : "6";
-  if (kind === "submarine") return `100${a}1000004520000000`; // subsurface
-  return `100${a}1000004501000000`; // surface warship
+  switch (kind) {
+    case "submarine":     return `100${a}3500001101000000`; // Subsurface 35 – Submarine (110100)
+    case "corvette":      return `100${a}3000001202050000`; // Sea Surface 30 – Corvette (120205)
+    case "frigate":       return `100${a}3000001202040000`; // Sea Surface 30 – Frigate (120204)
+    case "amphib":        return `100${a}3000001203070000`; // Sea Surface 30 – Landing Ship (120307)
+    case "logistics_ship":return `100${a}3000001301000000`; // Sea Surface 30 – Auxiliary Ship (130100)
+    case "patrol_boat":   return `100${a}3000001205010000`; // Sea Surface 30 – Patrol Craft (120501)
+    default:              return `100${a}3000001202000000`; // Sea Surface 30 – Surface Combatant (120200)
+  }
 }
 
 interface NavalUnitsLayerProps {
