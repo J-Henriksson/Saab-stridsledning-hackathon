@@ -83,8 +83,8 @@ export function EnemyEntityMarker({
             ? `drop-shadow(0 0 7px ${color}) drop-shadow(0 0 3px ${color})`
             : undefined,
           transform: isSelected ? "scale(1.2)" : undefined,
-          transition: "transform 120ms ease",
-          opacity: dimmed ? 0.35 : isPlaceholder ? 0.65 : 1,
+          transition: "transform 120ms ease, opacity 0.35s ease",
+          opacity: dimmed ? 0.15 : isPlaceholder ? 0.65 : 1,
         }}
       >
         {iconStyle === "nato"

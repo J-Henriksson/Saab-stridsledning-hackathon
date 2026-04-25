@@ -44,7 +44,8 @@ export function EnemyMarker({
         className="cursor-pointer"
         style={{
           filter: isSelected ? `drop-shadow(0 0 6px ${fill})` : undefined,
-          opacity: dimmed ? 0.35 : isPlaceholder ? 0.65 : 1,
+          opacity: dimmed ? 0.15 : isPlaceholder ? 0.65 : 1,
+          transition: "opacity 0.35s ease",
         }}
       >
         <svg width="32" height="32" viewBox="0 0 32 32">

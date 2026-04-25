@@ -24,6 +24,7 @@ interface NavalUnitsLayerProps {
   onSelect?: (id: string) => void;
   selectedId?: string | null;
   iconStyle?: "custom" | "nato";
+  highlightBaseId?: string | null;
 }
 
 function IconForKind({ kind, color, size }: { kind: NavalUnit["kind"]; color: string; size: number }) {
@@ -45,7 +46,7 @@ function colorFor(affiliation: NavalUnit["affiliation"]): string {
  * Renders naval markers (friendly + currently-detected hostile) and fog-of-war
  * "last known" ghosts for hostiles that have slipped out of sensor coverage.
  */
-export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId, iconStyle = "custom" }: NavalUnitsLayerProps) {
+export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId, iconStyle = "custom", highlightBaseId }: NavalUnitsLayerProps) {
   // Selected ship's historic trail — FlightRadar-style bright gradient.
   const selectedNaval = useMemo(
     () => (selectedId ? visible.find((n) => n.id === selectedId) : undefined),
@@ -98,6 +99,8 @@ export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId, icon
       {visible.map((n) => {
         const color = colorFor(n.affiliation);
         const isSelected = selectedId === n.id;
+        // Only dim friendly naval (no base association); enemies are never dimmed
+        const isDimmed = !!highlightBaseId && n.affiliation !== "hostile";
         return (
           <Marker
             key={n.id}
@@ -117,9 +120,10 @@ export function NavalUnitsLayer({ visible, lastKnown, onSelect, selectedId, icon
               title={`${n.name} — ${n.kind} (${n.affiliation})`}
               style={{
                 cursor: "pointer",
+                opacity: isDimmed ? 0.15 : 1,
                 filter: isSelected ? `drop-shadow(0 0 6px ${color})` : undefined,
                 transform: isSelected ? "scale(1.15)" : undefined,
-                transition: "transform 120ms ease",
+                transition: "transform 120ms ease, opacity 0.35s ease",
               }}
             >
               {iconStyle === "nato"

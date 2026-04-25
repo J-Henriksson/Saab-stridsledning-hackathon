@@ -490,6 +490,11 @@ export default function MapPage() {
       ? state.bases.find((b) => b.id === selected.baseId)
       : undefined;
 
+  // When a friendly base is clicked, highlight its units and dim everything else.
+  const highlightBaseId = selected?.kind === "base" ? selected.baseId : null;
+  // focusedBaseId (filter chip) takes priority over click-selection
+  const effectiveDimBase = focusedBaseId ?? highlightBaseId;
+
   const selectedAircraft =
     selected?.kind === "aircraft"
       ? (selectedBase ? getAircraft(selectedBase).find((a) => a.id === selected.aircraftId) : undefined)
@@ -1706,7 +1711,7 @@ export default function MapPage() {
               units={visibleUnits}
               onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
-              focusedBaseId={focusedBaseId}
+              focusedBaseId={effectiveDimBase}
               iconStyle={iconStyle}
             />
 
@@ -1717,6 +1722,7 @@ export default function MapPage() {
               onSelect={(id) => setSelected({ kind: "naval", id })}
               selectedId={selected?.kind === "naval" ? selected.id : null}
               iconStyle={iconStyle}
+              highlightBaseId={effectiveDimBase}
             />
 
             <DroneLayer
@@ -1724,6 +1730,7 @@ export default function MapPage() {
               selectedDroneId={selected?.kind === "unit" && allDrones.some(d => d.id === (selected as any).unitId) ? (selected as any).unitId : null}
               onSelectDrone={(droneId) => setSelected({ kind: "unit", unitId: droneId })}
               iconStyle={iconStyle}
+              highlightBaseId={effectiveDimBase}
             />
             {state.overlayVisibility.drones && (
               <>
@@ -1947,7 +1954,7 @@ export default function MapPage() {
               selectedEnemyEntity={selectedEnemyEntity}
               selectedEnemyBase={selectedEnemyBase}
               showAll={showAllBaseRings}
-              allUnits={visibleUnits}
+              allUnits={allUnits}
               allNaval={state.navalUnits}
               allEnemyEntities={state.enemyEntities}
               allEnemyBases={state.enemyBases}

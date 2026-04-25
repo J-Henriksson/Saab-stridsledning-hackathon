@@ -24,6 +24,7 @@ interface DroneLayerProps {
   selectedDroneId?: string | null;
   onSelectDrone?: (droneId: string) => void;
   iconStyle?: "custom" | "nato";
+  highlightBaseId?: string | null;
 }
 
 interface TooltipState {
@@ -32,7 +33,7 @@ interface TooltipState {
   y: number;
 }
 
-export function DroneLayer({ drones, selectedDroneId, onSelectDrone, iconStyle = "custom" }: DroneLayerProps) {
+export function DroneLayer({ drones, selectedDroneId, onSelectDrone, iconStyle = "custom", highlightBaseId }: DroneLayerProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
   const hoveredDrone = tooltip ? drones.find((d) => d.id === tooltip.droneId) : null;
@@ -71,6 +72,8 @@ export function DroneLayer({ drones, selectedDroneId, onSelectDrone, iconStyle =
       {drones.filter((d) => d.movement.state === "airborne" || (d.movement.state !== "airborne" && d.currentBase === null)).map((drone) => {
         const color = AFFIL_COLORS[drone.affiliation] ?? "#e2e8f0";
         const isSelected = selectedDroneId === drone.id;
+        const droneBase = (drone as any).currentBase ?? (drone as any).lastBase ?? null;
+        const isDimmed = !!highlightBaseId && drone.affiliation !== "hostile" && droneBase !== highlightBaseId;
 
         return (
           <Marker
@@ -87,11 +90,12 @@ export function DroneLayer({ drones, selectedDroneId, onSelectDrone, iconStyle =
               style={{
                 cursor: "pointer",
                 position: "relative",
+                opacity: isDimmed ? 0.15 : 1,
                 filter: isSelected
                   ? `drop-shadow(0 0 5px ${color})`
                   : undefined,
                 transform: isSelected ? "scale(1.2)" : undefined,
-                transition: "transform 120ms ease",
+                transition: "transform 120ms ease, opacity 0.35s ease",
               }}
               onMouseEnter={(e) => setTooltip({ droneId: drone.id, x: e.clientX, y: e.clientY })}
               onMouseMove={(e) => setTooltip({ droneId: drone.id, x: e.clientX, y: e.clientY })}
