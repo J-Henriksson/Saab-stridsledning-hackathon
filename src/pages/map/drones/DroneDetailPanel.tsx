@@ -159,18 +159,20 @@ export function DroneDetailPanel({
         </button>
       )}
 
-      {/* Recall button */}
-      <button
-        onClick={() => onRecall(drone.id)}
-        disabled={!canRecall}
-        className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono
-          disabled:opacity-40 disabled:cursor-not-allowed
-          enabled:border-amber-500/60 enabled:text-amber-400 enabled:bg-amber-400/10
-          enabled:hover:bg-amber-400/20 transition-colors"
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-        RTB – Återkalla till bas
-      </button>
+      {/* Recall button — only for friendly drones */}
+      {drone.affiliation !== "hostile" && (
+        <button
+          onClick={() => onRecall(drone.id)}
+          disabled={!canRecall}
+          className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold font-mono
+            disabled:opacity-40 disabled:cursor-not-allowed
+            enabled:border-amber-500/60 enabled:text-amber-400 enabled:bg-amber-400/10
+            enabled:hover:bg-amber-400/20 transition-colors"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          RTB – Återkalla till bas
+        </button>
+      )}
 
       {/* Waypoint editor (planning mode only) */}
       {planningMode && (

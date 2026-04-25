@@ -288,12 +288,14 @@ export function UnitDetailPanel({
           </>
         ) : (
           <>
-            <button
-              onClick={() => dispatch({ type: "RECALL_UNIT", unitId: unit.id })}
-              className="w-full px-2 py-1 border border-border rounded hover:bg-muted/30"
-            >
-              Återkalla till bas
-            </button>
+            {unit.affiliation !== "hostile" && (
+              <button
+                onClick={() => dispatch({ type: "RECALL_UNIT", unitId: unit.id })}
+                className="w-full px-2 py-1 border border-border rounded hover:bg-muted/30"
+              >
+                Återkalla till bas
+              </button>
+            )}
             <div className="rounded border border-primary/25 bg-primary/5 px-3 py-2 text-[10px] text-muted-foreground">
               Flytta enheten genom att dra markoren direkt pa kartan.
             </div>

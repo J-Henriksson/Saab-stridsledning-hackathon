@@ -574,7 +574,7 @@ export default function AARPage({ embedded = false }: { embedded?: boolean }) {
               </div>
             </div>
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate(`/dashboard/${currentBase?.id ?? "MOB"}`)}
               className="text-[10px] font-mono font-bold px-4 py-2 rounded-lg border transition-all hover:brightness-110"
               style={{ background: "rgba(255,255,255,0.06)", borderColor: "rgba(215,222,225,0.18)", color: SILVER }}
             >

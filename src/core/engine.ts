@@ -487,6 +487,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       });
     }
 
+    case "PLAN_REASSIGN_UNIT_TO_BASE": {
+      const unit = state.bases.flatMap((b) => b.units).find((u) => u.id === action.unitId);
+      if (!unit) return state;
+      return {
+        ...state,
+        bases: state.bases.map((b) => {
+          if (b.id === action.fromBaseId) {
+            return { ...b, units: b.units.filter((u) => u.id !== action.unitId) };
+          }
+          if (b.id === action.toBaseId) {
+            return { ...b, units: [...b.units, { ...unit, currentBase: action.toBaseId }] };
+          }
+          return b;
+        }),
+      };
+    }
+
     case "DEPLOY_UNIT": {
       const loc = findUnit(state, action.unitId);
       if (!loc) return state;
@@ -1062,6 +1079,15 @@ function handleAdvanceHour(state: GameState): GameState {
   // Mark completed ATO orders and collect returning aircraft.
   const returningAircraft: { aircraftId: string; baseId: string }[] = [];
   const updatedATOOrders = newATOOrders.map((o) => {
+    // Auto-activate placeholder orders when their scheduled time arrives.
+    if (
+      o.isPlaceholder &&
+      o.activationDay !== undefined &&
+      o.activationHour !== undefined &&
+      (nextDay > o.activationDay || (nextDay === o.activationDay && nextHour >= o.activationHour))
+    ) {
+      return { ...o, isPlaceholder: false };
+    }
     if (o.status === "dispatched" && nextHour >= o.endHour) {
       if (o.missionType !== "REBASE") {
         o.assignedAircraft.forEach((acId) =>

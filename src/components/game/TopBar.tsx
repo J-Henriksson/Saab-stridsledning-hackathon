@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { GameState } from "@/types/game";
 import { getAircraft } from "@/core/units/helpers";
 import { PhaseBadge } from "./StatusBadge";
-import { Pause, Play, RotateCcw, LayoutDashboard, Map } from "lucide-react";
+import { Pause, Play, RotateCcw, Map } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import gripenSilhouette from "@/assets/gripen-silhouette.png";
 
@@ -46,7 +46,7 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
     >
       {/* Brand + Nav */}
       <div className="flex items-center gap-5">
-        <NavLink to="/" className="flex items-center gap-3" title="Basöversikt">
+        <NavLink to="/map" className="flex items-center gap-3" title="Karta">
           <div className="relative flex items-center justify-center w-9 h-9 rounded-lg overflow-hidden"
             style={{ background: "hsl(42 64% 53% / 0.15)", border: "1px solid hsl(42 64% 53% / 0.4)" }}>
             <img
@@ -63,34 +63,28 @@ export function TopBar({ state, onTogglePause, onSetSpeed, onReset }: TopBarProp
             </span>
             <span className="text-[8px] font-mono tracking-widest"
               style={{ color: "hsl(200 12% 72%)" }}>
-              SAAB SMART AIRBASE SIM
+              SAAB SMART STRIDSLEDNING
             </span>
           </div>
         </NavLink>
 
         <nav className="flex items-center gap-0.5 ml-2">
-          {[
-            { to: "/", icon: <LayoutDashboard className="h-3.5 w-3.5" />, label: "DASHBOARD" },
-            { to: "/map", icon: <Map className="h-3.5 w-3.5" />, label: "KARTA" },
-          ].map(({ to, icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-semibold rounded transition-all duration-150 tracking-wider ${
-                  isActive ? "text-white" : "hover:text-white"
-                }`
-              }
-              style={({ isActive }) => isActive
-                ? { background: "hsl(42 64% 53% / 0.2)", color: "hsl(42 64% 62%)", borderBottom: "2px solid hsl(42 64% 53%)" }
-                : { color: "hsl(200 12% 72%)" }
-              }
-            >
-              {icon}
-              {label}
-            </NavLink>
-          ))}
+          <NavLink
+            to="/map"
+            end
+            className={({ isActive }) =>
+              `flex items-center gap-1.5 px-3 py-2 text-[11px] font-mono font-semibold rounded transition-all duration-150 tracking-wider ${
+                isActive ? "text-white" : "hover:text-white"
+              }`
+            }
+            style={({ isActive }) => isActive
+              ? { background: "hsl(42 64% 53% / 0.2)", color: "hsl(42 64% 62%)", borderBottom: "2px solid hsl(42 64% 53%)" }
+              : { color: "hsl(200 12% 72%)" }
+            }
+          >
+            <Map className="h-3.5 w-3.5" />
+            KARTA
+          </NavLink>
         </nav>
       </div>
 

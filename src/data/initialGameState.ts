@@ -63,29 +63,23 @@ function seedUnitsForBase(baseId: "MOB" | "FOB_N" | "FOB_S", aircraftList: Aircr
   const pos = BASE_COORDS[baseId];
   const units: Unit[] = [...aircraftList]; // aircraft are first-class units now
 
-  // Drones: SKYM-12 ready at MOB; SKYM-13 ready at FOB_N; FOB_S none
-  // SKYM-11 (airborne) and RED-UAV-01 (hostile) are seeded into deployedUnits below
-  if (baseId === "MOB") {
+  // Drones: seeded per base. SKYM-11 (MOB, airborne) and SKYM-14 (FOB_S, airborne)
+  // are in deployedUnits below and count toward their base totals.
+  const droneCount = baseId === "MOB" ? 15 : 10;
+  const dronePrefix = baseId === "MOB" ? "SKYM" : baseId === "FOB_N" ? "SKYM-N" : "SKYM-S";
+  const droneIdPrefix = baseId === "MOB" ? "mob" : baseId === "FOB_N" ? "fob-n" : "fob-s";
+  Array.from({ length: droneCount }, (_, i) => {
+    const num = String(i + 1).padStart(2, "0");
     units.push(createDroneUnit({
-      id: "drone-skym-12",
-      name: "SKYM-12",
+      id: `drone-${droneIdPrefix}-${num}`,
+      name: `${dronePrefix}-${num}`,
       type: "ISR_DRONE",
       position: pos,
-      currentBase: "MOB",
+      currentBase: baseId,
       status: "ready",
       fuel: 100,
     }));
-  } else if (baseId === "FOB_N") {
-    units.push(createDroneUnit({
-      id: "drone-skym-13",
-      name: "SKYM-13",
-      type: "ISR_DRONE",
-      position: pos,
-      currentBase: "FOB_N",
-      status: "ready",
-      fuel: 100,
-    }));
-  }
+  });
 
   // Air defense — these are pre-placed, static batteries (Lv) that cannot be
   // relocated. They provide the baseline SAM coverage around each base.
