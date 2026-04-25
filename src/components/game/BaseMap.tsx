@@ -1178,7 +1178,6 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = []
             const color = getAircraftColor(ac);
             const hp = Math.round(ac.health ?? 100);
             const hColor = hp > 70 ? "#1F5C2A" : hp > 30 ? "#B06000" : "#CC2222";
-            const hpTextColor = hp > 70 ? "#ffffff" : "#000000";
             const panelW = 110, panelH = 68;
             const px = cx + panelW + 6 > 870 ? cx - panelW - 6 : cx + 6;
             const py = cy - panelH - 4;
@@ -1195,7 +1194,6 @@ export function BaseMap({ base, onDropAircraft, onLaunchDrone, activeDrones = []
                 <text x={px + 5} y={py + 11} fontSize="6.5" fill="#D7AB3A" fontFamily="monospace" fontWeight="bold">HÄLSA</text>
                 <rect x={px + 5} y={py + 14} width={panelW - 10} height={6} rx="1.5" fill="rgba(0,0,0,0.5)" />
                 <rect x={px + 5} y={py + 14} width={Math.max(0, (panelW - 10) * (hp / 100))} height={6} rx="1.5" fill={hColor} />
-                <text x={px + panelW - 5} y={py + 20} textAnchor="end" fontSize="6" fill={hpTextColor} fontFamily="monospace" fontWeight="bold">{hp}</text>
                 <text x={px + 5} y={py + 33} fontSize="6.5" fill="#8899bb" fontFamily="monospace">BRÄNSLE: <tspan fill="#D7DEE1" fontWeight="bold">{Math.round(base.fuel)}%</tspan></text>
                 <text x={px + 5} y={py + 45} fontSize="6" fill="#8899bb" fontFamily="monospace">LAST: <tspan fill="#D7DEE1">{ac.payload ?? "–"}</tspan></text>
                 <text x={px + 5} y={py + 57} fontSize="6" fill="#8899bb" fontFamily="monospace">

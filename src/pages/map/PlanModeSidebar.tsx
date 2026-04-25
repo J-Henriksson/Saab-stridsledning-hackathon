@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   Shield, FileText, Pencil, Sparkles, Trash2, MapPin, Plus,
-  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info,
+  Crosshair, ChevronDown, ChevronRight, Fuel, Wrench, Zap, List, Check, Info, Play,
 } from "lucide-react";
 import type { GameState, GameAction, BaseType, FriendlyMarkerCategory, AircraftType, EnemyBaseCategory, EnemyEntityCategory, ThreatLevel, OperationalStatus, RoadBaseStatus, RoadBaseEchelon } from "@/types/game";
 import type { UnitCategory, DroneType, GroundRadarType, AirDefenseType, GroundVehicleType } from "@/types/units";
@@ -23,6 +23,7 @@ interface Props {
   onFinalizePlan: () => void;
   onRename: (name: string) => void;
   onFlyTo: (lat: number, lng: number) => void;
+  onSelectUnit?: (id: string) => void;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, delay: DelaySpec | null) => void;
 }
@@ -63,12 +64,13 @@ function DelaySelect({ id, delays, onSetDelay }: { id: string; delays: Record<st
 
 // ── Shared item row ────────────────────────────────────────────────────────
 
-function PlanItemRow({ label, sub, color = "#93c5fd", id, coords, delays, onSetDelay, onFlyTo, onDelete, isNew }: {
+function PlanItemRow({ label, sub, color = "#93c5fd", id, coords, delays, onSetDelay, onFlyTo, onSelectUnit, onDelete, isNew }: {
   label: string; sub?: string; color?: string;
   id: string; coords?: { lat: number; lng: number } | null;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, d: DelaySpec | null) => void;
   onFlyTo: (lat: number, lng: number) => void;
+  onSelectUnit?: (id: string) => void;
   onDelete: () => void;
   isNew?: boolean;
 }) {
@@ -90,7 +92,10 @@ function PlanItemRow({ label, sub, color = "#93c5fd", id, coords, delays, onSetD
       </div>
       <DelaySelect id={id} delays={delays} onSetDelay={onSetDelay} />
       {coords && (
-        <button onClick={() => onFlyTo(coords.lat, coords.lng)} className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0">
+        <button
+          onClick={() => { onFlyTo(coords.lat, coords.lng); onSelectUnit?.(id); }}
+          className="p-1 text-muted-foreground hover:text-blue-400 transition-colors shrink-0"
+        >
           <MapPin className="h-3 w-3" />
         </button>
       )}
@@ -190,59 +195,28 @@ function AiRecsPanel({ recs }: { recs: AiRecommendation[] }) {
   );
 }
 
-function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDelay, description, aiRecommendations }: {
+function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, onSelectUnit, delays, onSetDelay, description, aiRecommendations }: {
   state: GameState;
   dispatch: (a: GameAction) => void;
   onStartPlacement: (p: PlacingPayload) => void;
   onFlyTo: (lat: number, lng: number) => void;
+  onSelectUnit?: (id: string) => void;
   delays: Record<string, DelaySpec | null>;
   onSetDelay: (id: string, d: DelaySpec | null) => void;
   description?: string;
   aiRecommendations?: AiRecommendation[];
 }) {
-  const [addingEnemyBase, setAddingEnemyBase] = useState(false);
-  const [addingEnemyEntity, setAddingEnemyEntity] = useState(false);
-
-  // Enemy base form state
-  const [ebName, setEbName] = useState("");
-  const [ebCat, setEbCat] = useState<EnemyBaseCategory>("airfield");
-  const [ebThreat, setEbThreat] = useState<ThreatLevel>("medium");
-  const [ebStatus, setEbStatus] = useState<OperationalStatus>("active");
-  const [ebNotes, setEbNotes] = useState("");
-
-  // Enemy entity form state
-  const [eeName, setEeName] = useState("");
-  const [eeCat, setEeCat] = useState<EnemyEntityCategory>("fighter");
-  const [eeThreat, setEeThreat] = useState<ThreatLevel>("medium");
-  const [eeStatus, setEeStatus] = useState<OperationalStatus>("active");
-  const [eeCount, setEeCount] = useState(1);
-  const [eeNotes, setEeNotes] = useState("");
-
   const friendlyUnits = state.deployedUnits.filter((u) => u.affiliation === "friend");
   const hasAnything =
     state.friendlyMarkers.length > 0 || friendlyUnits.length > 0 ||
     state.roadBases.length > 0 || state.enemyBases.length > 0 || state.enemyEntities.length > 0;
 
-  function placeEnemyBase() {
-    if (!ebName.trim()) return;
-    onStartPlacement({ kind: "enemy_base", data: { name: ebName, category: ebCat, threat: ebThreat, status: ebStatus, notes: ebNotes } });
-    setAddingEnemyBase(false);
-    setEbName(""); setEbCat("airfield"); setEbThreat("medium"); setEbStatus("active"); setEbNotes("");
-  }
-
-  function placeEnemyEntity() {
-    if (!eeName.trim()) return;
-    onStartPlacement({ kind: "enemy_entity", data: { name: eeName, category: eeCat, threat: eeThreat, status: eeStatus, count: String(eeCount), notes: eeNotes } });
-    setAddingEnemyEntity(false);
-    setEeName(""); setEeCat("fighter"); setEeThreat("medium"); setEeStatus("active"); setEeCount(1); setEeNotes("");
-  }
-
   return (
     <div className="p-3 space-y-1.5">
       {description && (
-        <div className="flex gap-2 p-2 rounded border border-amber-500/20 bg-amber-500/5 mb-2">
-          <Info className="h-3 w-3 text-amber-400/70 shrink-0 mt-0.5" />
-          <p className="text-[9px] font-mono text-amber-300/80 leading-relaxed">{description}</p>
+        <div className="flex gap-2 p-2 rounded border border-blue-500/25 bg-blue-500/5 mb-2">
+          <Info className="h-3 w-3 text-blue-400/70 shrink-0 mt-0.5" />
+          <p className="text-[9px] font-mono text-foreground leading-relaxed">{description}</p>
         </div>
       )}
 
@@ -276,7 +250,7 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
               sub={`${u.type} · ${u.currentBase ?? u.lastBase ?? "—"}`}
               color="#93c5fd"
               coords={u.position}
-              delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo}
+              delays={delays} onSetDelay={onSetDelay} onFlyTo={onFlyTo} onSelectUnit={onSelectUnit}
               onDelete={() => dispatch({ type: "PLAN_DELETE_FRIENDLY_UNIT", unitId: u.id })}
               isNew
             />
@@ -335,82 +309,6 @@ function PlanTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDela
       {aiRecommendations && aiRecommendations.length > 0 && (
         <AiRecsPanel recs={aiRecommendations} />
       )}
-
-      {/* Add enemy items */}
-      <div className="pt-3 space-y-2">
-        {addingEnemyBase ? (
-          <div className="border border-red-500/30 rounded bg-red-500/5 p-2 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono text-red-400 uppercase tracking-wider">Ny fiendebas</span>
-              <button onClick={() => setAddingEnemyBase(false)} className="text-muted-foreground hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
-            </div>
-            <input autoFocus placeholder="Namn / beteckning" value={ebName} onChange={(e) => setEbName(e.target.value)}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground" />
-            <select value={ebCat} onChange={(e) => setEbCat(e.target.value as EnemyBaseCategory)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-              {ENEMY_BASE_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <div className="flex gap-2">
-              <select value={ebThreat} onChange={(e) => setEbThreat(e.target.value as ThreatLevel)} className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                {THREATS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-              <select value={ebStatus} onChange={(e) => setEbStatus(e.target.value as OperationalStatus)} className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </div>
-            <textarea placeholder="Anteckningar..." value={ebNotes} rows={2} onChange={(e) => setEbNotes(e.target.value)}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground resize-none" />
-            <div className="flex gap-2">
-              <button onClick={placeEnemyBase} disabled={!ebName.trim()} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-red-600/80 hover:bg-red-600 text-white text-[11px] font-mono font-bold disabled:opacity-40 rounded transition-colors">
-                <MapPin className="h-3 w-3" /> Välj position
-              </button>
-              <button onClick={() => setAddingEnemyBase(false)} className="px-3 py-1.5 border border-border rounded text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors">Avbryt</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => { setAddingEnemyBase(true); setAddingEnemyEntity(false); }}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded border border-red-500/30 text-red-400 text-[11px] font-mono hover:bg-red-500/5 transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Ny fiendebas
-          </button>
-        )}
-
-        {addingEnemyEntity ? (
-          <div className="border border-red-500/30 rounded bg-red-500/5 p-2 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-mono text-red-400 uppercase tracking-wider">Ny fiendeenhet</span>
-              <button onClick={() => setAddingEnemyEntity(false)} className="text-muted-foreground hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
-            </div>
-            <input autoFocus placeholder="Namn / beteckning" value={eeName} onChange={(e) => setEeName(e.target.value)}
-              className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted-foreground" />
-            <select value={eeCat} onChange={(e) => setEeCat(e.target.value as EnemyEntityCategory)} className="w-full bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-              {ENEMY_ENTITY_CATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-            <div className="flex gap-2">
-              <select value={eeThreat} onChange={(e) => setEeThreat(e.target.value as ThreatLevel)} className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                {THREATS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-              <select value={eeStatus} onChange={(e) => setEeStatus(e.target.value as OperationalStatus)} className="flex-1 bg-background border border-border rounded px-2 py-1 text-xs font-mono text-foreground">
-                {STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono text-muted-foreground shrink-0">Antal</span>
-              <input type="number" min={1} max={99} value={eeCount} onChange={(e) => setEeCount(Number(e.target.value))}
-                className="w-16 bg-background border border-border rounded px-1.5 py-0.5 text-[11px] font-mono text-foreground text-right" />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={placeEnemyEntity} disabled={!eeName.trim()} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-red-600/80 hover:bg-red-600 text-white text-[11px] font-mono font-bold disabled:opacity-40 rounded transition-colors">
-                <MapPin className="h-3 w-3" /> Välj position
-              </button>
-              <button onClick={() => setAddingEnemyEntity(false)} className="px-3 py-1.5 border border-border rounded text-[11px] font-mono text-muted-foreground hover:text-foreground transition-colors">Avbryt</button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => { setAddingEnemyEntity(true); setAddingEnemyBase(false); }}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded border border-red-500/30 text-red-400 text-[11px] font-mono hover:bg-red-500/5 transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Ny fiendeenhet
-          </button>
-        )}
-      </div>
     </div>
   );
 }
@@ -922,7 +820,7 @@ function PlaceTab({ state, dispatch, onStartPlacement, onFlyTo, delays, onSetDel
 
 type SidebarTab = "plan" | "place";
 
-export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo, delays, onSetDelay }: Props) {
+export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFinalizePlan, onRename, onFlyTo, onSelectUnit, delays, onSetDelay }: Props) {
   const [activeTab, setActiveTab] = useState<SidebarTab>("place");
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(tab.name);
@@ -967,6 +865,12 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
               <Pencil className="h-2.5 w-2.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
             </button>
           )}
+          <button
+            title="Simulera plan (ej implementerat)"
+            className="flex items-center gap-1 px-1.5 py-1 rounded border border-border text-muted-foreground text-[10px] font-mono hover:text-foreground hover:border-green-500/40 transition-colors shrink-0 cursor-not-allowed opacity-60"
+          >
+            <Play className="h-3 w-3" /> Sim
+          </button>
           <button onClick={handleExport} title="Exportera plansammanfattning"
             className="flex items-center gap-1 px-1.5 py-1 rounded border border-border text-muted-foreground text-[10px] font-mono hover:text-foreground hover:border-amber-500/40 transition-colors shrink-0">
             <FileText className="h-3 w-3" /> Export
@@ -1000,7 +904,7 @@ export function PlanModeSidebar({ tab, state, dispatch, onStartPlacement, onFina
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === "plan" ? (
-          <PlanTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} description={tab.description} aiRecommendations={tab.aiRecommendations} />
+          <PlanTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} onSelectUnit={onSelectUnit} delays={delays} onSetDelay={onSetDelay} description={tab.description} aiRecommendations={tab.aiRecommendations} />
         ) : (
           <PlaceTab state={state} dispatch={dispatch} onStartPlacement={onStartPlacement} onFlyTo={onFlyTo} delays={delays} onSetDelay={onSetDelay} />
         )}

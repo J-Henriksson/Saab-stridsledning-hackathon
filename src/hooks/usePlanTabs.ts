@@ -205,14 +205,14 @@ function buildProtectAmmoTab(liveState: GameState): PlanTab {
     threatLevel: "high" as const, operationalStatus: "active" as const,
     estimates: "~12 Su-35S, stridsberedskap bekräftad",
     notes: "Aktiv verksamhet observerad, start- och landningsrörelser dagligen",
-    threatRangeKm: 300, coords: { lat: 57.200, lng: 17.800 },
+    threatRangeKm: 0, coords: { lat: 57.200, lng: 17.800 },
   };
   const enemySamSite = {
     id: uuid(), name: "RU-SAM-GOTLAND", category: "sam_site" as const,
     threatLevel: "high" as const, operationalStatus: "active" as const,
     estimates: "S-400 batteri, 4 uppskjutningsramper aktiva",
     notes: "Täcker hela Östersjön. Omöjliggör direkt luftrörelsestöd utan SEAD-eskort.",
-    threatRangeKm: 400, coords: { lat: 57.500, lng: 18.500 },
+    threatRangeKm: 0, coords: { lat: 57.500, lng: 18.500 },
   };
   const enemyCommand = {
     id: uuid(), name: "RU-LEDNING-KALMAR", category: "command" as const,
@@ -243,8 +243,8 @@ function buildProtectAmmoTab(liveState: GameState): PlanTab {
       eksLv1, eksLv2, eksLv3, eksLv4, eksRadar1, eksRadar2, eksArmor, eksFuel,
       droneCorr, droneEnk, droneEks,
     ],
-    roadBases: [roadBaseEnk, roadBaseEks],
-    enemyBases: [enemyAirfield, enemySamSite, enemyCommand],
+    roadBases: [roadBaseEnk],
+    enemyBases: [enemyAirfield, enemyCommand],
     enemyEntities: [enemyFighter, enemyMissile],
   };
 
@@ -488,13 +488,13 @@ export function usePlanTabs(liveState: GameState) {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [seeded, setSeeded] = useState(false);
 
-  // Always ensure the "protect ammo" plan exists as the first tab.
+  // Always rebuild the ammo plan from source (discards any stale localStorage copy).
   useEffect(() => {
     if (seeded) return;
     setSeeded(true);
     setTabs((prev) => {
-      if (prev.some((t) => t.id === "plan-protect-ammo")) return prev;
-      return [buildProtectAmmoTab(liveState), ...prev];
+      const withoutAmmo = prev.filter((t) => t.id !== "plan-protect-ammo");
+      return [buildProtectAmmoTab(liveState), ...withoutAmmo];
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

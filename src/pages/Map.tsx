@@ -1291,6 +1291,7 @@ export default function MapPage() {
                 onFinalizePlan={() => setShowPlanReview(true)}
                 onRename={(name) => renameTab(activeTab.id, name)}
                 onFlyTo={handleFlyTo}
+                onSelectUnit={(unitId) => setSelected({ kind: "unit", unitId })}
                 delays={activeTab.delays}
                 onSetDelay={setDelay}
               />
@@ -1721,6 +1722,7 @@ export default function MapPage() {
               selectedUnitId={selected?.kind === "unit" ? selected.unitId : null}
               focusedBaseId={effectiveDimBase}
               iconStyle={iconStyle}
+              isPlanMode={isPlanMode}
             />
 
             {/* Naval units — friendly picket + hostile ships (fog-of-war gated) */}
@@ -2322,8 +2324,8 @@ export default function MapPage() {
       {/* AI Plan Review Modal */}
       {showPlanReview && (
         <PlanReviewModal
-          state={state}
-          onConfirm={() => { setShowPlanReview(false); if (activeTabId) deleteTab(activeTabId); }}
+          state={planState}
+          onConfirm={() => { setShowPlanReview(false); }}
           onBack={() => setShowPlanReview(false)}
         />
       )}

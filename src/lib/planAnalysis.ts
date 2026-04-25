@@ -17,7 +17,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   return R * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
 }
 
-const AMMO_ROAD_BASE_THRESHOLD_KM = 25;
+const AMMO_ROAD_BASE_THRESHOLD_KM = 100;
 
 export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
   await new Promise((r) => setTimeout(r, 1200));
@@ -113,13 +113,13 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
 
   if (concerns.length === 0 && score >= 3) {
     const depotMsg = allDepotsCovered
-      ? " Alla ammunitionsdepåer är täckta av operativa vägbaser — logistik och markskydd godkänt."
+      ? ` Alla ammunitionsdepåer täcks av operativa vägbaser — logistik och markskydd godkänt.`
       : "";
     return {
       type: "positive",
       recommendation:
         "Stridsplanen uppvisar god balans mellan offensiv förmåga och defensiv täckning. " +
-        "Vänliga styrkor är väl positionerade och uppfyller de taktiska kraven." +
+        "Vänliga styrkor är väl positionerade och uppfyller samtliga taktiska krav." +
         depotMsg +
         " Godkänn och gå vidare till genomförandefasen.",
       concerns: [],
@@ -136,6 +136,24 @@ export async function analyzePlan(state: GameState): Promise<PlanAnalysis> {
         `Stridsplanen innehåller ${concerns.length} identifierade brister.` +
         depotHint +
         " Revidera planen eller acceptera risken och fortsätt.",
+      concerns,
+    };
+  }
+
+  // Neutral: plan mostly solid — only one or a few minor gaps
+  const onlyDepotGap =
+    concerns.length === 1 &&
+    uncoveredDepots.length === 1 &&
+    coveredDepots.length > 0;
+
+  if (onlyDepotGap) {
+    return {
+      type: "neutral",
+      recommendation:
+        `Planen täcker stora delar av uppdraget — god luftvärns- och radartäckning kring ${coveredDepots.join(" och ")}. ` +
+        `En brist kvarstår: ${uncoveredDepots[0]} ammodepo saknar markstöd. ` +
+        `Etablera en vägbas inom ${AMMO_ROAD_BASE_THRESHOLD_KM} km från depån för att säkra logistik och skydd, ` +
+        `sedan kan planen godkännas.`,
       concerns,
     };
   }
