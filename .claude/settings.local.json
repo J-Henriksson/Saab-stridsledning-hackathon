@@ -24,7 +24,10 @@
       "Bash(curl -sI \"https://tiles.stadiamaps.com/tiles/stamen_toner_lines/8/140/85.png\")",
       "Bash(GIT_EDITOR=true git rebase *)",
       "Bash(EDITOR=\"true\" GIT_EDITOR=\"true\" git *)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(grep -E \"\\\\.\\(ts|tsx|js|jsx\\)$\")",
+      "Bash(grep -E '\\\\.\\(tsx|ts|jsx|js\\)$')",
+      "Bash(grep -E '\\\\.\\(tsx|ts\\)$')"
     ]
   }
 }

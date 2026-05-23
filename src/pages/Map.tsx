@@ -2304,7 +2304,7 @@ export default function MapPage() {
 
           {/* Coordinate HUD + legend — bottom left, above aircraft markers
            *  (UnitsLayer airborne markers use zIndex 50). */}
-          <div className="absolute bottom-14 left-3 z-[70] flex flex-col gap-2">
+          <div className={`absolute bottom-14 left-3 z-[70] flex flex-col gap-2 transition-opacity duration-200 ${isDropdownOpen ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
             <CoordinateHUD cursor={hudCursor} />
 
             <div
